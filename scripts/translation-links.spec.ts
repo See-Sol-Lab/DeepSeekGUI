@@ -56,6 +56,22 @@ function expectUnchangedLinkInput(root: string, input: string): void {
 }
 
 describe('translation link locale validation', () => {
+  it('checks outgoing and incoming links for the Chinese repository homepage', () => {
+    const files = new Set(['README.md', 'README.en.md', 'docs/guide.md', 'docs/guide.zh.md'])
+    const context = (sourcePath: string): TranslationLinkContext => ({
+      repoRoot: '.', sourcePath,
+      repositoryFileExists: path => files.has(path),
+      isTranslationPairSource: path => path === 'README.en.md' || path === 'docs/guide.md',
+    })
+    expect(translationLinkLocaleViolations('[指南](docs/guide.zh.md)', context('README.md'))).toEqual([])
+    expect(translationLinkLocaleViolations('[Guide](docs/guide.md)', context('README.en.md'))).toEqual([])
+    expect(translationLinkLocaleViolations('[指南](docs/guide.md)', context('README.md'))[0]?.expectedUrl).toBe('docs/guide.zh.md')
+    expect(translationLinkLocaleViolations('[Home](../README.md)', context('docs/guide.md'))[0]?.expectedUrl).toBe('../README.en.md')
+    expect(translationLinkLocaleViolations('[首页](../README.en.md)', context('docs/guide.zh.md'))[0]?.expectedUrl).toBe('../README.md')
+    expect(normalizeTranslationMarkdownLinks('[首页](../README.md)', context('docs/guide.zh.md')))
+      .toBe(normalizeTranslationMarkdownLinks('[首页](../README.en.md)', context('docs/guide.md')))
+  })
+
   it('rejects a Chinese link to the English sibling with an exact diagnostic', () => {
     const root = fixture()
     expect(translationLinkLocaleViolations(

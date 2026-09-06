@@ -3,6 +3,7 @@
 import { existsSync, statSync } from 'node:fs'
 import { posix, resolve } from 'node:path'
 import type { Nodes } from 'mdast'
+import { translationPairPaths } from './translation-pairing-record.ts'
 import {
   isExternalOrAbsoluteMarkdownUrl,
   markdownDestination,
@@ -135,12 +136,11 @@ function resolveRepositoryTarget(
 }
 
 function translationPairTarget(targetPath: string, context: TranslationLinkContext): TranslationPairTarget | undefined {
-  const source = targetPath.endsWith('.zh.md')
+  const source = targetPath === 'README.md' ? 'README.en.md' : targetPath.endsWith('.zh.md')
     ? targetPath.replace(/\.zh\.md$/, '.md')
     : targetPath.endsWith('.md') ? targetPath : undefined
   if (source === undefined || !context.isTranslationPairSource(source)) return undefined
-  const zh = source.replace(/\.md$/, '.zh.md')
-  return { source, zh }
+  return translationPairPaths(source)
 }
 
 function encodePathSegment(segment: string): string {
@@ -165,6 +165,9 @@ function expectedLocalePath(
   context: TranslationLinkContext,
   expectedPath: string,
 ): string {
+  if (expectedPath === 'README.md' || expectedPath === 'README.en.md') {
+    return relativeExpectedPath(context, expectedPath, rawPath)
+  }
   if (locale === 'zh' && rawPath.endsWith('.md') && !rawPath.endsWith('.zh.md')) {
     return rawPath.replace(/\.md$/, '.zh.md')
   }
@@ -185,7 +188,7 @@ function resolveTranslationLink(
   if (targetPath === undefined) return undefined
   const pair = translationPairTarget(targetPath, context)
   if (pair === undefined) return undefined
-  const locale = context.sourcePath.endsWith('.zh.md') ? 'zh' : 'en'
+  const locale = context.sourcePath === 'README.md' || context.sourcePath.endsWith('.zh.md') ? 'zh' : 'en'
   const expectedPath = locale === 'zh' ? pair.zh : pair.source
   return {
     pair,

@@ -275,6 +275,17 @@ describe('translation pairing link language parity', () => {
 })
 
 describe('translation pairing records', () => {
+  it('pairs the Chinese repository homepage with its English document', () => {
+    const paths = translationPairPaths('README.en.md')
+    expect(paths).toEqual({ source: 'README.en.md', zh: 'README.md', meta: 'README.i18n.yaml' })
+    for (const argument of ['README', 'README.md', 'README.en.md', 'README.i18n.yaml']) {
+      expect(pairAnchorOfArgument(argument)).toBe('README.en.md')
+    }
+    const record = { sourceHash: '1'.repeat(40), zhHash: '2'.repeat(40) }
+    expect(parseTranslationPairingRecord(renderTranslationPairingRecord(paths, record), paths)).toEqual(record)
+    expect(parseTranslationPairingRecord(`README.md: ${record.sourceHash}\nREADME.zh.md: ${record.zhHash}\n`, paths)).toBeUndefined()
+  })
+
   const paths = translationPairPaths('docs/foo.md')
   const record = {
     sourceHash: '1'.repeat(40),
@@ -303,6 +314,7 @@ describe('translation pairing records', () => {
 describe('translation scope discovery', () => {
   it.each([
     'README.md',
+    'README.en.md',
     'CONTRIBUTING.md',
     'CONTRIBUTING.zh.md',
     'CONTRIBUTING.i18n.yaml',

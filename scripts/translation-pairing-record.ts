@@ -24,11 +24,15 @@ const META_LINE = /^([^:#]+\.md): ([0-9a-f]{40})$/
 
 /**
  * Derive the counterpart and consistency-record paths from an English document.
+ * The repository homepage pairs English README.en.md with Chinese README.md.
  *
  * @param source - Repository-relative English Markdown path.
  * @returns The complete three-path pair.
  */
 export function translationPairPaths(source: string): TranslationPairPaths {
+  if (source === 'README.en.md' || source === 'README.md') {
+    return { source: 'README.en.md', zh: 'README.md', meta: 'README.i18n.yaml' }
+  }
   if (!source.endsWith('.md') || source.endsWith('.zh.md')) {
     throw new Error(`expected an English Markdown path, received ${JSON.stringify(source)}`)
   }
