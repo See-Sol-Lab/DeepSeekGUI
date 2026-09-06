@@ -44,7 +44,9 @@ const model = (): DesktopControlModel => buildControlModel({
   effectiveTheme: 'dark',
   highContrast: false,
   recoveryNotice: null,
-  pluginManager: { profiles: [], error: null, operation: null, handoffPending: false, recovery: null },
+  pluginManager: { profiles: [], error: null, operation: null, handoffPending: false, recovery: null, builtin: [] },
+  revision: 1,
+  viewMode: 'workbench',
   update: {
     channel: null, state: 'idle', result: null, latestVersion: null,
     releaseNotes: null, progressBytes: null, progressTotal: null, message: null,

@@ -13,7 +13,7 @@
  */
 
 /** A blocked target classification, for machine-readable reasons. */
-export type BlockReason =
+type BlockReason =
   | 'unsupported-scheme'
   | 'url-too-long'
   | 'credentials-in-url'
@@ -57,7 +57,7 @@ export function parseIpv4(text: string): number {
  * @param value - parsed 32-bit IPv4.
  * @returns true when the address must never be connected to.
  */
-export function isBlockedIpv4(value: number): boolean {
+function isBlockedIpv4(value: number): boolean {
   return ipv4InCidr(value, 0x0000_0000, 8) // 0.0.0.0/8 — "this network"
     || ipv4InCidr(value, 0x0a00_0000, 8) // 10.0.0.0/8 — private
     || ipv4InCidr(value, 0x6440_0000, 10) // 100.64.0.0/10 — CGNAT
@@ -84,7 +84,7 @@ export function isBlockedIpv4(value: number): boolean {
  * @param text - the literal address (an optional %zone is ignored).
  * @returns eight groups, or null when unparseable.
  */
-export function parseIpv6(text: string): number[] | null {
+function parseIpv6(text: string): number[] | null {
   let input = text.trim().toLowerCase()
   const zone = input.indexOf('%')
   if (zone >= 0) input = input.slice(0, zone)
@@ -123,7 +123,7 @@ export function parseIpv6(text: string): number[] | null {
  * @param text - literal IPv6 address.
  * @returns true when the address must never be connected to.
  */
-export function isBlockedIpv6(text: string): boolean {
+function isBlockedIpv6(text: string): boolean {
   const groups = parseIpv6(text)
   if (groups === null) return true
   const [g0 = 0, g1 = 0, g2 = 0, g3 = 0, g4 = 0, g5 = 0, g6 = 0, g7 = 0] = groups

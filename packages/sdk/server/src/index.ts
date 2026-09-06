@@ -1,6 +1,6 @@
 /**
- * SDK-facing JSON-RPC plugin over stdio. An external `cordis.yml` decides
- * whether to load it; see the single-executable Agent Note and package README.
+ * SDK-facing JSON-RPC plugin over stdio. The selected dsh profile decides
+ * whether to load it; see the single-launch Agent Note and package README.
  * Stdout is reserved for protocol frames, so the tree must not load a stdout logger.
  * This plugin answers `shutdown`, disposes the complete root runtime, and exits 0; the app bin
  * owns EOF and signal exits. Keep named plugin exports with no default export so
@@ -10,6 +10,7 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/dsh-cmdline'
 import type { Readable, Writable } from 'node:stream'
 import Schema from '@deepseek-ai/schemastery'
 import { JsonRpcLineTransport } from '@deepseek-ai/dsh-sdk-protocol'
@@ -77,9 +78,13 @@ export function apply(ctx: Context, config: JsonRpcConfig): void {
     // `initialize` is the SDK's readiness boundary. This plugin can activate
     // before async sibling Loader entries (for example an MCP client's initial
     // tool discovery), so do not advertise a ready runtime until the complete
-    // current tree has settled. A hand-built context without Loader remains
+    // current tree has settled. Loader settlement joins entry imports, fiber
+    // lifecycle work, and synchronous effect registration; no scheduler delay
+    // is part of readiness. A hand-built context without Loader remains
     // immediately usable.
-    if (method === 'initialize') await ctx.get('loader')?.await()
+    if (method === 'initialize') {
+      await ctx.get('loader')?.await()
+    }
     const result = await server.handleRequest(method, params)
     if (method === 'shutdown') {
       // Run after the handler result is written; the task then flushes, disposes, and exits.
@@ -89,8 +94,14 @@ export function apply(ctx: Context, config: JsonRpcConfig): void {
   })
 
   ctx.effect(() => {
-    transport.start()
+    const ready = ctx.get('appReady')
+    let cancelReady: (() => void) | undefined
+    // The CLI can replace dependencies during initial composition. Keep stdin
+    // buffered until its final application tree owns the transport.
+    if (ready === undefined) transport.start()
+    else cancelReady = ready.onReady(() => { transport.start() })
     return async () => {
+      cancelReady?.()
       await server.shutdown()
       transport.close()
     }

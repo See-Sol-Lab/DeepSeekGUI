@@ -5,14 +5,14 @@
  */
 
 import { useEffect, useState } from 'react'
-import type { SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
+import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import {
   IconChevronDownOutline14, Menu, RiskConfirmation,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PermissionSettingsState } from './settings-store.ts'
 import type { PermissionSettingsKey } from './locales.ts'
-import { FULL_ACCESS_PRESET } from './presentation.ts'
+import { displayPermissionPreset, FULL_ACCESS_PRESET } from './presentation.ts'
 import css from './PermissionRow.module.css'
 
 /** Registration-side business face for the host-backed preference. */
@@ -38,25 +38,11 @@ export type PermissionRowProps =
  * @param props - composed slot props.
  * @returns the row, or null when the host does not expose permission settings.
  */
-/* Known design-set presets carry localized labels (D29 follow-up); host
-   presets outside the set keep the store's title-cased label. */
-const OPTION_LABEL_KEYS = {
-  'read-only': 'option.read-only',
-  'workspace-write': 'option.workspace-write',
-  [FULL_ACCESS_PRESET]: 'option.danger-full-access',
-} as const
-
-function isKnownPreset(id: string): id is keyof typeof OPTION_LABEL_KEYS {
-  return id in OPTION_LABEL_KEYS
-}
-
 export function PermissionRow({ load, select, usePermission, t }: PermissionRowProps) {
   const state = usePermission(snapshot => snapshot)
   const [open, setOpen] = useState(false)
   const [confirmingFullAccess, setConfirmingFullAccess] = useState(false)
   const [acknowledged, setAcknowledged] = useState(false)
-  const optionLabel = (option: { id: string; label: string }): string =>
-    isKnownPreset(option.id) ? t(OPTION_LABEL_KEYS[option.id]) : option.label
 
   useEffect(() => {
     void load()
@@ -72,9 +58,9 @@ export function PermissionRow({ load, select, usePermission, t }: PermissionRowP
   if (state.status === 'unavailable') return null
   const selected = state.options.find(option => option.id === state.currentValue)
   const busy = state.status === 'loading' || state.status === 'saving' || confirmingFullAccess
-  const label = selected !== undefined
-    ? optionLabel(selected)
-    : (busy ? t('loading') : t('unavailable'))
+  const optionLabel = (option: PermissionSettingsState['options'][number]): string =>
+    displayPermissionPreset(option.id, option.label, t)
+  const label = selected !== undefined ? optionLabel(selected) : (busy ? t('loading') : t('unavailable'))
   const description: string = state.error ?? t('description')
 
   return (
@@ -87,11 +73,7 @@ export function PermissionRow({ load, select, usePermission, t }: PermissionRowP
         <Menu
           open={open}
           onClose={() => { setOpen(false) }}
-          items={state.options.map(option => ({
-            id: option.id,
-            label: optionLabel(option),
-            ...option.id === FULL_ACCESS_PRESET ? { danger: true } : {},
-          }))}
+          items={state.options.map(option => ({ id: option.id, label: optionLabel(option) }))}
           selectedId={state.currentValue}
           onSelect={(id) => {
             setOpen(false)
@@ -126,6 +108,7 @@ export function PermissionRow({ load, select, usePermission, t }: PermissionRowP
         description={t('confirm.description')}
         acknowledgeLabel={t('confirm.acknowledge')}
         cancelLabel={t('confirm.cancel')}
+        closeLabel={t('close')}
         confirmLabel={t('confirm.enable')}
         acknowledged={acknowledged}
         disabled={!state.writable || state.status === 'saving'}

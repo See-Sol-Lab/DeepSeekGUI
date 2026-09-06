@@ -17,9 +17,11 @@ import {
   buildTerminalWelcome,
   resolvePosixTerminalShell,
   resolveTerminalCwd,
+  resolveSessionCwdById,
   resolveTerminalShell,
   terminalShimContents,
   terminalShimContentsPosix,
+  withPath,
   type ShimRuntimeFacts,
 } from '../src/terminal-service.ts'
 import type { ProfileDiscoveryV1 } from '../src/profile-discovery.ts'
@@ -38,6 +40,18 @@ afterEach(() => {
 
 const probe = (existing: string[]): { exists: (path: string) => boolean } => ({
   exists: path => existing.includes(path),
+})
+
+describe('withPath（写回已有的 PATH 键，绝不并存 Path/PATH 两份）', () => {
+  it('继承键叫 Path 时覆盖 Path，不新增 PATH', () => {
+    const env = withPath({ Path: 'C:\\old', HOME: 'C:\\me' }, 'C:\\shim;C:\\old')
+    expect(env).toEqual({ Path: 'C:\\shim;C:\\old', HOME: 'C:\\me' })
+    expect(Object.keys(env).filter(key => key.toUpperCase() === 'PATH')).toEqual(['Path'])
+  })
+  it('已并存多份时只留第一份的键名；没有任何 PATH 键时新建 PATH', () => {
+    expect(withPath({ PATH: 'a', Path: 'b' }, 'x')).toEqual({ PATH: 'x' })
+    expect(withPath({ HOME: 'h' }, 'x')).toEqual({ HOME: 'h', PATH: 'x' })
+  })
 })
 
 describe('resolveProfileArgv（argv 级 Profile 默认，对齐官方 CLI grammar）', () => {
@@ -144,6 +158,49 @@ describe('resolveTerminalCwd（Profile 目录 → Harness Home + 说明）', () 
     }
     const choice = resolveTerminalCwd(unicode, 'web', 'C:\\深 度 home', path => path === 'C:\\深 度 home\\我的 profile', 'zh')
     expect(choice.cwd).toBe('C:\\深 度 home\\我的 profile')
+  })
+
+  it('会话 cwd 存在 → 跟随当前会话 workspace 并说明（P9-3 对齐），en 同语义', () => {
+    const choice = resolveTerminalCwd(discovery, 'web', 'C:\\home', path => path === 'C:\\ws', 'zh', 'C:\\ws')
+    expect(choice.cwd).toBe('C:\\ws')
+    expect(choice.note).toContain('当前打开的会话')
+    const enChoice = resolveTerminalCwd(discovery, 'web', 'C:\\home', path => path === 'C:\\ws', 'en', 'C:\\ws')
+    expect(enChoice.note).toContain('currently open session')
+  })
+
+  it('会话 cwd 不可用（目录不存在）→ 回退 Profile 目录', () => {
+    const choice = resolveTerminalCwd(discovery, 'web', 'C:\\home', path => path === 'C:\\home\\profiles\\web', 'zh', 'C:\\gone')
+    expect(choice).toEqual({ cwd: 'C:\\home\\profiles\\web', note: null })
+  })
+
+  it('无会话 cwd → 保持原逻辑（Profile 目录）', () => {
+    const choice = resolveTerminalCwd(discovery, 'web', 'C:\\home', path => path === 'C:\\home\\profiles\\web', 'zh')
+    expect(choice).toEqual({ cwd: 'C:\\home\\profiles\\web', note: null })
+  })
+})
+
+describe('resolveSessionCwdById（当前会话的 cwd，权威事实解析）', () => {
+  const items = [
+    { sessionId: 'a', cwd: 'C:\repo-a' },
+    { sessionId: 'b', cwd: 'C:\repo-b' },
+    { sessionId: 'no-cwd' },
+    { sessionId: 'empty', cwd: '' },
+  ]
+
+  it('当前选择 A 时返回 A 的 cwd——即使 B 更新更晚/正在运行也无关', () => {
+    // 列表顺序与"新旧/运行中"完全不影响结果：按 id 精确寻址。
+    expect(resolveSessionCwdById(items, 'a')).toBe('C:\repo-a')
+    expect(resolveSessionCwdById([...items].reverse(), 'a')).toBe('C:\repo-a')
+  })
+
+  it('伪造/不存在的 id 返回 null（绝不接受浏览器提供的 cwd）', () => {
+    expect(resolveSessionCwdById(items, 'forged-id')).toBeNull()
+    expect(resolveSessionCwdById([], 'a')).toBeNull()
+  })
+
+  it('目标会话无 cwd 或 cwd 为空串时返回 null（走 Profile/Home 回退）', () => {
+    expect(resolveSessionCwdById(items, 'no-cwd')).toBeNull()
+    expect(resolveSessionCwdById(items, 'empty')).toBeNull()
   })
 })
 

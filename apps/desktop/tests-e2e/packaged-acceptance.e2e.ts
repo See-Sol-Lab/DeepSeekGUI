@@ -34,6 +34,7 @@ import {
   waitForCompMount,
   waitForDeepSeekGUIElement,
   waitForWindow,
+  TEST_APP_PORT,
 } from './chrome-driver.ts'
 
 /** P5 的第三方 fixture：非 workspace 包，只在测试 Home 里以 profile-local 形态存在。 */
@@ -481,7 +482,7 @@ ${await dumpChromeButtons(app)}`)
       } finally {
         await shutdownApp(app)
       }
-      await expect.poll(() => portOpen(3080), { timeout: 15_000 }).toBe(false)
+      await expect.poll(() => portOpen(TEST_APP_PORT), { timeout: 15_000 }).toBe(false)
       const tasklist = spawnSync('tasklist', ['/FI', 'IMAGENAME eq DeepSeekGUI.exe'], { encoding: 'utf8' })
       expect(tasklist.stdout).not.toContain('DeepSeekGUI.exe')
     } finally {

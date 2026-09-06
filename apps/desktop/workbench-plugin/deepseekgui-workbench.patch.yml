@@ -1,0 +1,13 @@
+# DeepSeekGUI Workbench 产品插件的 launcher overlay（B3-P1）。
+#
+# 与皮肤/设置分区同一模式：由 DeepSeekGUI 启动 Harness 时经 `--patch` 传入，
+# 落在合成顺序最后一层，不进用户 profile——用户自己跑 `dsh web` 没有这层，
+# 卸载 DeepSeekGUI 也零残留。
+#
+# 这一层只插一行：把 Workbench 插件加进本轮 composition。插件只注册品牌
+# slot 与一个会话 header 标识（官方公开的 UI 扩展点），不注册服务、路由
+# 或业务状态；Workspace/Session/对话/Tool 全部走官方 runtime 与 UI。
+
+- insert:
+    - id: deepseekgui-workbench
+      name: '@see-sol-lab/deepseekgui-workbench'

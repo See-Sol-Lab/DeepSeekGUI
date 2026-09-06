@@ -74,6 +74,8 @@ function makeDeps(overrides: Partial<ControlDispatchDeps> = {}) {
     feedbackCopyOpen: vi.fn(),
     feedbackSubmitGateway: vi.fn(),
     browserPaneToggle: vi.fn(),
+    openCompatibilityView: vi.fn(),
+    openWorkbench: vi.fn(),
     quit: vi.fn(),
     holder,
     broadcast: vi.fn(),
@@ -392,6 +394,21 @@ describe('打断运行中会话前的确认', () => {
     await dispatch({ type: 'switch-profile', profile: 'web' })
     expect(deps.confirmDisruptive).not.toHaveBeenCalled()
     expect(switchTo).not.toHaveBeenCalled()
+  })
+})
+
+describe('视图切换命令（B3-P2）→ 唯一出口', () => {
+  it('open-compatibility-view 直达注入的出口，调度器不碰 controller', async () => {
+    const { deps, dispatch, restart } = makeDeps()
+    await dispatch({ type: 'open-compatibility-view' })
+    expect(deps.openCompatibilityView).toHaveBeenCalledTimes(1)
+    expect(restart).not.toHaveBeenCalled()
+  })
+
+  it('open-workbench 直达注入的出口', async () => {
+    const { deps, dispatch } = makeDeps()
+    await dispatch({ type: 'open-workbench' })
+    expect(deps.openWorkbench).toHaveBeenCalledTimes(1)
   })
 })
 

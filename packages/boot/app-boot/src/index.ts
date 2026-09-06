@@ -1,5 +1,5 @@
 /**
- * Shared boot glue for the app bins (`dsh`, `dsh-acp-demo`): load the gitignored
+ * Shared boot glue for `dsh` profiles, including the CLI packaged by the Python runtime wheel: load the gitignored
  * `.env`, install the fail-loud Loader guards, resolve the config path (snapshot-aware), load the
  * optional user patch layers from the Harness home (`~/.dsh`), expose its path resolver to
  * config expressions, and drive the Cordis Loader against a leaf `cordis.yml` until the tree settles.
@@ -17,12 +17,8 @@ import Include, { applyEntryPatches, entryListSchema, type PatchOptions } from '
 import Group from '@deepseek-ai/cordis-plugin-group'
 import { dshHomePath, resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import { createLaunchEnvironmentSnapshot, type LaunchEnvironmentSnapshot } from '@deepseek-ai/dsh-launch-environment'
-import { loadOptionalPatches } from './patches.ts'
 import type {} from '@deepseek-ai/cordis-plugin-hmr'
-// Side-effect type import: resolves `ctx.get('systemPrompt')` to the service.
 import type {} from '@deepseek-ai/dsh-system-prompt'
-
-export { loadOptionalPatches, loadOverlayPatches } from './patches.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -32,18 +28,9 @@ declare module '@deepseek-ai/cordis' {
 }
 
 export {
-  classifySurface,
-  HEADLESS_SURFACE_ROWS,
-  inspectExistingProfile,
-  inspectExistingProfiles,
-  WEB_SURFACE_ROWS,
-  type InspectedProfile,
-  type StaticProfileStatus,
-} from './inspect.ts'
-
-export {
   composeEntries,
   DEFAULT_PROFILE_BUNDLES,
+  DEFAULT_PROFILE_PATCH_RELOAD,
   healProfilesModuleFallback,
   initProfile,
   loadProfile,
@@ -60,6 +47,9 @@ export {
   type Profile,
   type ProfileLayer,
   type ProfileManifest,
+  type ProfileModuleFallbackOptions,
+  type ProfilePatchReload,
+  type ProfileTemplate,
 } from './profile.ts'
 
 /**
@@ -212,6 +202,13 @@ export function loadLayeredEnv(
 
 const bootstrapIncludes = new WeakMap<Context, Entry>()
 
+// The include's YAML dialect (`!!js` scalars become expression nodes the
+// Loader interpolates against each entry's injection-ready context), imported
+// from the include itself so patch parsing and config dumping can never drift
+// from what the include mounts. User patch layers share it so they may
+// reference `process.env`.
+const userPatchesSchema = entryListSchema
+
 /** Options for live user patch-layer reconciliation. */
 export interface UserPatchWatchOptions {
   /** Diagnostic prefix used by {@link loadOptionalPatches}. */
@@ -245,9 +242,8 @@ export async function watchUserPatches(
   const entry = bootstrapIncludes.get(ctx)
   if (entry === undefined) throw new Error(`${binName}: user patch-layer watching requires the root Include entry`)
   const register = hmr.registerConfig(filename, async () => {
-    // Re-read the include's non-patch options per refresh: a writer that
-    // updates the root Include's other options between refreshes (none exists
-    // today) must not have them silently reverted by a user-layer reload.
+    // Re-read the include's non-patch options per refresh so a writer that
+    // updates another option between refreshes is not silently reverted.
     const { patches: _previousPatches, ...includeConfig } = entry.options.config as Include.Config
     const userPatches = loadOptionalPatches(binName, filename) ?? []
     const patches = compose(userPatches)
@@ -268,6 +264,93 @@ export async function watchUserPatches(
     if ((error as { code?: string } | null)?.code === 'INACTIVE_EFFECT') return async () => {}
     throw error
   }
+}
+
+/**
+ * Load an optional patch-list file: a top-level YAML array of loader patch
+ * entries (`@deepseek-ai/cordis-plugin-include`'s `PatchOptions`): id-targeted config
+ * overrides and `insert` lists, with `!!js` expressions allowed. A missing
+ * file means "no layer"; an unreadable, unparsable, or non-array file throws —
+ * a present patch file that cannot apply is a misconfiguration and must fail
+ * loud at boot, never be silently skipped.
+ * @param binName - the diagnostic prefix on the thrown error.
+ * @param file - absolute path of the patch file.
+ * @returns the parsed patches, or `undefined` when the file does not exist.
+ */
+export function loadOptionalPatches(binName: string, file: string): PatchOptions[] | undefined {
+  let content: string
+  try {
+    content = readFileSync(file, 'utf8')
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException | null)?.code === 'ENOENT') return undefined
+    throw new Error(`${binName}: failed to read patches ${file}: ${String(error)}`)
+  }
+  return parsePatchList(binName, file, content, 'patches')
+}
+
+/**
+ * Load a required overlay patch list: a bundle's `cordis.patch.yml` or a
+ * `--patch <path>` overlay. Same file format as {@link loadOptionalPatches},
+ * but a missing file throws, because the caller named this file — its absence
+ * is a misconfiguration, not "no overlay".
+ * @param binName - the diagnostic prefix on the thrown error.
+ * @param file - absolute path of the overlay file.
+ * @returns the parsed patch list.
+ */
+export function loadOverlayPatches(binName: string, file: string): PatchOptions[] {
+  let content: string
+  try {
+    content = readFileSync(file, 'utf8')
+  } catch (error) {
+    throw new Error(`${binName}: failed to read overlay ${file}: ${String(error)}`)
+  }
+  return parsePatchList(binName, file, content, 'overlay')
+}
+
+/** Resolve relative plugin paths in one patch file's `insert` rows without changing assertion names. */
+function anchorInsertedPluginNames(patches: PatchOptions[], file: string): PatchOptions[] {
+  const base = dirname(resolve(file))
+  const visit = (entry: EntryOptions): void => {
+    if (typeof entry.name === 'string' && (entry.name.startsWith('./') || entry.name.startsWith('../'))) {
+      entry.name = pathToFileURL(resolve(base, entry.name)).href
+    }
+    if (entry.group && Array.isArray(entry.config)) entry.config.forEach(visit)
+  }
+  for (const patch of patches) patch.insert?.forEach(visit)
+  return patches
+}
+/**
+ * Parse one loader patch list: a top-level YAML array of
+ * `@deepseek-ai/cordis-plugin-include` `PatchOptions` (id-targeted config overrides and
+ * `insert` lists, `!!js` expressions allowed). Every invalid field or value throws,
+ * because a patch file that cannot be applied at all is a misconfiguration; a
+ * single patch whose target row is absent stays a per-entry Loader warning, so
+ * one overlay shared across surfaces does not have to match every tree.
+ * @param binName - the diagnostic prefix on the thrown error.
+ * @param file - the source path, quoted in errors.
+ * @param content - the file's text.
+ * @param label - what to call this list in errors (`patches`, `overlay`).
+ * @returns the parsed patch list.
+ */
+function parsePatchList(
+  binName: string, file: string, content: string, label: string,
+): PatchOptions[] {
+  let parsed: unknown
+  try {
+    parsed = yaml.load(content, { schema: userPatchesSchema })
+  } catch (error) {
+    throw new Error(`${binName}: failed to parse ${label} ${file}: ${String(error)}`)
+  }
+  if (parsed === null || parsed === undefined) return []
+  if (!Array.isArray(parsed)) {
+    throw new Error(`${binName}: ${label} ${file} must be a top-level YAML array of loader patch entries`)
+  }
+  parsed.forEach((entry, index) => {
+    if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
+      throw new Error(`${binName}: ${label} entry ${index + 1} in ${file} must be a mapping (a loader patch entry)`)
+    }
+  })
+  return anchorInsertedPluginNames(parsed as PatchOptions[], file)
 }
 
 /** One overlay patch list with the source label printed in dump comments. */
@@ -729,7 +812,9 @@ export async function boot(
     // original activation error instead of only the wrap chain.
     let deepest: unknown = cause
     while (deepest instanceof Error && deepest.cause !== undefined) deepest = deepest.cause
-    const stack = deepest instanceof Error && deepest !== cause ? `\n${deepest.stack ?? deepest.message}` : ''
+    const stack = deepest instanceof AggregateError
+      ? `\n${deepest.stack ?? deepest.message}\n${deepest.errors.map(formatActivationError).join('\n')}`
+      : deepest instanceof Error && deepest !== cause ? `\n${deepest.stack ?? deepest.message}` : ''
     throw new Error(`${binName}: ${stage}: ${detail}${stack}`, { cause })
   }
 }
@@ -742,8 +827,8 @@ export const HARNESS_SOURCE_SECTION = 'harness:source'
  * explicitly distinguishing it from the task workspace and current working
  * directory. The self-referential `dsh-tool-cordis` toolset reads and edits this
  * checkout. Call once on the settled boot context ({@link boot}); the section
- * orders just after the harness identity opener (`-100`) and before the deployment
- * persona (`0`). A booted tree with no `systemPrompt` service has no prompt to
+ * uses the shared first-party placement just after the harness identity opener
+ * and before the deployment persona. A booted tree with no `systemPrompt` service has no prompt to
  * augment, so this is then a no-op that returns `undefined`. The section is
  * registered against the `systemPrompt` service's fiber, so a dev HMR reload of
  * that plugin drops it until the next boot.
@@ -756,7 +841,19 @@ export function addHarnessSourceSection(ctx: Context, sourceRoot: string): (() =
   if (systemPrompt === undefined) return undefined
   return systemPrompt.section({
     name: HARNESS_SOURCE_SECTION,
-    order: -99,
+    order: systemPrompt.getSectionOrder('HARNESS_SOURCE'),
     text: `The DeepSeek Harness implementation checkout is at ${sourceRoot}. The checkout location and current working directory are separate values and may differ; never infer the working directory from this path. Use pwd to determine the current working directory. Use this checkout only to inspect or extend DSH itself.`,
   })
 }
+
+// DeepSeekGUI: the profile inspector (`dsh profiles`, our v1.0 CLI surface)
+// stays exported beside the boot API it reuses.
+export {
+  classifySurface,
+  HEADLESS_SURFACE_ROWS,
+  inspectExistingProfile,
+  inspectExistingProfiles,
+  WEB_SURFACE_ROWS,
+  type InspectedProfile,
+  type StaticProfileStatus,
+} from './inspect.ts'

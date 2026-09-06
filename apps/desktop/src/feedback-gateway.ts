@@ -23,7 +23,7 @@ export const FEEDBACK_GATEWAY_URL_ENV = 'DEEPSEEKGUI_FEEDBACK_GATEWAY_URL'
 export const DEFAULT_FEEDBACK_GATEWAY_URL = ''
 
 /** 提交超时（毫秒）：墙内到香港的正常往返远小于它；超时按不可达降级。 */
-export const GATEWAY_TIMEOUT_MS = 10_000
+const GATEWAY_TIMEOUT_MS = 10_000
 
 /**
  * 解析生效的网关地址。

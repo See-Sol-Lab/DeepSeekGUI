@@ -27,7 +27,7 @@ const BINARY_EXTENSIONS = new Set([
 ])
 
 /** Walk a directory tree, invoking `visit` for every regular file. */
-export function walkFiles(directory: string, visit: (path: string) => void): void {
+function walkFiles(directory: string, visit: (path: string) => void): void {
   for (const entry of readdirSync(directory, { recursive: true, withFileTypes: true })) {
     if (entry.isFile()) visit(join(entry.parentPath, entry.name))
   }

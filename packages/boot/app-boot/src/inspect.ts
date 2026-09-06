@@ -19,7 +19,7 @@ import { join } from 'node:path'
 import type { EntryOptions } from '@deepseek-ai/cordis-plugin-loader'
 import type { PatchOptions } from '@deepseek-ai/cordis-plugin-include'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
-import { loadOptionalPatches, loadOverlayPatches } from './patches.ts'
+import { loadOptionalPatches, loadOverlayPatches } from './index.ts'
 import {
   composeEntries,
   PROFILE_PATCH_FILENAME,
@@ -29,8 +29,7 @@ import {
   resolveProfileDir,
   type Profile,
   type ProfileLayer,
-  type ProfileManifest,
-} from './profile.ts'
+  type ProfileManifest, DEFAULT_PROFILE_PATCH_RELOAD } from './profile.ts'
 
 /** Static classification of one existing profile's composed surface. */
 export type StaticProfileStatus = 'web-capable' | 'headless' | 'candidate' | 'malformed'
@@ -202,7 +201,8 @@ export function inspectExistingProfile(
   })
   const patchPath = join(dir, PROFILE_PATCH_FILENAME)
   const patches = existsSync(patchPath) ? loadOverlayPatches(binName, patchPath) : []
-  const profile: Profile = { name, dir, layers, patchPath, patches }
+  const patchReload = manifest.dsh?.profile?.patchReload ?? DEFAULT_PROFILE_PATCH_RELOAD
+  const profile: Profile = { name, dir, layers, patchPath, patches, patchReload }
   // Home 级用户层与真实启动同一位置：bundle 之后、profile 层之后；缺失是空层，绝不创建。
   const homePatches = loadOptionalPatches(binName, join(home, PROFILE_PATCH_FILENAME)) ?? []
   const rows = new Map<string, EntryOptions>()

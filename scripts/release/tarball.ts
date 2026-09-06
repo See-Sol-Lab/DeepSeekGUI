@@ -7,7 +7,7 @@
  */
 
 import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { capture } from './process.ts'
 
 /** Name of the file recording the order in which a packed family uploads. */
@@ -27,7 +27,14 @@ export interface PackedIdentity {
  * @returns Every path inside the archive.
  */
 export function tarballFiles(tarball: string): string[] {
-  return capture('tar', ['-tzf', tarball]).split('\n').filter(line => line !== '')
+  // DeepSeekGUI: run tar from the tarball's own directory and pass only the file
+  // name. Windows' bundled bsdtar reads its arguments through the ANSI code page,
+  // so an absolute path holding non-ASCII characters — a checkout under a Chinese
+  // directory name, say — reaches it as `????` and the archive fails to open. The
+  // directory travels as the working directory instead, which the OS resolves
+  // without a code-page round trip.
+  return capture('tar', ['-tzf', basename(tarball)], { cwd: dirname(tarball) })
+    .split('\n').filter(line => line !== '')
 }
 
 /**
@@ -36,7 +43,7 @@ export function tarballFiles(tarball: string): string[] {
  * @returns The name and version the tarball declares.
  */
 export function packedIdentity(tarball: string): PackedIdentity {
-  const manifest: unknown = JSON.parse(capture('tar', ['-xOzf', tarball, 'package/package.json']))
+  const manifest: unknown = JSON.parse(capture('tar', ['-xOzf', basename(tarball), 'package/package.json'], { cwd: dirname(tarball) }))
   if (manifest === null || typeof manifest !== 'object') throw new Error(`${tarball} has no manifest`)
   const { name, version } = manifest as Record<string, unknown>
   if (typeof name !== 'string' || typeof version !== 'string') throw new Error(`${tarball} manifest lacks name/version`)

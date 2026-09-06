@@ -13,10 +13,10 @@ import { redactSecrets } from './redact.ts'
 import { resolveDshCommand } from './dsh-service.ts'
 
 /** Discovery 文档的 schema 版本。 */
-export const DISCOVERY_SCHEMA_VERSION = 1 as const
+const DISCOVERY_SCHEMA_VERSION = 1 as const
 
 /** discovery 子进程的最长运行时间。 */
-export const DISCOVERY_TIMEOUT_MS = 30_000
+const DISCOVERY_TIMEOUT_MS = 30_000
 
 /** 官方 CLI 静态分类的四种取值。 */
 export type DiscoveredStaticStatus = 'web-capable' | 'headless' | 'candidate' | 'malformed'

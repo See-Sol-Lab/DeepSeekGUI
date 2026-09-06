@@ -21,7 +21,7 @@ import {
   READY_TIMEOUT_MS,
   PROBE_INTERVAL_MS,
   MANAGED_HOME_BLOCKED_ENV,
-  childStdio,
+  resolveDshCommand,
   classifyLinkOpen,
   createServiceLogWriter,
   BROWSER_PLUGIN_PACKAGE,
@@ -33,7 +33,10 @@ import {
   resolveDshLaunch,
   resolveThemePatchFile,
   resolveThemePluginDir,
+  resolveWorkbenchPatchFile,
+  resolveWorkbenchPluginDir,
   THEME_PATCH_FILENAME,
+  WORKBENCH_PATCH_FILENAME,
   stopProcess,
   waitForServer,
 } from '../src/dsh-service.ts'
@@ -171,21 +174,6 @@ describe('resolveDshLaunch', () => {
   it('开发态同样注入 selection 决定的 DSH_HOME', () => {
     const { env } = resolveDshLaunch({ packaged: false, root: '/r', profile: 'web', dshHome: '/data/dsh' })
     expect(env.DSH_HOME).toBe('/data/dsh')
-  })
-})
-
-describe('childStdio', () => {
-  it('开发态继承宿主控制台', () => {
-    expect(childStdio(false, false)).toBe('inherit')
-    expect(childStdio(false, true)).toBe('inherit')
-  })
-
-  it('打包态 smoke 保留输出能力', () => {
-    expect(childStdio(true, true)).toBe('inherit')
-  })
-
-  it('正常打包 GUI 将子进程输出 pipe 进诊断日志', () => {
-    expect(childStdio(true, false)).toBe('pipe')
   })
 })
 
@@ -633,6 +621,80 @@ describe('皮肤 overlay（--patch）与模块 fallback', () => {
   })
 })
 
+describe('Workbench overlay（B3-P1）与模块 fallback', () => {
+  it('打包态指向 DSH 运行时目录内的插件与 overlay', () => {
+    expect(resolveWorkbenchPluginDir({ packaged: true, resourcesPath: 'C:\\app\\resources' }))
+      .toBe(join('C:\\app\\resources', 'dsh', 'node_modules', '@see-sol-lab', 'deepseekgui-workbench'))
+    expect(resolveWorkbenchPatchFile({ packaged: true, resourcesPath: 'C:\\app\\resources' }))
+      .toBe(join('C:\\app\\resources', 'dsh', WORKBENCH_PATCH_FILENAME))
+  })
+
+  it('开发态指向仓库内插件源码目录', () => {
+    expect(resolveWorkbenchPluginDir({ packaged: false, root: 'R:\\repo' }))
+      .toBe(join('R:\\repo', 'apps', 'desktop', 'workbench-plugin'))
+    expect(resolveWorkbenchPatchFile({ packaged: false, root: 'R:\\repo' }))
+      .toBe(join('R:\\repo', 'apps', 'desktop', 'workbench-plugin', WORKBENCH_PATCH_FILENAME))
+  })
+
+  it('缺少定位信息时不产生 overlay：宁可没品牌，也不能让 Harness 起不来', () => {
+    expect(resolveWorkbenchPatchFile({ packaged: true })).toBeUndefined()
+    expect(resolveWorkbenchPatchFile({ packaged: false })).toBeUndefined()
+    expect(resolveWorkbenchPluginDir({ packaged: true })).toBeUndefined()
+    expect(resolveWorkbenchPluginDir({ packaged: false })).toBeUndefined()
+  })
+
+  it('插件可解析时 overlay 排在 dsh 选项区内，链接落在安装级 fallback', () => {
+    const root = mkdtempSync(join(tmpdir(), 'deepseekgui-root-'))
+    const home = mkdtempSync(join(tmpdir(), 'deepseekgui-home-'))
+    const pluginDir = join(root, 'apps', 'desktop', 'workbench-plugin')
+    mkdirSync(pluginDir, { recursive: true })
+    writeFileSync(join(pluginDir, WORKBENCH_PATCH_FILENAME), '- insert: []\n')
+
+    const { args } = resolveDshLaunch({
+      packaged: false,
+      root,
+      nodeExecutable: 'node',
+      profile: 'web',
+      dshHome: home,
+    })
+    const patchAt = args.indexOf('--patch')
+    expect(patchAt).toBeGreaterThan(args.indexOf('--profile'))
+    expect(patchAt).toBeLessThan(args.indexOf('--host'))
+    expect(args[patchAt + 1]).toBe(join(pluginDir, WORKBENCH_PATCH_FILENAME))
+
+    const link = join(home, 'profiles', 'node_modules', '@see-sol-lab', 'deepseekgui-workbench')
+    expect(existsSync(link)).toBe(true)
+    expect(realpathSync(link)).toBe(realpathSync(pluginDir))
+    expect(existsSync(join(home, 'profiles', 'web'))).toBe(false)
+
+    rmSync(root, { recursive: true, force: true })
+    rmSync(home, { recursive: true, force: true })
+  })
+
+  it('Compatibility View（B3-P2）：插件可解析也不带 workbench overlay，其余 patch 照常', () => {
+    const root = mkdtempSync(join(tmpdir(), 'deepseekgui-root-'))
+    const home = mkdtempSync(join(tmpdir(), 'deepseekgui-home-'))
+    const pluginDir = join(root, 'apps', 'desktop', 'workbench-plugin')
+    mkdirSync(pluginDir, { recursive: true })
+    writeFileSync(join(pluginDir, WORKBENCH_PATCH_FILENAME), '- insert: []\n')
+
+    const { args } = resolveDshLaunch({
+      packaged: false,
+      root,
+      nodeExecutable: 'node',
+      profile: 'web',
+      dshHome: home,
+      compatibility: true,
+    })
+    const patches = args.flatMap((arg, index) => arg === '--patch' ? [args[index + 1] ?? ''] : [])
+    expect(patches).toHaveLength(0)
+    expect(args.some(arg => arg.includes('deepseekgui-workbench'))).toBe(false)
+
+    rmSync(root, { recursive: true, force: true })
+    rmSync(home, { recursive: true, force: true })
+  })
+})
+
 describe('inheritedEnv：Managed Home 不把宿主的模型密钥透传给 DSH（P8-D23）', () => {
   it('Managed Home 下拦掉 DEEPSEEK_API_KEY，其余变量原样保留', () => {
     // 官方凭据模型里「继承的环境优先」：宿主留着这个变量，官方设置里的密钥输入框
@@ -644,9 +706,36 @@ describe('inheritedEnv：Managed Home 不把宿主的模型密钥透传给 DSH�
     expect(env.PATH).toBe('p')
   })
 
+  it('Managed Home 下拦掉宿主为自己那套 dsh 设的 DSH_* 与 NODE_OPTIONS/NODE_PATH（2026-09-05 全隔离）', () => {
+    const env = inheritedEnv(true, {
+      DSH_HOME: 'C:\\Users\\me\\.dsh',
+      DSH_AGENTS_HOME: 'C:\\Users\\me\\skills',
+      dsh_telemetry_disabled: '1',
+      NODE_OPTIONS: '--max-old-space-size=8192',
+      NODE_PATH: 'C:\\global\\node_modules',
+      EXA_API_KEY: 'exa',
+      Path: 'p',
+    })
+    expect(Object.keys(env).sort()).toEqual(['EXA_API_KEY', 'Path'])
+  })
+
   it('Existing Home 下原样透传：那是用户自己的 Home，行为要与 `dsh web` 一致', () => {
-    const env = inheritedEnv(false, { DEEPSEEK_API_KEY: 'sk-host' })
+    const env = inheritedEnv(false, { DEEPSEEK_API_KEY: 'sk-host', DSH_AGENTS_HOME: 'x', NODE_OPTIONS: 'y' })
     expect(env[MANAGED_HOME_BLOCKED_ENV]).toBe('sk-host')
+    expect(env.DSH_AGENTS_HOME).toBe('x')
+    expect(env.NODE_OPTIONS).toBe('y')
+  })
+
+  it('打包态 Managed Home：过滤后仍显式注入我们自己的 DSH_HOME 与 DSH_PNPM_ENTRY', () => {
+    const launch = resolveDshCommand({
+      packaged: true,
+      resourcesPath: 'E:\\app\\resources',
+      dshHome: 'E:\\data\\dsh',
+      args: [],
+      managedHome: true,
+    })
+    expect(launch.env.DSH_HOME).toBe('E:\\data\\dsh')
+    expect(typeof launch.env.DSH_PNPM_ENTRY).toBe('string')
   })
 
   it('绝不改动调用方传入的环境对象', () => {

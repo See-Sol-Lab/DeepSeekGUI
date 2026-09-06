@@ -87,10 +87,10 @@ export function describePluginFailure(cause: PluginFailureCause, zh: boolean): s
 }
 
 /** 受保护事务的三个白名单文件（顺序即展示顺序）。 */
-export const RECOVERY_WHITELIST = ['package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml'] as const
+const RECOVERY_WHITELIST = ['package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml'] as const
 
 /** 一个白名单文件的快照事实。 */
-export interface RecoveryFileFact {
+interface RecoveryFileFact {
   /** 快照时文件是否存在。 */
   present: boolean
   /** 内容 SHA-256 hex；absent 时为 null。 */
@@ -396,7 +396,7 @@ export function applyRestore(
 }
 
 /** 是否为合法 journal 状态。 */
-export function isRecoveryJournalState(value: unknown): value is RecoveryJournalState {
+function isRecoveryJournalState(value: unknown): value is RecoveryJournalState {
   return value === 'running' || value === 'pending-verification' || value === 'verified'
     || value === 'recovery-needed' || value === 'drift' || value === 'recovered' || value === 'abandoned'
 }

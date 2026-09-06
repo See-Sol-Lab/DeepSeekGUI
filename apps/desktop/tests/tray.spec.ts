@@ -29,7 +29,7 @@ function model(overrides: Partial<DesktopControlModel> = {}): DesktopControlMode
     highContrast: false,
     recoveryNotice: null,
     sessionPressure: null,
-    pluginManager: { profiles: [], error: null, operation: null, handoffPending: false, recovery: null },
+    pluginManager: { profiles: [], error: null, operation: null, handoffPending: false, recovery: null, builtin: [] },
     update: {
       channel: null, state: 'idle', result: null, latestVersion: null, releaseNotes: null,
       progressBytes: null, progressTotal: null, message: null,
@@ -39,6 +39,10 @@ function model(overrides: Partial<DesktopControlModel> = {}): DesktopControlMode
     permissions: { mode: 'sandbox', preset: 'workspace-write', detail: null },
     powerShell7Available: true,
     browserPane: { present: false, open: false },
+    revision: 1,
+    viewMode: 'workbench',
+    navigateRequest: null,
+    globalMemory: '',
     ...overrides,
   }
 }
@@ -47,19 +51,33 @@ const labels = (items: TrayMenuItem[]): string[] =>
   items.filter(item => item.type !== 'separator').map(item => item.label ?? '')
 
 describe('trayMenuTemplate', () => {
-  it('顶层结构：打开/只读 Profile/只读状态/分隔/Profiles/Restart/Terminal/检查更新/About/Quit（Harness 面板项已随 P8-D39 移居设置页）', () => {
+  it('顶层结构：打开/只读 Profile/只读状态/分隔/Profiles/Restart/视图切换/Terminal/检查更新/About/Quit（Harness 面板项已随 P8-D39 移居设置页）', () => {
     const items = trayMenuTemplate({ model: model(), locale: 'zh' })
     expect(labels(items)).toEqual([
       '打开 DeepSeekGUI',
       '当前 Profile：web（托管模式）',
-      'Harness 状态：运行中 · web',
+      // D2：默认 profile 不再重复进状态行（上一行已经写了 Profile）。
+      'Harness 状态：运行中',
       '切换 Profile',
       '重启 Harness',
+      '打开 Compatibility View（官方原版界面）',
       '打开 DSH Terminal',
       '检查更新',
       '关于 DeepSeekGUI',
       '退出 DeepSeekGUI',
     ])
+  })
+
+  it('视图切换项（B3-P2）：Workbench 模式显示 Compatibility View 入口，compatibility 模式显示 Workbench 入口', () => {
+    const workbenchItems = trayMenuTemplate({ model: model(), locale: 'zh' })
+    const compatItem = workbenchItems.find(item => item.action?.kind === 'open-compatibility-view')
+    expect(compatItem?.label).toBe('打开 Compatibility View（官方原版界面）')
+    expect(workbenchItems.some(item => item.action?.kind === 'open-workbench')).toBe(false)
+
+    const compatItems = trayMenuTemplate({ model: model({ viewMode: 'compatibility' }), locale: 'zh' })
+    const backItem = compatItems.find(item => item.action?.kind === 'open-workbench')
+    expect(backItem?.label).toBe('打开 Workbench')
+    expect(compatItems.some(item => item.action?.kind === 'open-compatibility-view')).toBe(false)
   })
 
   it('更新可用时：Check for Updates 菜单项显示新版本', () => {
@@ -107,7 +125,7 @@ describe('trayMenuTemplate', () => {
   it('en locale：英文文案 + Existing Home 标签', () => {
     const items = trayMenuTemplate({ model: model({ homeKind: 'existing' }), locale: 'en' })
     expect(labels(items)).toContain('Active Profile: web (Existing)')
-    expect(labels(items)).toContain('Harness Status: Running · web')
+    expect(labels(items)).toContain('Harness Status: Running')
     expect(labels(items)).toContain('Quit DeepSeekGUI')
     expect(labels(items)).toContain('Check for Updates')
   })

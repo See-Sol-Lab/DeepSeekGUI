@@ -16,6 +16,8 @@ function isBuildFaceClient(value: unknown): boolean {
 export default defineConfig(({ env }) => {
   const client = isBuildFaceClient(env?.DSH_BUILD_FACE)
   return {
+    // DeepSeekGUI B5-P1: the retained B4 host/apiproxy package retired in
+    // B5-P1; the exclusion stays as a record of the migration input.
     workspace: ['vendor/*', 'packages/*/*', 'apps/cli'],
     entry: client ? '' : ['lib/types/{index,invariant,startup}.js'],
     outDir: 'lib',

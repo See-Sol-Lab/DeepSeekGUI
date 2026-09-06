@@ -16,7 +16,7 @@
 export const ACTIVE_RUN_FILENAME = 'active-run.json'
 
 /** active-run marker 的 schema 版本。 */
-export const ACTIVE_RUN_VERSION = 1 as const
+const ACTIVE_RUN_VERSION = 1 as const
 
 /** active-run marker 的内容。 */
 export interface ActiveRunMarker {

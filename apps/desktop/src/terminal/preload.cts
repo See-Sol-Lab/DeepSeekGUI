@@ -23,7 +23,6 @@ contextBridge.exposeInMainWorld('deepseekGUITerminal', {
   send: (data: string): Promise<void> => ipcRenderer.invoke('deepseekgui-terminal:send', data),
   /** 上报 xterm 的真实尺寸（P8-D47）：main 组帧转给 host 调 pty.resize。 */
   resize: (cols: number, rows: number): void => { ipcRenderer.send('deepseekgui-terminal:resize', cols, rows) },
-  /** 终端调试取证（P8-D36）：单向、只收短字符串，落 userData 下的日志文件。 */
   /** 订阅 pty 输出（已脱敏的文本）。终端窗口只注册一次，监听器随窗口销毁。 */
   onData: (listener: (text: string) => void): void => {
     ipcRenderer.on('deepseekgui-terminal:data', (_event, text: unknown) => {

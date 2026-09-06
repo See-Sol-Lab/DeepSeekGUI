@@ -153,7 +153,7 @@ describe.runIf(packagedExists)('S12 — Packaged Windows Workspace picker（打�
     } catch (error) {
       // 分辨两种完全不同的失败：workspace 根本没建起来（对话框驱动没选中
       // 目录），还是建好了但界面没渲染出来。修法南辕北辙，不能靠猜。
-      const response = await fetch('http://127.0.0.1:3080/api/workspace.list', {
+      const response = await fetch(COMP_URL_PREFIX + '/api/workspace.list', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type: 'client-request', rpcId: 'diag', method: 'workspace.list', payload: {} }),

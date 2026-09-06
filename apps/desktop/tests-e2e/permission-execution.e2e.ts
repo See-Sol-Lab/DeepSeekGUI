@@ -43,7 +43,7 @@ const isolationRoot = (suffix: string): string => sharedIsolationRoot(`dsh-exec-
 /** 官方 RPC 信封调用（测试侧驱动官方 API，不经 DeepSeekGUI 私有面）。 */
 async function rpc(method: string, payload: unknown): Promise<{ ok: boolean; value?: unknown; error?: { code: string; message: string } }> {
   const rpcId = Math.random().toString(36).slice(2)
-  const response = await fetch(`http://127.0.0.1:3080/api/${method}`, {
+  const response = await fetch(`${COMP_URL_PREFIX}/api/${method}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ type: 'client-request', rpcId, method, payload }),

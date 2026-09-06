@@ -16,7 +16,7 @@ import type { ProfileDiscoveryV1 } from './profile-discovery.ts'
 import type { PluginAction } from './plugin-service.ts'
 
 /** controller 暴露给调度器的最小端口（HarnessController 天然满足）。 */
-export interface DispatchControllerPort {
+interface DispatchControllerPort {
   status(): HarnessStatus
   switchTo(selection: HarnessSelection): Promise<void>
   restart(): Promise<void>
@@ -72,7 +72,7 @@ export interface ControlDispatchDeps {
   /** 关于面板出口（show-about 命令）。 */
   showAbout: () => void
   /** DSH Terminal 出口（show-terminal 命令）。 */
-  showTerminal: () => void
+  showTerminal: (sessionId?: string) => void
   /** Plugin Manager 写操作请求出口（确认 + 执行由 main 接线）。 */
   requestPluginOperation: (request: { action: PluginAction; profile: string; spec: string | null }) => void
   /** 取消当前 plugin 操作（杀完整 child tree）。 */
@@ -115,6 +115,13 @@ export interface ControlDispatchDeps {
   feedbackSubmitGateway: () => void
   /** 内置浏览器 pane 开合（B3-11；pane 未创建时 no-op）。 */
   browserPaneToggle: () => void
+  /**
+   * 切到 Compatibility View（B3-P2）：不带 Workbench 插件的官方界面。
+   * 确认与重启由 main 接线（与 restart-harness 同一控制器路径）。
+   */
+  openCompatibilityView: () => void
+  /** 回到 Workbench（B3-P2）：带 DeepSeekGUI 产品插件的界面。 */
+  openWorkbench: () => void
   /** 退出应用。 */
   quit: () => void
   /** 缓存与候选的持有者。 */
@@ -256,7 +263,7 @@ export function createControlDispatcher(deps: ControlDispatchDeps): (command: De
         deps.showAbout()
         return
       case 'show-terminal':
-        deps.showTerminal()
+        deps.showTerminal(typeof command.sessionId === 'string' && command.sessionId !== '' ? command.sessionId : undefined)
         return
       case 'plugin-op-request':
         deps.requestPluginOperation({ action: command.action, profile: command.profile, spec: command.spec })
@@ -321,8 +328,28 @@ export function createControlDispatcher(deps: ControlDispatchDeps): (command: De
       case 'browser-pane-toggle':
         deps.browserPaneToggle()
         return
+      case 'open-compatibility-view':
+        deps.openCompatibilityView()
+        return
+      case 'open-workbench':
+        deps.openWorkbench()
+        return
       case 'quit':
         deps.quit()
+        return
+      case 'notify':
+        // B5-P6：notify 是无状态的桌面通知命令，由 main 的 runCommand 在
+        // dispatch 之前直接处理（需要 Electron Notification 与窗口聚焦）；
+        // dispatch 不服务它。此分支只用于保持封闭联合的穷尽性。
+        return
+      case 'open-memory':
+      case 'save-global-memory':
+      case 'create-project-agents':
+      case 'open-workspace':
+      case 'reveal-path':
+        // B5-P7 / D6-D7：记忆管理与文件管理器定位命令由 main 的 runCommand
+        // 直接处理（需要 DSH home、shell 与官方 session.list）；dispatch
+        // 不服务它们，只保持联合穷尽。
         return
       default:
         command satisfies never

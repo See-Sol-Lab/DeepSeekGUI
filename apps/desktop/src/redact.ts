@@ -13,6 +13,7 @@
  */
 export function redactSecrets(text: string): string {
   return text
+    .replace(/([?&](?:token|deepseekgui-control)=)[^\s&#]*/gi, '$1<redacted>')
     .replace(/sk-[A-Za-z0-9_-]{8,}/g, 'sk-<redacted>')
     .replace(/gh[pousr]_[A-Za-z0-9]{16,}/g, 'gh*_<redacted>')
     .replace(/xox[a-z]-[A-Za-z0-9-]{8,}/g, 'xox*-<redacted>')
@@ -66,6 +67,24 @@ export function maskWindowsLiteral(text: string, literal: string, replacement: s
   return result
 }
 
+/**
+ * 同一 Windows 路径的多个等价字面量一起遮罩（P9-5）：同一个目录在日志
+ * 里可能以长名或 8.3 短名（如 ~1 形态）出现。短名必须由调用方从系统
+ * **真实解析**（见 main 的 windowsShortPath），绝不硬编码猜测——这里
+ * 只负责把每个已知形态都替换成同一占位符。
+ * @param text - 待处理文本。
+ * @param literals - 等价字面量集合（空串成员被忽略）。
+ * @param replacement - 占位符。
+ * @returns 遮罩后的文本。
+ */
+export function maskWindowsLiterals(text: string, literals: readonly string[], replacement: string): string {
+  let result = text
+  for (const literal of literals) {
+    result = maskWindowsLiteral(result, literal, replacement)
+  }
+  return result
+}
+
 /** redactUserContext 的上下文事实（运行时注入，不做任何猜测）。 */
 export interface RedactUserContextInput {
   /** 当前用户主目录绝对路径（%USERPROFILE% 展开值；两种分隔符写法都归一）。 */
@@ -115,6 +134,7 @@ export function redactUserContext(text: string, context: RedactUserContextInput)
  * 两组定义必须与 {@link redactSecrets} 的整段规则同源演化。
  */
 const STREAM_FAMILIES: readonly { candidate: RegExp; body: RegExp }[] = [
+  { candidate: /[?&](?:[a-z-]*|(?:token|deepseekgui-control)=[^\s&#]*)$/i, body: /^[^\s&#]+/ },
   { candidate: /(?:s|sk|sk-[A-Za-z0-9_-]*)$/, body: /^[A-Za-z0-9_-]+/ },
   { candidate: /(?:g|gh|gh[pousr]|gh[pousr]_[A-Za-z0-9]*)$/, body: /^[A-Za-z0-9]+/ },
   { candidate: /(?:x|xo|xox|xox[a-z]|xox[a-z]-[A-Za-z0-9-]*)$/, body: /^[A-Za-z0-9-]+/ },

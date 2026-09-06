@@ -16,7 +16,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import type { CallId } from '@deepseek-ai/dsh-llm'
+import type { ToolCallId } from '@deepseek-ai/dsh-llm'
 import type { BrowserFacade } from './browser.ts'
 import { B2_READ_TOOLS, checkBrowserAction, clickNeedsApproval, keystrokeCanSubmit, requiresApproval, submitApprovalReason } from './gate.ts'
 
@@ -31,7 +31,7 @@ function sandboxModeOf(ctx: Context, agent: Agent | undefined): 'read-only' | 'w
 /** L2 approval helper: missing service yields null → gate fails closed. */
 async function approvalOutcomeOf(
   ctx: Context,
-  exec: { agent?: Agent; callId: CallId; signal: AbortSignal },
+  exec: { agent?: Agent; callId: ToolCallId; signal: AbortSignal },
   toolName: string,
   reason: string,
 ): Promise<'allowed-once' | 'rejected' | 'cancelled' | 'unavailable' | null> {
@@ -54,7 +54,7 @@ async function approvalOutcomeOf(
 async function enforceGate(
   ctx: Context,
   toolName: string,
-  exec: { agent?: Agent; callId: CallId; signal: AbortSignal },
+  exec: { agent?: Agent; callId: ToolCallId; signal: AbortSignal },
   reason = '',
 ): Promise<void> {
   const outcome = requiresApproval(toolName)

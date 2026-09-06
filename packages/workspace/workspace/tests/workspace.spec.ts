@@ -23,6 +23,7 @@ const header = (id: string, cwd?: string, createdAt = 0): SessionHeader => ({
   version: 0,
   id: SessionId(id),
   createdAt,
+  isSeeded: false,
   ...(cwd === undefined ? {} : { cwd }),
 })
 
@@ -909,6 +910,35 @@ describe('registry-global session archive', () => {
     await expect(result.registry.archiveSession(SessionId('ghost')))
       .rejects.toThrow(/cannot archive session 'ghost'/)
     expect(storedState(result.pool).archivedSessionIds).toEqual(['stray', 'live-only'])
+  })
+
+  it('unarchives durably in archive order, restores the accounting position, and is idempotent', async () => {
+    const dir = await makeDir('unarchive-home')
+    const result = await harness({ sessions: [header('kept', dir, 100), header('gone', dir, 200)] })
+    const workspace = result.registry.list()[0]!
+    await result.registry.archiveSession(SessionId('gone'))
+    await result.registry.archiveSession(SessionId('kept'))
+    expect(result.registry.archivedSessionIds).toEqual(['gone', 'kept'])
+    // The account keeps both ids through archiving.
+    const accountingBefore = [...workspace.sessionIds]
+    expect(accountingBefore).toEqual(expect.arrayContaining(['kept', 'gone']))
+
+    await result.registry.unarchiveSession(SessionId('gone'))
+    expect(result.registry.archivedSessionIds).toEqual(['kept'])
+    // Unarchiving only touches the display set: the accounting position is
+    // exactly what archiving retained.
+    expect([...workspace.sessionIds]).toEqual(accountingBefore)
+    expect(storedState(result.pool).archivedSessionIds).toEqual(['kept'])
+    const changesAfterFirst = result.changes.filter(change => change.table === '').length
+
+    // An id outside the set neither rewrites the medium nor emits a change.
+    await result.registry.unarchiveSession(SessionId('gone'))
+    expect(result.registry.archivedSessionIds).toEqual(['kept'])
+    expect(result.changes.filter(change => change.table === '').length).toBe(changesAfterFirst)
+
+    await result.registry.unarchiveSession(SessionId('kept'))
+    expect(result.registry.archivedSessionIds).toEqual([])
+    expect(storedState(result.pool).archivedSessionIds).toEqual([])
   })
 
   it('propagates a persistence-listing failure instead of reporting an unknown session', async () => {

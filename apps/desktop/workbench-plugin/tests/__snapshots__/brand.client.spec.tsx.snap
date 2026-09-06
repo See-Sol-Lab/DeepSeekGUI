@@ -1,0 +1,10 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`DeepSeekGUI workbench brand > matches the marker snapshot 1`] = `
+<span
+  style="border: 1px solid; border-radius: 999px; font-size: 11px; line-height: 18px; padding: 0px 8px; opacity: 0.75; white-space: nowrap;"
+  title="DeepSeekGUI Workbench"
+>
+  Workbench
+</span>
+`;

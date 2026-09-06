@@ -32,6 +32,7 @@ import {
   waitForChromeElement,
   waitForCompMount,
   waitForWindow,
+  TEST_APP_PORT,
 } from './chrome-driver.ts'
 
 /** 本套件的隔离根：带 spaces 与 Unicode。 */
@@ -62,7 +63,7 @@ async function waitLauncherState(temp: string): Promise<void> {
 function dshServicePid(): number | null {
   const probe = spawnSync('powershell', [
     '-NoProfile', '-Command',
-    '(Get-NetTCPConnection -LocalPort 3080 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1).OwningProcess',
+    '(Get-NetTCPConnection -LocalPort ' + String(TEST_APP_PORT) + ' -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1).OwningProcess',
   ], { encoding: 'utf8' })
   const parsed = Number.parseInt(probe.stdout.trim(), 10)
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null
@@ -101,7 +102,7 @@ describe.runIf(packagedExists)('Resident Host（P2 常驻生命周期）', () =>
         await waitForCompMount(app)
         await waitLauncherState(temp)
         const before = readFileSync(join(userDataDir(temp), 'launcher-state.json'), 'utf8')
-        expect(await portOpen(3080)).toBe(true)
+        expect(await portOpen(TEST_APP_PORT)).toBe(true)
         // 点 X = 关闭主窗口：常驻语义下只隐藏。
         await app.evaluate(({ BrowserWindow }) => {
           BrowserWindow.getAllWindows()[0]?.close()
@@ -111,7 +112,7 @@ describe.runIf(packagedExists)('Resident Host（P2 常驻生命周期）', () =>
           { timeout: 10_000 },
         ).toBe(false)
         // DSH 继续运行：端口仍在。
-        expect(await portOpen(3080)).toBe(true)
+        expect(await portOpen(TEST_APP_PORT)).toBe(true)
         // 关闭不触发 stop/fallback/promotion：状态字节不变。
         const after = readFileSync(join(userDataDir(temp), 'launcher-state.json'), 'utf8')
         expect(after).toBe(before)
@@ -148,7 +149,7 @@ describe.runIf(packagedExists)('Resident Host（P2 常驻生命周期）', () =>
           { timeout: 10_000 },
         ).toBe(true)
         // 仍然只有一个 Harness：端口上的服务是同一个（无第二个 spawn）。
-        expect(await portOpen(3080)).toBe(true)
+        expect(await portOpen(TEST_APP_PORT)).toBe(true)
       } finally {
         await shutdownApp(app)
       }
@@ -169,7 +170,7 @@ describe.runIf(packagedExists)('Resident Host（P2 常驻生命周期）', () =>
         await stubDialogs(app)
         await waitForCompMount(app)
         await waitLauncherState(temp)
-        expect(await portOpen(3080)).toBe(true)
+        expect(await portOpen(TEST_APP_PORT)).toBe(true)
         // DSH 服务 = 3080 监听者（进程树定位不可靠，见 dshServicePid 注释）。
         let child: number | null = null
         await expect.poll(() => {
@@ -179,7 +180,7 @@ describe.runIf(packagedExists)('Resident Host（P2 常驻生命周期）', () =>
         // 强杀 DSH 子进程树（模拟运行中崩溃）。
         spawnSync('taskkill', ['/pid', String(child), '/T', '/F'], { encoding: 'utf8' })
         // 端口释放（DSH 已死），Chrome 窗口仍存活。
-        await expect.poll(() => portOpen(3080), { timeout: 15_000 }).toBe(false)
+        await expect.poll(() => portOpen(TEST_APP_PORT), { timeout: 15_000 }).toBe(false)
         const visible = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length > 0)
         expect(visible).toBe(true)
         // failed 状态：Chrome 状态胶囊显示"启动失败"（renderer 上下文）。
@@ -189,7 +190,7 @@ describe.runIf(packagedExists)('Resident Host（P2 常驻生命周期）', () =>
         ).toContain('启动失败')
         // 不自动重启：端口保持释放。
         await new Promise(resolve => setTimeout(resolve, 1_500))
-        expect(await portOpen(3080)).toBe(false)
+        expect(await portOpen(TEST_APP_PORT)).toBe(false)
         // Restart Harness 用 active 恢复。走的是**汉堡菜单**里的重启项，
         // 不是设置页：P8-D39 之后 Harness 控制面住在官方 web UI（3080）里，
         // 而这个用例的前提正是 DSH 已死、3080 已断——设置页在这一刻本来
@@ -198,7 +199,7 @@ describe.runIf(packagedExists)('Resident Host（P2 常驻生命周期）', () =>
         // 用户在这个场景下唯一能在主窗口里够到的入口。
         await clickChromeButton(app, 'hamburger')
         await clickChromeButton(app, 'menu-restart-harness')
-        await expect.poll(() => portOpen(3080), { timeout: 90_000 }).toBe(true)
+        await expect.poll(() => portOpen(TEST_APP_PORT), { timeout: 90_000 }).toBe(true)
         await waitForChromeElement(app, 'status-pill')
       } finally {
         await shutdownApp(app)
@@ -216,12 +217,12 @@ describe.runIf(packagedExists)('Resident Host（P2 常驻生命周期）', () =>
         await waitForWindow(app)
         await waitForCompMount(app)
         await waitLauncherState(temp)
-        expect(await portOpen(3080)).toBe(true)
+        expect(await portOpen(TEST_APP_PORT)).toBe(true)
         // 模拟 OS session-end：无交互、绝不弹确认框、orderly cleanup。
         await app.evaluate(({ BrowserWindow }) => {
           BrowserWindow.getAllWindows()[0]?.emit('session-end')
         })
-        await expect.poll(() => portOpen(3080), { timeout: 30_000 }).toBe(false)
+        await expect.poll(() => portOpen(TEST_APP_PORT), { timeout: 30_000 }).toBe(false)
         // 应用已退出：无 DeepSeekGUI.exe 残留（含 DSH 子进程）。
         await expect.poll(() => deepseekGUIProcessCount(), { timeout: 30_000 }).toBe(0)
       } finally {
@@ -247,10 +248,10 @@ describe.runIf(packagedExists)('Resident Host（P2 常驻生命周期）', () =>
         await waitForWindow(app)
         await waitForCompMount(app)
         await waitLauncherState(temp)
-        expect(await portOpen(3080)).toBe(true)
+        expect(await portOpen(TEST_APP_PORT)).toBe(true)
         // 官方程序化退出：必须经 before-quit → proceedQuit 真实退出。
         await app.evaluate(({ app: electronApp }) => { electronApp.quit() })
-        await expect.poll(() => portOpen(3080), { timeout: 30_000 }).toBe(false)
+        await expect.poll(() => portOpen(TEST_APP_PORT), { timeout: 30_000 }).toBe(false)
         await expect.poll(() => deepseekGUIProcessCount(), { timeout: 30_000 }).toBe(0)
       } finally {
         // 断言失败/退出未完成时的兜底收割：不让泄漏实例占住 3080 毒害

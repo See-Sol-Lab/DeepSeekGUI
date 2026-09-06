@@ -36,10 +36,11 @@ import { capture } from './release/process.ts'
 import { packedIdentity, tarballFiles } from './release/tarball.ts'
 // 皮肤 overlay 的文件名与运行时读取端共用同一个常量：两侧一旦不一致，
 // --patch 会指向一个不存在的文件，而官方对此是启动即失败。
-import { BROWSER_PATCH_FILENAME, PICKER_PATCH_FILENAME, SETTINGS_PATCH_FILENAME, THEME_PATCH_FILENAME } from '../apps/desktop/src/dsh-service.ts'
+import { BROWSER_PATCH_FILENAME, PICKER_PATCH_FILENAME, SETTINGS_PATCH_FILENAME, THEME_PATCH_FILENAME, WORKBENCH_PATCH_FILENAME } from '../apps/desktop/src/dsh-service.ts'
 import { computeRuntimeClosure, parsePluginNames } from './runtime-closure.ts'
 import { directoryBytes, prunePlatforms } from './platform-prune.ts'
 import { sanitizeAndVerify } from './leak-scan.ts'
+import { requireCleanTree } from './require-clean-tree.ts'
 import { portableLockfileIssues, relativeTarballSpec } from './runtime-lock.ts'
 import { readDevSourceCommit, SOURCE_COMMIT_FILENAME } from '../apps/desktop/src/version-info.ts'
 
@@ -275,6 +276,25 @@ function packFamily(familyId: string, out: string): void {
   console.log(`build-desktop-dist: packed ${familyId} family (${String(members.length)} tarballs) into ${out}`)
 }
 
+/**
+ * Product packages the shipped Web profile names as dependencies but no
+ * release family publishes. The bundle manifest holds them as `workspace:*`
+ * so the CLI Web profile and its tests resolve them from the workspace;
+ * `@see-sol-lab` is not a release scope, so packing them beside the family
+ * tarballs is what lets the runtime closure resolve them from relative
+ * `file:` specs instead of npm asking the public registry for a private
+ * package (a 404 at install time).
+ */
+const PRODUCT_PACKAGES = [join('apps', 'desktop', 'coding-tools-plugin')] as const
+
+/** Pack the product packages into `out` beside the family tarballs. */
+function packProductPackages(out: string): void {
+  for (const directory of PRODUCT_PACKAGES) {
+    runPnpm(['--dir', directory, 'pack', '--pack-destination', out])
+  }
+  console.log(`build-desktop-dist: packed ${String(PRODUCT_PACKAGES.length)} product package(s) into ${out}`)
+}
+
 /** Every packed tarball's absolute path by package name. */
 function packedDependencies(directories: readonly string[]): Map<string, string> {
   const dependencies = new Map<string, string>()
@@ -306,7 +326,7 @@ function tarballManifests(directories: readonly string[]): Map<string, {
   for (const directory of directories) {
     for (const filename of readdirSync(directory).filter(name => name.endsWith('.tgz')).sort()) {
       const tarball = join(directory, filename)
-      const manifest = JSON.parse(capture('tar', ['-xOzf', tarball, 'package/package.json'])) as {
+      const manifest = JSON.parse(capture('tar', ['-xOzf', basename(tarball), 'package/package.json'], { cwd: dirname(tarball) })) as {
         name?: unknown
         version?: unknown
         dependencies?: Record<string, string>
@@ -337,8 +357,8 @@ function vendoredPackageNames(directory: string): string[] {
 /**
  * The closure roots: every package the shipped Web profile mounts — the base
  * and web-app bundle patches, and every agent preset shipped inside the
- * `@deepseek-ai/dsh` tarball (its `files` list carries the whole `config`
- * directory, and the preset picker lets a session mount any of them) — plus
+ * `@deepseek-ai/dsh-agent-presets` package (the preset picker lets a session
+ * mount any of them) — plus
  * the launcher entry itself and the frontend package the web-app bundle
  * resolves dynamically (`require.resolve` of the built dist, invisible to
  * static edges).
@@ -346,7 +366,9 @@ function vendoredPackageNames(directory: string): string[] {
  */
 function profileRoots(): string[] {
   const roots = new Set<string>(['@deepseek-ai/dsh', '@deepseek-ai/dsh-web-frontend'])
-  const presetsDir = join(ROOT, 'apps', 'cli', 'config', 'agent-presets')
+  // DSH 0.1.2 moved the shipped presets out of the CLI's config directory into
+  // the dsh-agent-presets package; each preset still owns an agent.cordis.yml.
+  const presetsDir = join(ROOT, 'packages', 'preset', 'agent-presets', 'presets')
   const presets = readdirSync(presetsDir, { withFileTypes: true })
     .filter(entry => entry.isDirectory())
     .map((entry) => {
@@ -370,169 +392,138 @@ function profileRoots(): string[] {
   return [...roots].sort()
 }
 
-/** Install the closure into the staging consumer and copy its node_modules into the runtime payload. */
+/** One DeepSeekGUI plugin shipped into the runtime's node_modules as real files. */
+interface PluginShipment {
+  /** Directory under apps/desktop. */
+  dir: string
+  /** Package name under @see-sol-lab (also its module-fallback link name). */
+  pkg: string
+  /** Built entry the desktop build must have produced. */
+  entry: 'lib/index.js' | 'lib/client.js'
+  /** [file inside the plugin dir, file name at the runtime root]; absent for plugins without a `--patch` overlay. */
+  overlay?: [string, string]
+  /** Content directories shipped beside `lib` (must exist). */
+  assets?: string[]
+  /** Extra shipping work after the copy: dependencies and base-class asserts. */
+  extra?: (target: string) => void
+}
+
 /**
- * Ship DeepSeekGUI's skin into the DSH runtime tree.
- *
- * The plugin is loaded by the harness's own Node process, which cannot read
- * the Electron asar — both the package and the overlay have to exist as real
- * files under the runtime directory. Dropping the package into the runtime's
- * `node_modules` also makes it resolvable from every profile without touching
- * any profile's manifest: the skin is applied through a launcher `--patch`
- * overlay, so it exists only for the composition DeepSeekGUI starts.
- *
- * Fails loud on a missing build: a packaged app whose skin silently vanished
- * looks like the theme code is broken, and that lie costs far more to chase
- * than a failed build does.
- * @param runtimeDir - assembled DSH runtime directory.
+ * The DeepSeekGUI plugins that travel as files copied into the DSH runtime
+ * tree. The harness's own Node process loads them and cannot read the
+ * Electron asar, so both the package and its overlay must exist as real files
+ * under the runtime directory; dropping the package into the runtime's
+ * `node_modules` makes it resolvable from every profile without touching a
+ * single profile manifest, and the overlay only exists for the composition
+ * DeepSeekGUI starts (`resolve*PatchFile()` points `--patch` at
+ * `<resources>/dsh/<name>`, so both sides must agree on the file name).
+ * None of them is ever published to a registry.
  */
-function shipThemePlugin(runtimeDir: string): void {
-  const source = join(ROOT, 'apps', 'desktop', 'theme-plugin')
-  const bundle = join(source, 'lib', 'client.js')
-  if (!existsSync(bundle)) {
-    throw new Error(`build-desktop-dist: theme plugin bundle ${bundle} is missing`)
+const PLUGIN_SHIPMENTS: readonly PluginShipment[] = [
+  // The skin (P8-D2). A packaged app whose skin silently vanished looks like
+  // the theme code is broken, and that lie costs far more to chase than a
+  // failed build does — so a missing build fails loud.
+  { dir: 'theme-plugin', pkg: 'deepseekgui-theme', entry: 'lib/client.js', overlay: [THEME_PATCH_FILENAME, THEME_PATCH_FILENAME] },
+  // The directory-picker backend (P8-D11). Its overlay disables the official
+  // picker row: an app that shipped the overlay but not the package would
+  // have no directory picker at all.
+  {
+    dir: 'picker-plugin',
+    pkg: 'deepseekgui-directory-picker',
+    entry: 'lib/index.js',
+    overlay: [PICKER_PATCH_FILENAME, PICKER_PATCH_FILENAME],
+    extra: (target) => {
+      // The backend extends the official service class, so that package has
+      // to be in the runtime closure next to it. It is (the official
+      // auto-picker pulls it in), but assert rather than assume: without it
+      // the harness refuses to boot with our overlay applied.
+      const base = join(dirname(dirname(target)), '@deepseek-ai', 'dsh-host-directory-picker')
+      if (!existsSync(base)) {
+        throw new Error(`build-desktop-dist: ${base} is missing — the DeepSeekGUI picker cannot resolve its base class`)
+      }
+    },
+  },
+  // The settings sections (P8-D39): missing it only removes the DeepSeekGUI
+  // sections from the official settings page, but a hollow ship would still
+  // fail client boot.
+  { dir: 'settings-plugin', pkg: 'deepseekgui-settings', entry: 'lib/client.js', overlay: [SETTINGS_PATCH_FILENAME, SETTINGS_PATCH_FILENAME] },
+  // The browser capability (B3-11). Unlike the others it has a real npm
+  // dependency (`playwright-core`), so the dependency ships beside it — a
+  // user behind a firewall gets browser tools without ever running
+  // `dsh plugin add`. The browser kernel itself is NOT bundled: playwright
+  // drives the system Edge (`channel: 'msedge'`), so this costs ~12 MB.
+  {
+    dir: 'browser-plugin',
+    pkg: 'deepseekgui-browser',
+    entry: 'lib/index.js',
+    overlay: ['cordis.patch.yml', BROWSER_PATCH_FILENAME],
+    extra: (target) => {
+      // The plugin is loaded by the harness's own Node process, which resolves
+      // from this very node_modules tree; shipping it without its dependency
+      // would fail at the first tool call, not at boot — the worst possible
+      // time to find out. `dereference` matters: pnpm's tree is symlinks into
+      // .pnpm, and a copied symlink would point at a path that does not exist
+      // on the user's machine.
+      const pwSource = join(ROOT, 'node_modules', 'playwright-core')
+      if (!existsSync(join(pwSource, 'package.json'))) {
+        throw new Error(`build-desktop-dist: ${pwSource} is missing — install dependencies before packaging`)
+      }
+      cpSync(pwSource, join(dirname(dirname(target)), 'playwright-core'), { recursive: true, dereference: true })
+      // The same overlay also stays INSIDE the package, under its original
+      // name. The plugin's package.json declares `dsh.bundle.patch:
+      // ./cordis.patch.yml`, so a profile that lists this package in its
+      // bundle layer (anyone who ran the plugin manager's install once) makes
+      // app-boot read it from here. Ship the package without it and that
+      // profile dies at boot with ENOENT before any UI exists (2026-08-24,
+      // caught on the developer's machine after a B3-10 install).
+      cpSync(join(ROOT, 'apps', 'desktop', 'browser-plugin', 'cordis.patch.yml'), join(target, 'cordis.patch.yml'))
+    },
+  },
+  // The Workbench product plugin (B3-P1); `assets/` carries the memory
+  // behavior contract as content beside the code (B5-P9).
+  { dir: 'workbench-plugin', pkg: 'deepseekgui-workbench', entry: 'lib/client.js', overlay: [WORKBENCH_PATCH_FILENAME, WORKBENCH_PATCH_FILENAME], assets: ['assets'] },
+  // The coding tools (B5-P4) are not listed here: the web-app bundle depends
+  // on them by name, so they travel as a product tarball through the runtime
+  // closure install (PRODUCT_PACKAGES) and land in node_modules with it.
+]
+
+/**
+ * Copy one DeepSeekGUI plugin (and its overlay) into the assembled runtime.
+ * @param runtimeDir - assembled DSH runtime directory.
+ * @param ship - the plugin to ship.
+ */
+function shipPlugin(runtimeDir: string, ship: PluginShipment): void {
+  const source = join(ROOT, 'apps', 'desktop', ship.dir)
+  const entry = join(source, ship.entry)
+  if (!existsSync(entry)) {
+    throw new Error(`build-desktop-dist: ${ship.pkg} entry ${entry} is missing — run the desktop build first`)
   }
-  // The client bundle must register itself with the official module loader.
-  // A plain ESM file loads, throws "Cannot use import statement outside a
+  // A client bundle must register itself with the official module loader. A
+  // plain ESM file loads, throws "Cannot use import statement outside a
   // module" in the browser, and leaves the whole page stuck on boot — a
-  // failure that looks nothing like "the theme is broken", so catch its
+  // failure that looks nothing like "the plugin is broken", so catch its
   // shape here rather than in a user's window.
-  if (!readFileSync(bundle, 'utf8').includes('__ModuleLoader__.load')) {
-    throw new Error(`build-desktop-dist: ${bundle} does not register through __ModuleLoader__ — the client runtime cannot load it`)
+  if (ship.entry === 'lib/client.js' && !readFileSync(entry, 'utf8').includes('__ModuleLoader__.load')) {
+    throw new Error(`build-desktop-dist: ${entry} does not register through __ModuleLoader__ — the client runtime cannot load it`)
   }
-  const target = join(runtimeDir, 'node_modules', '@see-sol-lab', 'deepseekgui-theme')
+  const target = join(runtimeDir, 'node_modules', '@see-sol-lab', ship.pkg)
   mkdirSync(target, { recursive: true })
   cpSync(join(source, 'lib'), join(target, 'lib'), { recursive: true })
   cpSync(join(source, 'package.json'), join(target, 'package.json'))
-  // The overlay sits at the runtime root: resolveThemePatchFile() points
-  // `--patch` at <resources>/dsh/<name>, and both sides must agree.
-  const overlay = join(source, THEME_PATCH_FILENAME)
-  if (!existsSync(overlay)) {
-    throw new Error(`build-desktop-dist: theme overlay ${overlay} is missing`)
+  for (const asset of ship.assets ?? []) {
+    if (!existsSync(join(source, asset))) throw new Error(`build-desktop-dist: ${ship.pkg} lacks ${asset}`)
+    cpSync(join(source, asset), join(target, asset), { recursive: true })
   }
-  cpSync(overlay, join(runtimeDir, THEME_PATCH_FILENAME))
-  console.log(`build-desktop-dist: DeepSeekGUI theme plugin + overlay shipped into ${runtimeDir}`)
+  if (ship.overlay !== undefined) {
+    const overlay = join(source, ship.overlay[0])
+    if (!existsSync(overlay)) throw new Error(`build-desktop-dist: ${ship.pkg} overlay ${overlay} is missing`)
+    cpSync(overlay, join(runtimeDir, ship.overlay[1]))
+  }
+  ship.extra?.(target)
+  console.log(`build-desktop-dist: DeepSeekGUI ${ship.pkg} shipped into ${runtimeDir}${ship.overlay === undefined ? '' : ' with its overlay'}`)
 }
 
-/**
- * Ship DeepSeekGUI's directory-picker backend into the DSH runtime tree.
- *
- * Same shape and the same reasons as the skin: the harness's Node process
- * cannot read the Electron asar, so both the package and its overlay must
- * exist as real files under the runtime directory, and dropping the package
- * into the runtime's `node_modules` makes it resolvable from every profile
- * without touching a single profile manifest.
- *
- * This one carries more weight than the skin, though: its overlay disables the
- * official picker row. A packaged app that shipped the overlay but not the
- * package would have no directory picker at all — so a missing build fails the
- * build rather than reaching a user who then cannot open a workspace.
- * @param runtimeDir - assembled DSH runtime directory.
- */
-/**
- * Ship DeepSeekGUI's settings sections plugin into the DSH runtime tree
- * (P8-D39). Same shape and reasons as the skin; missing it only removes the
- * DeepSeekGUI sections from the official settings page (the chrome menu keeps
- * working), but a hollow ship would still fail client boot — so fail loud.
- * @param runtimeDir - assembled DSH runtime directory.
- */
-function shipSettingsPlugin(runtimeDir: string): void {
-  const source = join(ROOT, 'apps', 'desktop', 'settings-plugin')
-  const bundle = join(source, 'lib', 'client.js')
-  if (!existsSync(bundle)) {
-    throw new Error(`build-desktop-dist: settings plugin bundle ${bundle} is missing`)
-  }
-  if (!readFileSync(bundle, 'utf8').includes('__ModuleLoader__.load')) {
-    throw new Error(`build-desktop-dist: ${bundle} does not register through __ModuleLoader__ — the client runtime cannot load it`)
-  }
-  const target = join(runtimeDir, 'node_modules', '@see-sol-lab', 'deepseekgui-settings')
-  mkdirSync(target, { recursive: true })
-  cpSync(join(source, 'lib'), join(target, 'lib'), { recursive: true })
-  cpSync(join(source, 'package.json'), join(target, 'package.json'))
-  const overlay = join(source, SETTINGS_PATCH_FILENAME)
-  if (!existsSync(overlay)) {
-    throw new Error(`build-desktop-dist: settings overlay ${overlay} is missing`)
-  }
-  cpSync(overlay, join(runtimeDir, SETTINGS_PATCH_FILENAME))
-  console.log(`build-desktop-dist: DeepSeekGUI settings plugin + overlay shipped into ${runtimeDir}`)
-}
-
-/**
- * Ship DeepSeekGUI's browser capability into the DSH runtime tree (B3-11).
- *
- * Unlike the other three, this plugin has a real npm dependency
- * (`playwright-core`), so the dependency ships beside it — a user who installs
- * DeepSeekGUI gets browser tools without ever running `dsh plugin add`, which is
- * the whole point for people behind a firewall with no registry to reach.
- * The browser kernel itself is NOT bundled: playwright drives the system Edge
- * (`channel: 'msedge'`), so this costs ~12 MB, not ~150.
- * @param runtimeDir - assembled DSH runtime directory.
- */
-function shipBrowserPlugin(runtimeDir: string): void {
-  const source = join(ROOT, 'apps', 'desktop', 'browser-plugin')
-  const entry = join(source, 'lib', 'index.js')
-  if (!existsSync(entry)) {
-    throw new Error(`build-desktop-dist: browser plugin entry ${entry} is missing — run the desktop build first`)
-  }
-  const target = join(runtimeDir, 'node_modules', '@see-sol-lab', 'deepseekgui-browser')
-  mkdirSync(target, { recursive: true })
-  cpSync(join(source, 'lib'), join(target, 'lib'), { recursive: true })
-  cpSync(join(source, 'package.json'), join(target, 'package.json'))
-  // playwright-core beside it: the plugin is loaded by the harness's own Node
-  // process, which resolves from this very node_modules tree. Shipping the
-  // plugin without its dependency would fail at the first tool call, not at
-  // boot — the worst possible time to find out. `dereference` matters here:
-  // pnpm's tree is symlinks into .pnpm, and a copied symlink would point at a
-  // path that does not exist on the user's machine.
-  const pwSource = join(ROOT, 'node_modules', 'playwright-core')
-  if (!existsSync(join(pwSource, 'package.json'))) {
-    throw new Error(`build-desktop-dist: ${pwSource} is missing — install dependencies before packaging`)
-  }
-  const pwTarget = join(runtimeDir, 'node_modules', 'playwright-core')
-  mkdirSync(dirname(pwTarget), { recursive: true })
-  cpSync(pwSource, pwTarget, { recursive: true, dereference: true })
-  const overlay = join(source, 'cordis.patch.yml')
-  if (!existsSync(overlay)) {
-    throw new Error(`build-desktop-dist: browser overlay ${overlay} is missing`)
-  }
-  cpSync(overlay, join(runtimeDir, BROWSER_PATCH_FILENAME))
-  // The same overlay also stays INSIDE the package, under its original name.
-  // The plugin's package.json declares `dsh.bundle.patch: ./cordis.patch.yml`,
-  // so a profile that lists this package in its bundle layer (anyone who ran
-  // the plugin manager's install once) makes app-boot read it from here. Ship
-  // the package without it and that profile dies at boot with ENOENT before
-  // any UI exists — the app just says "DSH 服务启动失败" (2026-08-24, caught
-  // on the resident's machine: she had installed the plugin during B3-10).
-  cpSync(overlay, join(target, 'cordis.patch.yml'))
-  console.log(`build-desktop-dist: DeepSeekGUI browser plugin + playwright-core + overlay shipped into ${runtimeDir}`)
-}
-
-function shipPickerPlugin(runtimeDir: string): void {
-  const source = join(ROOT, 'apps', 'desktop', 'picker-plugin')
-  const entry = join(source, 'lib', 'index.js')
-  if (!existsSync(entry)) {
-    throw new Error(`build-desktop-dist: directory-picker plugin entry ${entry} is missing`)
-  }
-  // The backend extends the official service class, so that package has to be
-  // in the runtime closure next to it. It is (the official auto-picker pulls
-  // it in), but assert rather than assume: the failure mode without it is the
-  // harness refusing to boot with our overlay applied.
-  const base = join(runtimeDir, 'node_modules', '@deepseek-ai', 'dsh-host-directory-picker')
-  if (!existsSync(base)) {
-    throw new Error(`build-desktop-dist: ${base} is missing — the DeepSeekGUI picker cannot resolve its base class`)
-  }
-  const target = join(runtimeDir, 'node_modules', '@see-sol-lab', 'deepseekgui-directory-picker')
-  mkdirSync(target, { recursive: true })
-  cpSync(join(source, 'lib'), join(target, 'lib'), { recursive: true })
-  cpSync(join(source, 'package.json'), join(target, 'package.json'))
-  const overlay = join(source, PICKER_PATCH_FILENAME)
-  if (!existsSync(overlay)) {
-    throw new Error(`build-desktop-dist: directory-picker overlay ${overlay} is missing`)
-  }
-  cpSync(overlay, join(runtimeDir, PICKER_PATCH_FILENAME))
-  console.log(`build-desktop-dist: DeepSeekGUI directory picker + overlay shipped into ${runtimeDir}`)
-}
-
+/** Install the closure into the staging consumer and copy its node_modules into the runtime payload. */
 function assembleRuntime(): void {
   rmSync(STAGING, { recursive: true, force: true })
   mkdirSync(STAGING, { recursive: true })
@@ -631,10 +622,7 @@ function assembleRuntime(): void {
     // has no runtime consumer; the leak scan treats any surviving copy as a
     // finding.
     rmSync(join(RUNTIME_DIR, 'node_modules', '.package-lock.json'), { force: true })
-    shipThemePlugin(RUNTIME_DIR)
-    shipPickerPlugin(RUNTIME_DIR)
-    shipSettingsPlugin(RUNTIME_DIR)
-    shipBrowserPlugin(RUNTIME_DIR)
+    for (const ship of PLUGIN_SHIPMENTS) shipPlugin(RUNTIME_DIR, ship)
     const pruned = prunePlatforms(RUNTIME_DIR, IS_WINDOWS ? 'win32-x64' : `linux-${process.arch}`)
     console.log(`build-desktop-dist: platform prune removed ${pruned.length} artifacts (${formatBytes(directoryBytes(RUNTIME_DIR))} runtime after prune)`)
     console.log(`build-desktop-dist: DSH runtime assembled at ${RUNTIME_DIR}`)
@@ -877,8 +865,12 @@ function formatBytes(bytes: number): string {
 if (import.meta.main) {
   requirePrerequisites()
   requireUnlockedOutput()
+  // Dirty-tree gate (B5 release): the public chain checks first; this
+  // repeat keeps the internal assemble entry from bypassing it.
+  requireCleanTree(ROOT)
   ensureElectronDistribution()
   packFamily('dsh', PACK_DHS)
+  packProductPackages(PACK_DHS)
   packFamily('vendor', PACK_VENDOR)
   assembleRuntime()
   // electron-builder toolchain binaries (NSIS, winCodeSign) download from
@@ -939,6 +931,8 @@ if (import.meta.main) {
     ['deepseekgui-directory-picker', join('lib', 'index.js')],
     ['deepseekgui-settings', join('lib', 'client.js')],
     ['deepseekgui-browser', join('lib', 'index.js')],
+    ['deepseekgui-workbench', join('lib', 'client.js')],
+    ['deepseekgui-coding-tools', join('lib', 'index.js')],
   ] as const) {
     const file = join(UNPACKED, 'resources', 'dsh', 'node_modules', '@see-sol-lab', plugin, entry)
     if (!existsSync(file) || statSync(file).size === 0) {

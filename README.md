@@ -1,6 +1,6 @@
 <div align="center">
 
-# <img src="./apps/desktop/src/chrome/icon.png" width="38" alt="" align="absmiddle" /> DeepSeekGUI v1.0.0
+# <img src="./apps/desktop/src/chrome/icon.png" width="38" alt="" align="absmiddle" /> DeepSeekGUI v1
 
 </div>
 
@@ -23,7 +23,15 @@ English | [中文](README.zh.md)
   <a href="https://github.com/See-Sol-Lab/DeepSeekGUI/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/See-Sol-Lab/DeepSeekGUI/total?style=flat-square" /></a>
   <img alt="Windows 10 and 11 x64" src="https://img.shields.io/badge/Windows-10%20%7C%2011%20x64-0078D4?style=flat-square&logo=windows" />
   <a href="DEEPSEEKGUI-LICENSE.md"><img alt="Source available" src="https://img.shields.io/badge/source-available-6f42c1?style=flat-square" /></a>
-   <a href="https://doi.org/10.5281/zenodo.22205160"><img alt="DOI" src="https://zenodo.org/badge/DOI/10.5281/zenodo.22205160.svg" /></a>
+  <a href="https://doi.org/10.5281/zenodo.22205160"><img alt="DOI" src="https://zenodo.org/badge/DOI/10.5281/zenodo.22205160.svg" /></a>
+</p>
+
+<p align="center">
+  <a href="https://dshfind.com/en/plugins/See-Sol-Lab/DeepSeekGUI?ref=badge"><img alt="DeepSeekGUI on dshfind" src="https://dshfind.com/api/card/See-Sol-Lab/DeepSeekGUI?lang=en" width="440" /></a>
+</p>
+
+<p align="center">
+  <img alt="DeepSeekGUI — a harness-first desktop workspace for agentic coding" src="docs/media/readme-hero.png" width="920" />
 </p>
 
 <!-- PRODUCT HUNT BADGE SLOT — restore once the launch has a ranking (the badge shows "???" until then):
@@ -43,13 +51,13 @@ Just the installer and an API key — everything else is bundled.
 
 **Not an official DeepSeek product.** Built on top of DeepSeek Harness but independently developed. The upstream runtime and official Web UI are DeepSeek's work.
 
-> **Where this is headed:** V1 is a desktop wrapper around the upstream Web UI. A fully independent workbench with a custom interface built for desktop is in active development and expected to ship as **v2.0.0**.
+> **Where this is headed:** DeepSeekGUI 1.1.0 (B5 development candidate) ships the self-built Workbench shell — tool-result cards, on-demand inspectors, the session-record tree, and flat-file memory — over the official DSH 0.1.2 Web UI. A fully independent desktop UI remains a future direction without a promised version.
 
 ## Download
 
 | Platform | Download | Requirements |
 | --- | --- | --- |
-| Windows | [Download installer](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.0.0/DeepSeekGUI-Setup-1.0.0.exe) | Windows 10/11, x64 |
+| Windows | [Download installer](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.1.0/DeepSeekGUI-Setup-1.1.0.exe) | Windows 10/11, x64 |
 
 Installs to your user account — just double-click. The installer bundles its own runtime, ready to go.
 
@@ -62,10 +70,10 @@ Verify the installer hash before running it:
 
 ```powershell
 gh release download --repo See-Sol-Lab/DeepSeekGUI --pattern 'DeepSeekGUI-Setup-*.exe' --pattern 'SHA256SUMS.txt' --clobber
-Get-FileHash .\DeepSeekGUI-Setup-1.0.0.exe -Algorithm SHA256
+Get-FileHash .\DeepSeekGUI-Setup-1.1.0.exe -Algorithm SHA256
 ```
 
-Only run the installer if the hash matches [`SHA256SUMS.txt`](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.0.0/SHA256SUMS.txt). See the [troubleshooting guide](docs/user/deepseekgui/data-troubleshooting.md#windows-smartscreen-blocks-the-installer) if you get stuck.
+Only run the installer if the hash matches [`SHA256SUMS.txt`](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.1.0/SHA256SUMS.txt). See the [troubleshooting guide](docs/user/deepseekgui/data-troubleshooting.md#windows-smartscreen-blocks-the-installer) if you get stuck.
 
 </details>
 
@@ -131,7 +139,7 @@ V1.0 targets Windows x64. SmartScreen will warn until code signing ships. macOS,
 | Version | Status | What changes |
 | --- | --- | --- |
 | **v1.0** | Released | Desktop wrapper around the official Harness Web UI, with installer, system tray, built-in browser and terminal. |
-| **v2.0** | In development | Fully independent workbench — custom UI built from scratch for desktop, replacing the upstream Web UI entirely. |
+| **1.1.0** | In development (B5 candidate) | Self-built Workbench overlay on the official 0.1.2 Web UI — tool cards, on-demand inspectors, session tree, flat-file memory — plus the v1.0 desktop integration. |
 
 ## Documentation
 

@@ -98,6 +98,11 @@ window.__ModuleLoader__.load({
         'plugins.loaded': '已进入 Loader',
         'plugins.empty': '（空）',
         'plugins.inventory-none': '（尚未发现任何 profile，请先在 Harness 分区刷新）',
+        // B3-13：随包内置插件的只读来源投影（launcher overlay 层真实事实）。
+        'plugins.builtin.title': 'DeepSeekGUI 随包内置',
+        'plugins.builtin.tag': '已内置',
+        'plugins.builtin.locked': '（不可卸载：卸载会导致 DeepSeekGUI 无法工作）',
+        'plugins.builtin.spec-hint': '该插件已随 DeepSeekGUI 内置，无需安装。',
         'plugins.recovery.pending': '上一次插件变更正在等待重启验证。',
         'plugins.recovery.needed': '插件变更导致 Harness 启动失败。',
         'plugins.recovery.drift': '插件变更后 Profile 文件被外部修改；自动恢复已停止。',
@@ -106,6 +111,20 @@ window.__ModuleLoader__.load({
         'plugins.recovery.abandon': '放弃恢复（保留当前状态）',
         'plugins.recovery.open-profile': '打开 Profile 文件夹',
         'nav.feedback': 'BUG 诊断与反馈',
+        // D5-c（莉莉丝 2026-09-06）：全局记忆从会话头部搬进设置页。
+        // D20 文案（莉莉丝 2026-09-06）：先讲用途，文件名与位置收进次要信息。
+        'nav.memory': '全局记忆',
+        'memory.intro': '让助手在不同项目中了解你的背景，减少重复介绍。可以记录你的称呼、背景、工作习惯或常用工具，以及希望助手了解的信息。',
+        'memory.placeholder': '例如：\n我是一名小说作者，也会制作演示文稿。\n我熟悉 Python，前端开发经验较少。',
+        'memory.note': '由你编辑和保存，助手只读取。保存后的内容将在新会话中使用。',
+        'memory.save': '保存更改',
+        'memory.saved': '已保存',
+        'memory.open': '在文件管理器中显示',
+        'memory.unreadable': '当前读不到这个文件（可能超过大小上限），为避免覆盖原文，这里不提供保存。',
+        'memory.project-note': '仅与项目有关的信息，请在会话顶部的「记忆」面板中管理。',
+        'memory.location': '文件位置',
+        'memory.agents.note': 'AGENTS.md 是你给助手定的协作规矩（沟通方式、做事习惯），每次对话都会读取；不改也能正常使用。',
+        'memory.agents.open': '打开 AGENTS.md',
         'fb.prompt': '遇到了什么问题？',
         'fb.placeholder': '描述你遇到的问题（保存没反应、启动失败、界面卡住……）。先说出来，发送之后 AI 会帮你排查和整理。',
         'fb.send': '发送给 AI 排查',
@@ -213,6 +232,11 @@ window.__ModuleLoader__.load({
         'plugins.loaded': 'in Loader',
         'plugins.empty': '(empty)',
         'plugins.inventory-none': '(no profiles discovered — refresh in the Harness section first)',
+        // B3-13：随包内置插件的只读来源投影（launcher overlay 层真实事实）。
+        'plugins.builtin.title': 'Built into DeepSeekGUI',
+        'plugins.builtin.tag': 'built-in',
+        'plugins.builtin.locked': '(cannot be removed: DeepSeekGUI stops working without it)',
+        'plugins.builtin.spec-hint': 'This plugin is already built into DeepSeekGUI; no installation needed.',
         'plugins.recovery.pending': 'The last plugin change is waiting for restart verification.',
         'plugins.recovery.needed': 'A plugin change broke the Harness boot.',
         'plugins.recovery.drift': 'Profile files changed externally after the plugin change; auto-recovery stopped.',
@@ -221,6 +245,18 @@ window.__ModuleLoader__.load({
         'plugins.recovery.abandon': 'Abandon recovery (keep current state)',
         'plugins.recovery.open-profile': 'Open profile folder',
         'nav.feedback': 'Bug Report & Diagnostics',
+        'nav.memory': 'Global memory',
+        'memory.intro': 'Lets the assistant know your background across projects, so you repeat yourself less. Record how to address you, your background, working habits or usual tools, and anything else the assistant should know.',
+        'memory.placeholder': 'For example:\nI write novels and also make slide decks.\nI know Python well and have little front-end experience.',
+        'memory.note': 'You edit and save it; the assistant only reads it. Saved content is used in new sessions.',
+        'memory.save': 'Save changes',
+        'memory.saved': 'Saved',
+        'memory.open': 'Show in file manager',
+        'memory.unreadable': 'The file cannot be read right now (it may exceed the size limit); saving is disabled so the original is never overwritten.',
+        'memory.project-note': 'Information that belongs to one project is managed in the "Memory" panel at the top of the session.',
+        'memory.location': 'File location',
+        'memory.agents.note': 'AGENTS.md holds the collaboration rules you set for the assistant (how to communicate, how to work); it is read in every conversation and works fine unchanged.',
+        'memory.agents.open': 'Open AGENTS.md',
         'fb.prompt': 'What went wrong?',
         'fb.placeholder': 'Describe the problem you hit (save did nothing, launch failed, UI froze…). Say it first — after you send, the AI will triage and draft it for you.',
         'fb.send': 'Send to AI triage',
@@ -265,10 +301,13 @@ window.__ModuleLoader__.load({
       var token = value.slice(dot + 1)
       var base = 'http://127.0.0.1:' + port
       return {
-        async model() {
-          var r = await fetch(base + '/control/model', { headers: { 'x-deepseekgui-control-token': token } })
+        // since：上次拿到的 revision；内容没变时 main 只回
+        // `{ revision, changed: false }` 小包，不传全量模型（P7）。
+        async model(since) {
+          var query = since === null || since === undefined ? '' : '?since=' + String(since)
+          var r = await fetch(base + '/control/model' + query, { headers: { 'x-deepseekgui-control-token': token } })
           if (!r.ok) throw new Error('HTTP ' + String(r.status))
-          return (await r.json()).model
+          return await r.json()
         },
         async run(command) {
           var r = await fetch(base + '/control/command', {
@@ -366,7 +405,9 @@ window.__ModuleLoader__.load({
         h('span', { style: Object.assign({}, S.value), title: title }, value))
     }
 
-    /** 模型轮询 + 命令执行的公共 hook（分区激活时才挂载 → 才轮询）。 */
+    /** 模型轮询 + 命令执行的公共 hook（分区激活时才挂载 → 才轮询）。
+     *  轮询是**条件**的：每次带上次的 revision 拉取，main 只在内容变化时
+     *  回全量模型（`changed: false` 的小包不触发重渲染）。 */
     function useDesktopModel(bridge) {
       var state = React.useState(null)
       var model = state[0]; var setModel = state[1]
@@ -374,9 +415,15 @@ window.__ModuleLoader__.load({
       var error = errorState[0]; var setError = errorState[1]
       var busyState = React.useState(false)
       var busy = busyState[0]; var setBusy = busyState[1]
+      var revisionRef = React.useRef(null)
       var refresh = React.useCallback(function () {
-        bridge.model().then(
-          function (next) { setModel(next); setError(null) },
+        bridge.model(revisionRef.current).then(
+          function (envelope) {
+            if (envelope.changed === false) return
+            revisionRef.current = envelope.revision
+            setModel(envelope.model)
+            setError(null)
+          },
           function (cause) { setError(String(cause && cause.message || cause)) },
         )
       }, [])
@@ -388,7 +435,7 @@ window.__ModuleLoader__.load({
       var run = React.useCallback(function (command) {
         setBusy(true)
         bridge.run(command).then(
-          function (next) { if (next) setModel(next); setError(null); setBusy(false) },
+          function (next) { if (next) { revisionRef.current = next.revision; setModel(next) } setError(null); setBusy(false) },
           function (cause) { setError(String(cause && cause.message || cause)); setBusy(false) },
         )
       }, [])
@@ -536,7 +583,10 @@ window.__ModuleLoader__.load({
         // 始终禁用）。
         var opBusy = pm.operation !== null
           && (pm.operation.step === 'running' || pm.operation.step === 'post-check')
-        var canRun = !busy && !opBusy && effectiveTarget !== undefined && (!needsSpec || spec.trim() !== '')
+        // B3-13：add 输入内置包名时不提供执行入口——只读提示，禁止重复安装。
+        var builtinSpec = action === 'add'
+          && pm.builtin.indexOf(spec.trim()) >= 0
+        var canRun = !busy && !opBusy && !builtinSpec && effectiveTarget !== undefined && (!needsSpec || spec.trim() !== '')
 
         var opBlock = null
         if (pm.operation !== null) {
@@ -597,10 +647,26 @@ window.__ModuleLoader__.load({
                 : deps.map(function (dep) {
                   return h('div', { style: S.row, key: dep.name },
                     h('span', { style: S.value }, dep.name + (dep.spec ? ' @ ' + dep.spec : '')),
+                    // B3-13：与内置同名的依赖标记"已内置"（真实来源在随包 overlay 层）。
+                    dep.builtin === true ? h('span', { style: S.note }, t('plugins.builtin.tag')) : null,
                     dep.inBundles === true ? h('span', { style: S.note }, t('plugins.loaded')) : null)
                 }))
           })
         }
+
+        // B3-13：随包内置插件的只读来源投影——launcher overlay 层的真实
+        // 事实，不是 profile 清单，也不提供任何安装/移除入口。
+        var builtinBlock = pm.builtin.length === 0
+          ? null
+          : h('div', { style: S.group, 'data-deepseekgui': 'plugin-builtin' },
+            h('div', { style: S.title }, t('plugins.builtin.title')),
+            pm.builtin.map(function (name) {
+              // 2026-09-06 验收：随包插件被手动卸载会让 GUI 起不来，红字明示。
+              return h('div', { style: S.row, key: name },
+                h('span', { style: S.value }, name),
+                h('span', { style: S.note }, t('plugins.builtin.tag')),
+                h('span', { style: { color: 'var(--dsw-alias-state-error-primary)', fontSize: '12px', lineHeight: '18px' } }, t('plugins.builtin.locked')))
+            }))
 
         var actions = ['add', 'remove', 'update', 'install']
         return h('div', { style: S.section },
@@ -617,10 +683,12 @@ window.__ModuleLoader__.load({
                 style: S.input, 'data-deepseekgui': 'plugin-spec', value: spec, placeholder: t('plugins.spec.placeholder'),
                 onChange: function (event) { setSpec(event.target.value) },
               }),
+              // B3-13：内置包名给出明确提示，且执行钮已禁用（见 canRun）。
+              builtinSpec ? h('div', { style: S.note }, t('plugins.builtin.spec-hint')) : null,
               // 住户 2026-08-27 定的「矛盾转移」：与其在这里教用户 pnpm 的写法，
               // 不如引导他装一次插件市场——装完既学会了这个输入框，也从此有了
               // 图形化的插件浏览界面，不用再回来手打包名。
-              action === 'add' ? h('div', { style: S.note }, t('plugins.spec.market')) : null,
+              action === 'add' && !builtinSpec ? h('div', { style: S.note }, t('plugins.spec.market')) : null,
               h('div', { style: S.note }, t('plugins.spec.limits')))
             : null,
           h('div', { style: S.row },
@@ -631,6 +699,7 @@ window.__ModuleLoader__.load({
           opBlock,
           handoff,
           recovery,
+          builtinBlock,
           labeled(t, 'plugins.installed', h('div', { style: S.group }, inventory)))
       }
     }
@@ -779,6 +848,88 @@ window.__ModuleLoader__.load({
       }
     }
 
+    // ---- 分区四：记忆（全局）（D5-c，莉莉丝 2026-09-06） ----
+    //
+    // 全局 memory.md 的编辑起点来自控制模型的 globalMemory（main 每次构建
+    // 模型时有界读一次盘）；保存走封闭的 save-global-memory 命令（main 原子
+    // 写盘，不经 agent 权限门）。读不到时（null）禁用保存，绝不用截断内容
+    // 覆盖原文件。项目记忆不在这里：它在会话页顶部的「记忆」标签。
+
+    function makeMemorySection(bridge) {
+      return function MemorySection(props) {
+        var t = props.t
+        var d = useDesktopModel(bridge)
+        var draftState = React.useState(null)
+        var draft = draftState[0]; var setDraft = draftState[1]
+        var savedState = React.useState(false)
+        var saved = savedState[0]; var setSaved = savedState[1]
+        if (d.model === null) {
+          return h('div', { style: S.section },
+            d.error === null ? h('div', { style: S.note }, t('bridge.loading')) : h('div', { style: S.error }, t('bridge.error'), d.error))
+        }
+        var current = d.model.globalMemory
+        var unreadable = current === null || current === undefined
+        var value = draft === null ? (unreadable ? '' : current) : draft
+        var dirty = draft !== null && draft !== current
+        // D20 排版（莉莉丝 2026-09-06）：用途 → 编辑框（空时浅色示例占位，
+        // 占位只属于 UI，不写进文件）→ 一行说明 → 保存/已保存 + 右侧次要入口
+        // → 项目记忆一句 → 文件位置 → AGENTS.md 一行说明 + 打开按钮。
+        var sep = '\\'
+        var home = typeof d.model.dshHome === 'string' ? d.model.dshHome : ''
+        if (home.indexOf('/') !== -1 && home.indexOf('\\') === -1) sep = '/'
+        var readingText = { fontSize: '13px', lineHeight: '20px', color: 'var(--dsw-alias-label-secondary)' }
+        return h('div', { style: S.section },
+          h('div', { style: readingText }, t('memory.intro')),
+          unreadable ? h('div', { style: S.warnBox }, t('memory.unreadable')) : null,
+          h('div', { style: S.group },
+            h('textarea', {
+              rows: 10,
+              value: value,
+              disabled: unreadable,
+              placeholder: t('memory.placeholder'),
+              'aria-label': t('nav.memory'),
+              onChange: function (event) { setDraft(event.target.value); setSaved(false) },
+              style: Object.assign({}, S.input, {
+                width: '100%', boxSizing: 'border-box', resize: 'vertical', lineHeight: '22px', padding: '10px 12px',
+                background: 'var(--dsw-alias-bg-layer-2)',
+              }),
+            }),
+            h('div', { style: readingText }, t('memory.note'))),
+          h('div', { style: Object.assign({}, S.row, { flexWrap: 'wrap' }) },
+            h('button', {
+              type: 'button',
+              style: Object.assign({}, S.button, (unreadable || !dirty || d.busy) ? S.buttonDisabled : null),
+              disabled: unreadable || !dirty || d.busy,
+              onClick: function () {
+                bridge.run({ type: 'save-global-memory', content: value }).then(
+                  function () { setDraft(null); setSaved(true) },
+                  function () { setSaved(false) })
+              },
+            }, t('memory.save')),
+            saved ? h('span', { style: S.note }, t('memory.saved')) : null,
+            d.error !== null ? h('span', { style: S.error }, d.error) : null,
+            h('span', { style: { flex: '1 1 auto' } }),
+            h('button', {
+              type: 'button',
+              style: S.button,
+              onClick: function () { d.run({ type: 'open-memory', which: 'global' }) },
+            }, t('memory.open'))),
+          h('div', { style: S.group },
+            h('div', { style: readingText }, t('memory.project-note')),
+            home !== '' ? h('div', { style: Object.assign({}, S.note, { overflowWrap: 'anywhere' }) },
+              t('memory.location'), t('format.colon'), home + sep + 'memory.md') : null),
+          h('div', { style: S.group },
+            h('div', { style: readingText }, t('memory.agents.note')),
+            h('div', { style: S.row },
+              h('button', {
+                type: 'button',
+                style: S.button,
+                onClick: function () { d.run({ type: 'open-memory', which: 'global-agents' }) },
+              }, t('memory.agents.open')),
+              home !== '' ? h('span', { style: Object.assign({}, S.note, { overflowWrap: 'anywhere' }) }, home + sep + 'AGENTS.md') : null)))
+      }
+    }
+
     function applyInner(ctx) {
       var bridge = readBridge()
       if (bridge === null) return
@@ -787,6 +938,16 @@ window.__ModuleLoader__.load({
       var HarnessSection = makeHarnessSection(bridge)
       var PluginsSection = makePluginsSection(bridge)
       var FeedbackSection = makeFeedbackSection(bridge)
+      var MemorySection = makeMemorySection(bridge)
+      ctx.slots.inject('settings.section', function () {
+        return ctx.slots.register({
+          name: 'settings.section',
+          id: 'deepseekgui-memory',
+          order: 43,
+          label: function () { return t('nav.memory') },
+          locale: NS,
+        }, MemorySection)
+      })
       ctx.slots.inject('settings.section', function () {
         return ctx.slots.register({
           name: 'settings.section',

@@ -1,15 +1,20 @@
 /**
- * DeepSeekGUI 对官方 Harness HTTP RPC 的最小客户端：settings.describe /
- * settings.mutate 走官方 settings service（唯一写路径），DeepSeekGUI 绝不
- * 直接编辑 settings.yaml 来实现设置切换。
+ * DeepSeekGUI 对官方 Harness Remote HTTP RPC 的最小客户端（B5-P1 迁移）：
+ * `settings/describe`、`settings/mutate` 走官方 settings Remote namespace
+ * （唯一写路径），`session/list`、`session/create`、`session/prompt` 走官方
+ * session Remote namespace——DeepSeekGUI 绝不直接编辑 settings.yaml 或
+ * session 文件来实现设置切换与诊断会话。
  *
- * 传输契约（官方 client-connection + apiproxy fetch carrier）：
- * - POST `${base}/api/<method>`，JSON 信封
- *   `{ type: 'client-request', rpcId, method, payload }`；
+ * 传输契约（官方 client-connection 的 client-request 信封 + API Gateway
+ * Remote 方法，dsh 0.1.2）：
+ * - POST `${base}/api/<namespace>/<method>`，JSON 信封
+ *   `{ type: 'client-request', rpcId, method, payload: { args } }`；
+ *   端点与 args 键名 = host Remote 方法声明（单 `request` 参数的端点
+ *   args 为 `{ request }`；多参数端点平铺，如 settings/mutate 的
+ *   `{ ns, ops, expectedRevision }`）；
  * - 响应 `{ type: 'server-response', rpcId, result: { ok, value | error } }`，
  *   业务错误恒为 HTTP 200 + `ok: false`；
- * - 这类方法在官方是 loopback-privileged：DeepSeekGUI 只向
- *   `127.0.0.1:3080` 发，绝不移用其他方法。
+ * - 本客户端只向 `127.0.0.1:<APP_PORT>`（loopback）发调用。
  *
  * 所有解析严格：响应形状不符按错误处理（fail closed），绝不猜测降级。
  * 纯 Node 模块，fetch 经注入面传入（单测用 fake），不依赖 Electron。
@@ -19,7 +24,7 @@
 import { randomUUID } from 'node:crypto'
 import type { SettingsDescribeValue, SettingsNamespaceView, SettingsPathOp } from './harness-api-types.ts'
 
-export type { SettingsDescribeValue, SettingsNamespaceView, SettingsPathOp } from './harness-api-types.ts'
+export type { SettingsDescribeValue } from './harness-api-types.ts'
 
 /** 官方 RPC 业务错误。 */
 export class HarnessRpcError extends Error {
@@ -33,7 +38,7 @@ export class HarnessRpcError extends Error {
 }
 
 /** 可注入的 fetch 面（Node 全局 fetch 满足）。 */
-export interface FetchLike {
+interface FetchLike {
   (url: string, init: {
     method: string
     headers: Record<string, string>
@@ -44,7 +49,7 @@ export interface FetchLike {
 
 /** 创建官方 RPC 客户端的输入。 */
 export interface HarnessApiOptions {
-  /** 官方服务基址（恒为 http://127.0.0.1:3080）。 */
+  /** 官方服务基址（恒为 http://127.0.0.1:<APP_PORT>）。 */
   baseUrl: string
   /** fetch 实现（测试注入 fake）。 */
   fetch: FetchLike
@@ -58,21 +63,19 @@ export interface HarnessApiOptions {
 export interface HarnessApi {
   settingsDescribe(): Promise<SettingsDescribeValue>
   settingsMutate(ns: string, ops: SettingsPathOp[], expectedRevision?: number): Promise<SettingsNamespaceView>
-  /** 枚举当前会话（session.list）；P7-F 退出确认用它数运行中会话。 */
+  /** 枚举当前会话（session/list）；P7-F 退出确认用它数运行中会话。 */
   sessionList(): Promise<SessionListValue>
-  /** 新建诊断会话（session.create；cwd 与工作区隔离）。 */
+  /** 新建诊断会话（session/create；cwd 与工作区隔离）。 */
   sessionCreate(payload: SessionCreatePayload): Promise<SessionCreateValue>
-  /** 向会话发一条用户消息（session.prompt，queue 模式）。 */
+  /** 向会话发一条用户消息（session/prompt，queue 模式；requestId 由本客户端 mint）。 */
   sessionPrompt(payload: SessionPromptPayload): Promise<void>
-  /** 拉取会话历史（session.history 尾页）；P7-A 用它等 AI 排查结算。 */
-  sessionHistory(payload: SessionHistoryPayload): Promise<SessionHistoryValue>
 }
 
-/** session.list 的一行摘要（官方 sessionSummarySchema 的受信面）。 */
-export interface SessionSummary {
+/** session/list 的一行摘要（官方 SessionSummary 的受信面）。 */
+interface SessionSummary {
   sessionId: string
   updatedAt: number
-  /** 该会话是否正在执行（官方 host/session-status running 位的同一事实）。 */
+  /** 该会话是否正在执行（官方 agent/status running 位的同一事实）。 */
   running: boolean
   /** 空会话（尚未开始轮次）。 */
   blank: boolean
@@ -83,52 +86,32 @@ export interface SessionSummary {
   projections?: unknown
 }
 
-/** session.list 的响应值。 */
+/** session/list 的响应值。 */
 export interface SessionListValue {
   items: SessionSummary[]
 }
 
-/** session.create 的请求载荷（cwd 与 workspaceId 二选一；诊断会话只用 cwd）。 */
-export interface SessionCreatePayload {
+/** session/create 的请求载荷（cwd 与 workspaceId 二选一；诊断会话只用 cwd）。 */
+interface SessionCreatePayload {
   cwd?: string
   agentPreset?: string
 }
 
-/** session.create 的响应值。 */
-export interface SessionCreateValue {
+/** session/create 的响应值。 */
+interface SessionCreateValue {
   sessionId: string
   agentPreset?: string
 }
 
-/** session.prompt 的请求载荷。 */
-export interface SessionPromptPayload {
+/** session/prompt 的请求载荷。 */
+interface SessionPromptPayload {
   sessionId: string
   mode: 'queue' | 'steer'
   content: { type: 'text'; text: string }[]
 }
 
-/** session.history 的请求载荷。 */
-export interface SessionHistoryPayload {
-  sessionId: string
-  maxMessages?: number
-}
-
-/** 一条会话事件的宽松视图：envelope 严格，data 保持未知（本客户端只取受信字段）。 */
-export interface SessionEventView {
-  type: string
-  seq: number
-  time: number
-  data: unknown
-}
-
-/** session.history 的响应值。 */
-export interface SessionHistoryValue {
-  events: { event: SessionEventView }[]
-  hasMore: boolean
-}
-
 /** 默认单次调用超时（毫秒）。 */
-export const DEFAULT_RPC_TIMEOUT_MS = 5_000
+const DEFAULT_RPC_TIMEOUT_MS = 5_000
 
 /** 严格解析 settings namespace 视图（值字段保持 unknown，调用方再解释）。 */
 function parseNamespaceView(raw: unknown, where: string, zh: boolean): SettingsNamespaceView {
@@ -152,20 +135,20 @@ function parseNamespaceView(raw: unknown, where: string, zh: boolean): SettingsN
   return { ns, value: record.value, applies, revision }
 }
 
-/** 严格解析 settings.describe 的 value。 */
+/** 严格解析 settings/describe 的 value。 */
 function parseDescribeValue(raw: unknown, zh: boolean): SettingsDescribeValue {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
-    throw new HarnessRpcError('bad-response', zh ? 'settings.describe value: 必须是对象' : 'settings.describe value: must be an object')
+    throw new HarnessRpcError('bad-response', zh ? 'settings/describe value: 必须是对象' : 'settings/describe value: must be an object')
   }
   const record = raw as Record<string, unknown>
   if (typeof record.writable !== 'boolean') {
-    throw new HarnessRpcError('bad-response', zh ? 'settings.describe value.writable: 必须是布尔值' : 'settings.describe value.writable: must be a boolean')
+    throw new HarnessRpcError('bad-response', zh ? 'settings/describe value.writable: 必须是布尔值' : 'settings/describe value.writable: must be a boolean')
   }
   if (typeof record.hasDocument !== 'boolean') {
-    throw new HarnessRpcError('bad-response', zh ? 'settings.describe value.hasDocument: 必须是布尔值' : 'settings.describe value.hasDocument: must be a boolean')
+    throw new HarnessRpcError('bad-response', zh ? 'settings/describe value.hasDocument: 必须是布尔值' : 'settings/describe value.hasDocument: must be a boolean')
   }
   if (!Array.isArray(record.namespaces)) {
-    throw new HarnessRpcError('bad-response', zh ? 'settings.describe value.namespaces: 必须是数组' : 'settings.describe value.namespaces: must be an array')
+    throw new HarnessRpcError('bad-response', zh ? 'settings/describe value.namespaces: 必须是数组' : 'settings/describe value.namespaces: must be an array')
   }
   return {
     writable: record.writable,
@@ -180,7 +163,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * 严格解析 session.list 的一行摘要。只校验 DeepSeekGUI 消费的受信字段
+ * 严格解析 session/list 的一行摘要。只校验 DeepSeekGUI 消费的受信字段
  * （sessionId / updatedAt / running / blank），未知字段容忍（上游扩展
  * 不破坏本客户端）；形状不符按错误处理（fail closed），绝不猜测降级。
  * @param raw - 一行原始值。
@@ -215,19 +198,19 @@ function parseSessionSummary(raw: unknown, where: string, zh: boolean): SessionS
   }
 }
 
-/** 严格解析 session.list 的响应值。 */
+/** 严格解析 session/list 的响应值。 */
 function parseSessionListValue(raw: unknown, zh: boolean): SessionListValue {
   if (!isRecord(raw) || !Array.isArray(raw.items)) {
-    throw new HarnessRpcError('bad-response', zh ? 'session.list value: 必须是含 items 数组的对象' : 'session.list value: must be an object containing an items array')
+    throw new HarnessRpcError('bad-response', zh ? 'session/list value: 必须是含 items 数组的对象' : 'session/list value: must be an object containing an items array')
   }
   return { items: raw.items.map((row, index) => parseSessionSummary(row, `items[${index}]`, zh)) }
 }
 
-/** 严格解析 session.create 的响应值。 */
+/** 严格解析 session/create 的响应值。 */
 function parseSessionCreateValue(raw: unknown, zh: boolean): SessionCreateValue {
-  if (!isRecord(raw)) throw new HarnessRpcError('bad-response', zh ? 'session.create value: 必须是对象' : 'session.create value: must be an object')
+  if (!isRecord(raw)) throw new HarnessRpcError('bad-response', zh ? 'session/create value: 必须是对象' : 'session/create value: must be an object')
   if (typeof raw.sessionId !== 'string' || raw.sessionId.length === 0) {
-    throw new HarnessRpcError('bad-response', zh ? 'session.create value.sessionId: 必须是非空字符串' : 'session.create value.sessionId: must be a non-empty string')
+    throw new HarnessRpcError('bad-response', zh ? 'session/create value.sessionId: 必须是非空字符串' : 'session/create value.sessionId: must be a non-empty string')
   }
   return {
     sessionId: raw.sessionId,
@@ -235,70 +218,31 @@ function parseSessionCreateValue(raw: unknown, zh: boolean): SessionCreateValue 
   }
 }
 
-/** 严格解析 session.prompt 的响应值。 */
+/** 严格解析 session/prompt 的响应值。 */
 function assertSessionPromptValue(raw: unknown, zh: boolean): void {
   if (!isRecord(raw) || raw.accepted !== true) {
-    throw new HarnessRpcError('bad-response', zh ? 'session.prompt value: accepted 必须为 true' : 'session.prompt value: accepted must be true')
-  }
-}
-
-/** 严格解析 session.history 的一条事件视图。 */
-function parseSessionEventView(raw: unknown, where: string, zh: boolean): SessionEventView {
-  if (!isRecord(raw)) throw new HarnessRpcError('bad-response', zh ? `${where}: 必须是对象` : `${where}: must be an object`)
-  if (typeof raw.type !== 'string' || raw.type.length === 0) {
-    throw new HarnessRpcError('bad-response', zh ? `${where}.type: 必须是非空字符串` : `${where}.type: must be a non-empty string`)
-  }
-  if (typeof raw.seq !== 'number' || !Number.isInteger(raw.seq) || raw.seq < 0) {
-    throw new HarnessRpcError('bad-response', zh ? `${where}.seq: 必须是非负整数` : `${where}.seq: must be a non-negative integer`)
-  }
-  if (typeof raw.time !== 'number' || !Number.isFinite(raw.time)) {
-    throw new HarnessRpcError('bad-response', zh ? `${where}.time: 必须是有限数字` : `${where}.time: must be a finite number`)
-  }
-  if (!('data' in raw)) {
-    throw new HarnessRpcError('bad-response', zh ? `${where}.data: 缺失` : `${where}.data: is missing`)
-  }
-  return { type: raw.type, seq: raw.seq, time: raw.time, data: raw.data }
-}
-
-/** 严格解析 session.history 的响应值。 */
-function parseSessionHistoryValue(raw: unknown, zh: boolean): SessionHistoryValue {
-  if (!isRecord(raw) || !Array.isArray(raw.events)) {
-    throw new HarnessRpcError('bad-response', zh ? 'session.history value: 必须是含 events 数组的对象' : 'session.history value: must be an object containing an events array')
-  }
-  if (typeof raw.hasMore !== 'boolean') {
-    throw new HarnessRpcError('bad-response', zh ? 'session.history value.hasMore: 必须是布尔值' : 'session.history value.hasMore: must be a boolean')
-  }
-  return {
-    events: raw.events.map((row, index) => {
-      if (!isRecord(row) || !('event' in row)) {
-        throw new HarnessRpcError('bad-response', zh
-          ? `session.history value.events[${index}]: 必须含 event`
-          : `session.history value.events[${index}]: must contain event`)
-      }
-      return { event: parseSessionEventView(row.event, `events[${index}].event`, zh) }
-    }),
-    hasMore: raw.hasMore,
+    throw new HarnessRpcError('bad-response', zh ? 'session/prompt value: accepted 必须为 true' : 'session/prompt value: accepted must be true')
   }
 }
 
 /**
  * 创建官方 RPC 客户端。
  * @param options - 基址、fetch 与超时。
- * @returns settings 最小面。
+ * @returns settings 与 session 最小面。
  */
 export function createHarnessApi(options: HarnessApiOptions): HarnessApi {
   const timeoutMs = options.timeoutMs ?? DEFAULT_RPC_TIMEOUT_MS
   const zh = options.zh ?? (() => true)
 
   /** 单次调用的超时上限：调用方传更紧的超时（如退出确认的 1500ms）时取更小值。 */
-  const call = async (method: string, payload: unknown, callTimeoutMs: number = timeoutMs): Promise<unknown> => {
+  const call = async (method: string, args: unknown, callTimeoutMs: number = timeoutMs): Promise<unknown> => {
     const rpcId = randomUUID()
     let response: { ok: boolean; status: number; json: () => Promise<unknown> }
     try {
       response = await options.fetch(`${options.baseUrl}/api/${method}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'client-request', rpcId, method, payload }),
+        body: JSON.stringify({ type: 'client-request', rpcId, method, payload: { args } }),
         signal: AbortSignal.timeout(Math.min(callTimeoutMs, timeoutMs)),
       })
     } catch (error) {
@@ -334,29 +278,31 @@ export function createHarnessApi(options: HarnessApiOptions): HarnessApi {
 
   return {
     async settingsDescribe() {
-      return parseDescribeValue(await call('settings.describe', {}), zh())
+      return parseDescribeValue(await call('settings/describe', {}), zh())
     },
     async settingsMutate(ns, ops, expectedRevision) {
-      const value = await call('settings.mutate', {
+      const value = await call('settings/mutate', {
         ns,
         ops,
         ...expectedRevision === undefined ? {} : { expectedRevision },
       })
-      return parseNamespaceView(value, 'settings.mutate value', zh())
+      return parseNamespaceView(value, 'settings/mutate value', zh())
     },
     async sessionList() {
-      return parseSessionListValue(await call('session.list', {}, 1_500), zh())
+      // 官方 session-controller 的 list 方法签名参数名是 `_request`
+      // （保留空请求参数），typert 网关按签名参数名生成 wire 字段——
+      // 因此 args 键为 `_request`，与 create/prompt 的 `request` 不同。
+      return parseSessionListValue(await call('session/list', { _request: {} }, 1_500), zh())
     },
     async sessionCreate(payload) {
-      const value = await call('session.create', payload)
+      const value = await call('session/create', { request: payload })
       return parseSessionCreateValue(value, zh())
     },
     async sessionPrompt(payload) {
-      assertSessionPromptValue(await call('session.prompt', payload), zh())
-    },
-    async sessionHistory(payload) {
-      const value = await call('session.history', payload)
-      return parseSessionHistoryValue(value, zh())
+      // requestId 由客户端 mint（官方 prompt 请求的必填关联身份；host 以它
+      // 关联持久 user/message 的 rpcId 来源，桌面不消费回显）。
+      const requestId = randomUUID()
+      assertSessionPromptValue(await call('session/prompt', { request: { requestId, ...payload } }), zh())
     },
   }
 }

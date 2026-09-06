@@ -37,11 +37,14 @@ describe('状态胶囊七相映射', () => {
   it.each([
     [{ phase: 'idle' }, 'grey', '未运行'],
     [{ phase: 'stopping' }, 'grey', '正在停止'],
-    [{ phase: 'starting', profile: 'web' }, 'blue', '正在启动 · web'],
+    // D2：默认 profile `web` 不进胶囊（它是官方 profile 名，不是"网页版"）；
+    // 非默认 profile 才带名字。
+    [{ phase: 'starting', profile: 'web' }, 'blue', '正在启动'],
     [{ phase: 'switching', profile: 'p2' }, 'blue', '正在切换 · p2'],
-    [{ phase: 'recovering', profile: 'web' }, 'yellow', '正在恢复 · web'],
-    [{ phase: 'running', profile: 'web', recovered: false }, 'green', '运行中 · web'],
-    [{ phase: 'running', profile: 'web', recovered: true }, 'yellow', '已恢复 · web'],
+    [{ phase: 'recovering', profile: 'web' }, 'yellow', '正在恢复'],
+    [{ phase: 'running', profile: 'web', recovered: false }, 'green', '运行中'],
+    [{ phase: 'running', profile: 'lab', recovered: false }, 'green', '运行中 · lab'],
+    [{ phase: 'running', profile: 'web', recovered: true }, 'yellow', '已恢复'],
     [{ phase: 'failed', stage: 'spawn' }, 'red', '启动失败'],
   ] as const)('%j → %s %s', (status, tone, text) => {
     expect(pillView(status as DesktopControlModel['status'], zh)).toEqual({ tone, text })
@@ -49,7 +52,9 @@ describe('状态胶囊七相映射', () => {
 
   it('英文 fallback 同样映射', () => {
     expect(pillView({ phase: 'running', profile: 'web', recovered: false }, en))
-      .toEqual({ tone: 'green', text: 'Running · web' })
+      .toEqual({ tone: 'green', text: 'Running' })
+    expect(pillView({ phase: 'running', profile: 'lab', recovered: false }, en))
+      .toEqual({ tone: 'green', text: 'Running · lab' })
   })
 })
 
@@ -78,7 +83,9 @@ describe('信息行与专家详情', () => {
     highContrast: false,
     recoveryNotice: null,
     sessionPressure: null,
-    pluginManager: { profiles: [], error: null, operation: null, handoffPending: false, recovery: null },
+    pluginManager: { profiles: [], error: null, operation: null, handoffPending: false, recovery: null, builtin: [] },
+    revision: 1,
+    viewMode: 'workbench',
     update: {
       channel: null, state: 'idle', result: null, latestVersion: null, releaseNotes: null,
       progressBytes: null, progressTotal: null, message: null,
@@ -88,6 +95,8 @@ describe('信息行与专家详情', () => {
     permissions: { mode: 'sandbox', preset: 'workspace-write', detail: null },
     powerShell7Available: true,
     browserPane: { present: false, open: false },
+    navigateRequest: null,
+    globalMemory: '',
   }
 
   it('默认信息行不含 pending（内部状态名不进默认视图），路径 compact + hover 全值', () => {

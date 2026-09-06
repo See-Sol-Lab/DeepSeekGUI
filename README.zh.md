@@ -1,6 +1,6 @@
 <div align="center">
 
-# <img src="./apps/desktop/src/chrome/icon.png" width="38" alt="" align="absmiddle" /> DeepSeekGUI v1.0.0
+# <img src="./apps/desktop/src/chrome/icon.png" width="38" alt="" align="absmiddle" /> DeepSeekGUI v1
 
 </div>
 
@@ -11,7 +11,7 @@
 </div>
 
 <p align="center">
-  <em>桌面运行的deepSeek AI助手。</em>
+  <em>DeepSeek 的 AI 编程助手，装在桌面上。</em>
 </p>
 
 <p align="center">
@@ -21,9 +21,17 @@
 <p align="center">
   <a href="https://github.com/See-Sol-Lab/DeepSeekGUI/releases/latest"><img alt="最新版本" src="https://img.shields.io/github/v/release/See-Sol-Lab/DeepSeekGUI?style=flat-square&label=release" /></a>
   <a href="https://github.com/See-Sol-Lab/DeepSeekGUI/releases"><img alt="下载量" src="https://img.shields.io/github/downloads/See-Sol-Lab/DeepSeekGUI/total?style=flat-square" /></a>
-  <a href="https://doi.org/10.5281/zenodo.22205160"><img alt="DOI" src="https://zenodo.org/badge/DOI/10.5281/zenodo.22205160.svg" /></a>
   <img alt="Windows 10 与 11 x64" src="https://img.shields.io/badge/Windows-10%20%7C%2011%20x64-0078D4?style=flat-square&logo=windows" />
   <a href="DEEPSEEKGUI-LICENSE.md"><img alt="源码可见" src="https://img.shields.io/badge/source-available-6f42c1?style=flat-square" /></a>
+  <a href="https://doi.org/10.5281/zenodo.22205160"><img alt="DOI" src="https://zenodo.org/badge/DOI/10.5281/zenodo.22205160.svg" /></a>
+</p>
+
+<p align="center">
+  <a href="https://dshfind.com/zh/plugins/See-Sol-Lab/DeepSeekGUI?ref=badge"><img alt="DeepSeekGUI 收录于 dshfind" src="https://dshfind.com/api/card/See-Sol-Lab/DeepSeekGUI?lang=zh" width="440" /></a>
+</p>
+
+<p align="center">
+  <img alt="DeepSeekGUI —— 面向 agentic 编程的 harness-first 桌面工作台" src="docs/media/readme-hero.png" width="920" />
 </p>
 
 <!-- PRODUCT HUNT BADGE SLOT — 等 launch 有排名后恢复（在那之前 badge 显示 "???"）：
@@ -43,13 +51,13 @@ DeepSeekGUI 把 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harne
 
 **非官方产品：** 基于 DeepSeek Harness 构建，但由第三方独立开发，与 DeepSeek 官方无关。上游运行时和官方 Web UI 是 DeepSeek 的工作成果。
 
-> **开发方向：** V1 是对上游 Web UI 的桌面包装。完全独立的自研工作台正在开发中，预计在 **v2.0.0** 发布。
+> **开发方向：** DeepSeekGUI 1.1.0（B5 开发态候选）在官方 DSH 0.1.2 Web UI 之上交付自研 Workbench 壳层——工具结果卡片、按需检查器、会话记录树与扁平文件记忆。完全独立的桌面界面仍是后续方向，不再承诺具体版本。
 
 ## 下载
 
 | 平台 | 下载 | 要求 |
 | --- | --- | --- |
-| Windows | [下载安装包](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.0.0/DeepSeekGUI-Setup-1.0.0.exe) | Windows 10/11，x64 |
+| Windows | [下载安装包](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.1.0/DeepSeekGUI-Setup-1.1.0.exe) | Windows 10/11，x64 |
 
 安装在当前用户下，双击即可。安装包自带运行时，开箱即用。
 
@@ -62,10 +70,10 @@ DeepSeekGUI 把 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harne
 
 ```powershell
 gh release download --repo See-Sol-Lab/DeepSeekGUI --pattern 'DeepSeekGUI-Setup-*.exe' --pattern 'SHA256SUMS.txt' --clobber
-Get-FileHash .\DeepSeekGUI-Setup-1.0.0.exe -Algorithm SHA256
+Get-FileHash .\DeepSeekGUI-Setup-1.1.0.exe -Algorithm SHA256
 ```
 
-hash 和 [`SHA256SUMS.txt`](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.0.0/SHA256SUMS.txt) 对上了再装。遇到问题看[故障排查指南](docs/user/deepseekgui/data-troubleshooting.zh.md#windows-smartscreen-blocks-the-installer)。
+hash 和 [`SHA256SUMS.txt`](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.1.0/SHA256SUMS.txt) 对上了再装。遇到问题看[故障排查指南](docs/user/deepseekgui/data-troubleshooting.zh.md#windows-smartscreen-blocks-the-installer)。
 
 </details>
 
@@ -131,7 +139,7 @@ V1.0 面向 Windows x64。代码签名随后跟上（届时 SmartScreen 警告�
 | 版本 | 状态 | 内容 |
 | --- | --- | --- |
 | **v1.0** | 已发布 | 将官方 Harness Web UI 包进桌面应用，增加安装包、系统托盘、内置浏览器和终端。 |
-| **v2.0** | 开发中 | 完全独立的自研工作台——从零构建桌面专属界面，替换上游 Web UI。 |
+| **1.1.0** | 开发中（B5 候选） | 在官方 0.1.2 Web UI 之上的自研 Workbench 叠加层——工具卡片、按需检查器、会话树、扁平文件记忆——外加 v1.0 的桌面集成。 |
 
 ## 文档
 
@@ -154,6 +162,8 @@ V1.0 面向 Windows x64。代码签名随后跟上（届时 SmartScreen 警告�
 日志会自动把像密钥的内容打码。诊断文件存在本地。卸载时会问你要保留还是清除数据，保留的话下次装回来还能接着用。
 
 ## 从源码构建
+
+<a id="run-deepseekgui-from-source"></a>
 
 ### 从源码运行 DeepSeekGUI
 

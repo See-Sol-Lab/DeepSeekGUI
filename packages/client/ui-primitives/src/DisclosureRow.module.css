@@ -1,4 +1,10 @@
-/* Shared disclosure header: [16px leading] gap 6 [title 14/24]. */
+/* Shared disclosure header: [16px leading] gap 6 [title 13/24] at the default
+   size. The Settings font-size preference moves the row through the
+   body-published axis: title size follows the secondary tier
+   (--dsh-content-font-size-secondary: one step under the body — setting −1 at
+   ≤14, setting −2 above), and the row height, leading box, and glyph edge
+   shift by the body px delta so the icon keeps its optical share of the
+   line. */
 
 .root {
   display: flex;
@@ -12,13 +18,7 @@
   overflow: hidden;
   display: flex;
   align-items: center;
-  /* Host hook (DeepSeekGUI D45 续，2026-08-24): the 24px row is figma's single
-     line for 14/24 text. D45 shrank the text to 11/18 through the font hooks
-     but left this box at 24px, so every think/tool row carries 6px of dead
-     height. Keep the default at figma; a host that shrinks the type shrinks
-     the box with it. Never set it below --dsh-chrome-row-line-height or the
-     glyphs clip. */
-  height: var(--dsh-chrome-row-height, 24px);
+  height: calc(24px + var(--dsh-content-font-delta, 0px));
   min-width: 0;
 }
 
@@ -29,8 +29,8 @@
 .leading {
   position: relative;
   flex: none;
-  width: 16px;
-  height: 16px;
+  width: calc(16px + var(--dsh-content-font-delta, 0px));
+  height: calc(16px + var(--dsh-content-font-delta, 0px));
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -39,6 +39,15 @@
   border: none;
   background: none;
   color: var(--dsw-alias-label-tertiary);
+}
+
+/* Flow-row glyphs render at 14px inside the 16px box; the CSS edge overrides
+   each svg's own width/height attributes so every registered icon scales
+   without a per-callsite size prop. StateDot (its svg carries data-state)
+   stays at its fixed figma size — it is a status mark, not text furniture. */
+.leading svg:not([data-state]) {
+  width: calc(14px + var(--dsh-content-font-delta, 0px));
+  height: calc(14px + var(--dsh-content-font-delta, 0px));
 }
 
 button.leading {
@@ -69,9 +78,7 @@ button.leading {
 
 .title {
   flex: none;
-  /* Host hook (DeepSeekGUI P8-D45): disclosure chrome (think/tool rows) may
-     scale down with a smaller transcript body; defaults keep upstream 14/24. */
-  font-size: var(--dsh-chrome-row-font-size, 14px);
-  line-height: var(--dsh-chrome-row-line-height, 24px);
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  line-height: calc(24px + var(--dsh-content-font-delta, 0px));
   color: var(--dsw-alias-label-secondary);
 }

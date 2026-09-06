@@ -30,6 +30,11 @@ const ZH: ChromeStrings = {
   'menu.plugin-recovery.open-profile': '打开 Profile 文件夹',
   'menu.restart-harness': '重启 Harness',
   'menu.terminal': 'DSH 终端',
+  // 逃生门语义（2026-09-02 开发者定调）：官方 Web UI 是备份/诊断层——GUI 出问题时用户仍能用官方界面自助维护。
+  'menu.compatibility': '官方原生界面',
+  // D3（莉莉丝 2026-09-05）：已在官方原生界面时，同一菜单项变成回程票——
+  // 用户不该被要求知道"切回去要去托盘右键"。
+  'menu.workbench': '切回 DeepSeekGUI 界面',
   'menu.browser.show': '显示浏览器面板',
   'menu.browser.hide': '收起浏览器面板',
   'menu.update': '检查更新',
@@ -172,6 +177,8 @@ const EN: ChromeStrings = {
   'menu.plugin-recovery.open-profile': 'Open Profile Folder',
   'menu.restart-harness': 'Restart Harness',
   'menu.terminal': 'DSH Terminal',
+  'menu.compatibility': 'Official Web UI',
+  'menu.workbench': 'Back to DeepSeekGUI',
   'menu.browser.show': 'Show Browser Panel',
   'menu.browser.hide': 'Hide Browser Panel',
   'menu.update': 'Check for Updates',
@@ -323,19 +330,26 @@ export interface PillView {
  * @returns 胶囊展示事实。
  */
 export function pillView(status: DesktopRuntimeStatus, dict: ChromeStrings): PillView {
+  // D2（莉莉丝 2026-09-05）：默认 profile 的名字 `web` 是官方给 profile 起的
+  // 名，不是"网页版"；裸露在胶囊里会被当成"没在本地跑"。只有用户切到了
+  // 非默认 profile 时才值得在胶囊里带名字。
+  const suffix = (profile: string): string => profile === DEFAULT_PROFILE ? '' : ` · ${profile}`
   switch (status.phase) {
     case 'idle': return { tone: 'grey', text: t(dict, 'status.idle') }
     case 'stopping': return { tone: 'grey', text: t(dict, 'status.stopping') }
-    case 'starting': return { tone: 'blue', text: `${t(dict, 'status.starting')} · ${status.profile}` }
-    case 'switching': return { tone: 'blue', text: `${t(dict, 'status.switching')} · ${status.profile}` }
-    case 'recovering': return { tone: 'yellow', text: `${t(dict, 'status.recovering')} · ${status.profile}` }
+    case 'starting': return { tone: 'blue', text: `${t(dict, 'status.starting')}${suffix(status.profile)}` }
+    case 'switching': return { tone: 'blue', text: `${t(dict, 'status.switching')}${suffix(status.profile)}` }
+    case 'recovering': return { tone: 'yellow', text: `${t(dict, 'status.recovering')}${suffix(status.profile)}` }
     case 'running':
       return status.recovered
-        ? { tone: 'yellow', text: `${t(dict, 'status.recovered')} · ${status.profile}` }
-        : { tone: 'green', text: `${t(dict, 'status.running')} · ${status.profile}` }
+        ? { tone: 'yellow', text: `${t(dict, 'status.recovered')}${suffix(status.profile)}` }
+        : { tone: 'green', text: `${t(dict, 'status.running')}${suffix(status.profile)}` }
     case 'failed': return { tone: 'red', text: t(dict, 'status.failed') }
   }
 }
+
+/** 托管 Home 的默认 profile 名（launcher state 缺省值）；胶囊对它不带名字。 */
+const DEFAULT_PROFILE = 'web'
 
 /** 面板信息行。 */
 export interface InfoRow {

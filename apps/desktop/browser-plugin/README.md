@@ -11,6 +11,7 @@ DeepSeekGUI's browser plugin exposes a visible Microsoft Edge browser to the age
 - `browser_navigate` opens a URL after the SSRF policy accepts it. Local, private, and reserved addresses are refused, including DeepSeekGUI's own loopback control service.
 - `browser_snapshot` returns the accessibility tree and visible text, with stable `ref` values for later interaction.
 - `browser_screenshot` saves a page screenshot locally. A vision-capable model is required to inspect the image itself.
+- Reads against the shell's own empty placeholder page (the pane was reopened or rebuilt) fail with a plain instruction to navigate again instead of returning the placeholder copy; a hidden or not-yet-composited pane reports itself the same way instead of a raw "0 width" error.
 - `browser_wait` waits for load, network idle, a selector, or a bounded delay.
 - `browser_tabs` lists, creates, switches, and closes tabs.
 

@@ -11,31 +11,29 @@
  * @module @see-sol-lab/deepseekgui/main
  */
 
-import {
-  chmodSync, createReadStream,
-  existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync,
-  unlinkSync, watch, writeFileSync, type FSWatcher,
-} from 'node:fs'
-import { spawn, type ChildProcess } from 'node:child_process'
+import { chmodSync, createReadStream, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, type FSWatcher, unlinkSync, watch, writeFileSync } from 'node:fs'
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { once } from 'node:events'
-import { basename, delimiter, dirname, join, resolve } from 'node:path'
+import { basename, delimiter, dirname, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { homedir, hostname, release, version as osVersion } from 'node:os'
 import { createServer } from 'node:http'
 import https from 'node:https'
-import { app, BrowserWindow, clipboard, crashReporter, dialog, ipcMain, Menu, nativeImage, nativeTheme, screen, shell, Tray, WebContentsView } from 'electron'
+import { app, BrowserWindow, clipboard, crashReporter, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, screen, shell, Tray, WebContentsView } from 'electron'
 import { HarnessController, type HarnessRuntimeAdapter } from './harness-controller.ts'
 import {
   buildControlModel,
+  MEMORY_GLOBAL_CONTENT_MAX,
   parseControlCommand,
+  parseModelSinceParam,
   type DesktopControlCommand,
   type DesktopControlModel,
   type DiagnosticsView,
   type PluginOperationView,
   type UpdateView,
 } from './control-model.ts'
-import { createControlDispatcher, type ControlStateHolder } from './control-dispatch.ts'
+import { createControlDispatcher, type ControlDispatchDeps, type ControlStateHolder } from './control-dispatch.ts'
 import {
   createLauncherStateStore,
   resolveHarnessHome,
@@ -45,15 +43,17 @@ import {
 } from './launcher-state.ts'
 import { discoverProfiles, type DiscoveredProfile, type ProfileDiscoveryV1 } from './profile-discovery.ts'
 import { atomicWriteFile } from './atomic-write.ts'
+import { seedManagedHome, seedProjectAgents } from './memory-seed.ts'
 import { appendDesktopEvent } from './desktop-events.ts'
 import { describeLegacyCredentialsLayout, describeRuntimeVersionSkew, detectRuntimeVersionSkew, hasLegacyCredentialsLayout } from './runtime-skew.ts'
 import { readSessionPressure } from './session-pressure.ts'
 import { importSessions, markImportOffered, shouldOfferImport, surveyImportableSessions } from './session-import.ts'
-import { maskWindowsLiteral, redactSecrets } from './redact.ts'
+import { maskWindowsLiterals, redactSecrets } from './redact.ts'
 import { aboutDetailText, pnpmVersionFromExecpath } from './about.ts'
 import { computeRecoveryNotice, type RecoveryNotice } from './recovery-notice.ts'
 import { runDesktopCommand, type DesktopOperation } from './desktop-command.ts'
 import {
+  BUILTIN_PLUGIN_NAMES,
   buildPluginInventory,
   buildPluginOperationArgs,
   isRelativeSpec,
@@ -94,20 +94,22 @@ import {
 import {
   buildTerminalWelcome,
   hasPowerShell7,
+  resolveSessionCwdById,
   resolvePosixTerminalShell,
   resolveTerminalCwd,
   resolveTerminalShell,
   terminalShimContents,
   terminalShimContentsPosix,
+  withPath,
   type ShimRuntimeFacts,
 } from './terminal-service.ts'
 import { createHarnessApi, type HarnessApi } from './harness-api.ts'
+import { exchangeSessionCookie, readHarnessOutput } from './harness-auth.ts'
 import { buildQuitConfirmDetail, quitConfirmDetail } from './quit-confirm.ts'
 import { stringsFor, type ChromeStrings } from './chrome/view-model.ts'
 import { buildFeedbackDiagnostics, FEEDBACK_LOG_TAIL_LINES } from './feedback-diagnostics.ts'
 import { buildIssueBody, githubNewIssueUrl, issueTitle } from './feedback-issue.ts'
 import { feedbackExportFileName, feedbackGatewayConfigWarning, resolveFeedbackGatewayUrl, submitFeedbackToGateway } from './feedback-gateway.ts'
-import { runFeedbackTurn } from './feedback-session.ts'
 import type { FeedbackView } from './control-model.ts'
 import { FULL_ACCESS_PRESET, RECOMMENDED_PRESET, resolvePermissionView } from './permission-view.ts'
 import {
@@ -156,7 +158,6 @@ import {
   DEFAULT_HOST,
   DEFAULT_PORT,
   READY_TIMEOUT_MS,
-  childStdio,
   classifyLinkOpen,
   createServiceLogWriter,
   logFamilyNames,
@@ -257,6 +258,20 @@ const TITLE_BAR_OVERLAY = {
 
 /** 无 smoke 标志时是否显示 GUI 错误框；smoke 模式只向 stdout 报告。 */
 const SMOKE = process.env.DSH_DESKTOP_SMOKE === '1'
+
+/**
+ * 应用监听端口（P9-4）：生产恒为 DEFAULT_PORT (3080)。e2e/打包验收经
+ * DEEPSEEKGUI_TEST_PORT 显式指定测试实例的端口——测试拥有自己的端口
+ * 事实，绝不与住户正在运行的 3080 实例争用、更不许「清场 3080」。
+ * 非法值忽略（回到 DEFAULT_PORT）；APP URL、readiness、占用检测、
+ * Compatibility View 与控制桥的 baseUrl 全部消费同一事实。
+ */
+const APP_PORT = (() => {
+  const raw = process.env.DEEPSEEKGUI_TEST_PORT
+  if (raw === undefined || !/^\d+$/.test(raw)) return DEFAULT_PORT
+  const value = Number(raw)
+  return value >= 1024 && value <= 65535 ? value : DEFAULT_PORT
+})()
 
 /** 当前 locale 的文案字典（模块级；与 whenReady 内 localeOf() 同一判据）。 */
 function moduleDict(): ChromeStrings {
@@ -743,6 +758,12 @@ app.on('second-instance', () => {
 /** 主窗口（second-instance 聚焦目标）。 */
 let mainWindow: BrowserWindow | undefined
 
+// ---- B5-P6 通知点击的一次性会话导航（Web 侧官方事件消费端推 notify 命令）----
+// pendingNavigate 由 notify 点击写入、随下一次 buildModel 进入控制模型；
+// nonce 每次点击递增，Web 的 DesktopActions 按 nonce 恰好消费一次。
+let pendingNavigate: { sessionId: string; nonce: number } | null = null
+let navigateNonce = 0
+
 /** Desktop Chrome view（顶层）与 Compatibility View（官方 Web UI）。 */
 let chromeView: WebContentsView | undefined
 let compatView: WebContentsView | undefined
@@ -768,13 +789,23 @@ const service: {
   bootSettled: boolean
   log: ServiceLogWriter | undefined
   logPath: string | undefined
+  /** dsh 0.1.2 launch token（从服务 stdout 解析；每次 spawn 重置）。 */
+  launchToken: string | null
 } = {
   child: undefined,
   stopped: false,
   bootSettled: false,
   log: undefined,
   logPath: undefined,
+  launchToken: null,
 }
+
+/**
+ * 官方 browser-auth 会话 cookie（`name=value`；由 launch token 交换而来）。
+ * 模块级单份：token 只活在本进程，绝不落日志、诊断或持久配置。服务每次
+ * 重启（新 token）都会重新交换。
+ */
+let harnessSessionCookie: string | null = null
 
 /**
  * 句末补一个句号——但只在它自己没有终止标点时（P8-D14）。
@@ -875,9 +906,9 @@ async function waitForClientSettle(view: WebContentsView): Promise<void> {
 function createRuntimeAdapter(packaged: boolean, root: string): HarnessRuntimeAdapter {
   return {
     async spawnProcess(selection) {
-      if (await portInUse(DEFAULT_HOST, DEFAULT_PORT)) {
+      if (await portInUse(DEFAULT_HOST, APP_PORT)) {
         throw new Error(
-          `本机端口 ${DEFAULT_PORT} 已被其他程序占用（例如已运行的 pnpm dsh web）。请先关闭占用该端口的程序，再重新启动 DeepSeekGUI。`,
+          `本机端口 ${APP_PORT} 已被其他程序占用（例如已运行的 pnpm dsh web）。请先关闭占用该端口的程序，再重新启动 DeepSeekGUI。`,
         )
       }
       const launch = resolveDshLaunch({
@@ -888,35 +919,48 @@ function createRuntimeAdapter(packaged: boolean, root: string): HarnessRuntimeAd
         // Managed Home 下不把宿主的 DEEPSEEK_API_KEY 透传下去，官方设置里的
         // 密钥输入框才不会被锁成只读（P8-D23）。
         managedHome: selection.managedHome === true,
+        // Compatibility View（B3-P2）：不带 Workbench 产品插件的官方界面。
+        compatibility: workbenchViewMode === 'compatibility',
+        // P9-4：测试实例的显式端口（生产 = DEFAULT_PORT，不传也一样）。
+        port: APP_PORT,
         ...packaged ? {
           resourcesPath: process.resourcesPath,
           packagedCwd: app.getPath('home'),
         } : {},
       })
-      // 开发态与 smoke 继承宿主控制台；正常打包 GUI 无控制台，pipe 进本地
-      // 限长脱敏诊断日志（直接 inherit 会触发 EPIPE）。windowsHide：
-      // 打包 GUI（无控制台）下若 Windows 为该子进程分配新控制台，必须隐藏
-      // ——DSH 进程树里随后 spawn 的 sandbox runner/pwsh 会共享这个隐藏
-      // 控制台，整条链都不闪黑框（P6-J）。
-      const stdio = childStdio(packaged, SMOKE)
+      // B5-P2：服务输出一律 pipe——dsh 0.1.2 的 launch token 只出现在服务
+      // stdout 的 launch URL 行，主进程必须读到才能拼窗口 URL 与交换 API
+      // cookie；开发态由 data 处理器把输出转发回宿主控制台（等价旧继承），
+      // 打包态写本地诊断日志。windowsHide：打包 GUI（无控制台）下若 Windows
+      // 为该子进程分配新控制台，必须隐藏——DSH 进程树里随后 spawn 的
+      // sandbox runner/pwsh 会共享这个隐藏控制台，整条链都不闪黑框（P6-J）。
+      // 每个新 spawn 都换新的一次性 token：旧 token/cookie 立即失效。
+      service.launchToken = null
+      harnessSessionCookie = null
       const spawned = spawn(launch.command, launch.args, {
         cwd: launch.cwd,
         env: launch.env,
-        stdio,
+        stdio: 'pipe',
         windowsHide: true,
       })
       await settleSpawn(spawned)
       service.child = spawned
       service.bootSettled = false
-      if (stdio === 'pipe') {
-        service.logPath = join(app.getPath('userData'), 'dsh-service.log')
-        const log = createServiceLogWriter(service.logPath)
-        service.log = log
-        spawned.stdout?.on('data', (chunk: Buffer) => { log.write(chunk) })
-        spawned.stderr?.on('data', (chunk: Buffer) => { log.write(chunk) })
-        // 'close' 在子进程退出且 stdio 流全部结束后触发，此时可以安全收尾。
-        spawned.once('close', () => { log.close() })
-      }
+      service.logPath = join(app.getPath('userData'), 'dsh-service.log')
+      const log = createServiceLogWriter(service.logPath)
+      service.log = log
+      // Credentials are extracted from complete lines before logs or console output.
+      readHarnessOutput(spawned.stdout, (token) => {
+        if (service.launchToken === null) {
+          service.launchToken = token
+        }
+      }, (line) => {
+        log.write(line)
+        if (!packaged) process.stdout.write(line)
+      })
+      spawned.stderr.on('data', (chunk: Buffer) => { log.write(chunk) })
+      // 'close' 在子进程退出且 stdio 流全部结束后触发，此时可以安全收尾。
+      spawned.once('close', () => { log.close() })
       // 每个新 child spawn 后都挂一次监视：boot 三步未完成前退出由
       // recovery 路径处理（waitReady 的 race / loadURL 失败），完成后
       // 退出才是运行中的意外崩溃；主动停止（stopped）不误报。
@@ -955,7 +999,7 @@ function createRuntimeAdapter(packaged: boolean, root: string): HarnessRuntimeAd
           })
         }
         child.once('exit', onExit)
-        void waitForServer(DEFAULT_HOST, DEFAULT_PORT, READY_TIMEOUT_MS, desktopLocaleZh()).then(
+        void waitForServer(DEFAULT_HOST, APP_PORT, READY_TIMEOUT_MS, desktopLocaleZh()).then(
           () =>{  settle(resolvePromise) },
           (error: unknown) =>{  settle(() => { reject(error instanceof Error ? error : new Error(String(error))) }) },
         )
@@ -964,9 +1008,28 @@ function createRuntimeAdapter(packaged: boolean, root: string): HarnessRuntimeAd
     async loadPage() {
       const view = compatView
       if (view === undefined) throw new Error(desktopLocaleZh() ? 'Compatibility View 不存在，无法加载页面' : 'The Compatibility View does not exist, so the page cannot be loaded')
+      // Install the official cookie before navigation; the launch redirect
+      // removes query parameters, including the desktop control bridge.
+      const tokenDeadline = Date.now() + 10_000
+      while (service.launchToken === null && Date.now() < tokenDeadline) await delay(100)
+      if (service.launchToken === null) throw new Error('Harness launch credential was not received')
+      const baseUrl = `http://${DEFAULT_HOST}:${APP_PORT}`
+      const cookie = await exchangeSessionCookie(baseUrl, service.launchToken, (url, init) => fetch(url, init))
+      if (cookie === null) throw new Error('Harness authentication failed')
+      const separator = cookie.indexOf('=')
+      await view.webContents.session.cookies.set({
+        url: baseUrl,
+        name: cookie.slice(0, separator),
+        value: cookie.slice(separator + 1),
+        httpOnly: true,
+        sameSite: 'strict',
+      })
+      harnessSessionCookie = cookie
+      const params = new URLSearchParams()
       // D39：控制桥参数只随 DeepSeekGUI 自己加载的页面下发（见 controlBridgeParam）。
-      const controlQuery = controlBridgeParam === undefined ? '' : `?deepseekgui-control=${encodeURIComponent(controlBridgeParam)}`
-      await view.webContents.loadURL(`http://${DEFAULT_HOST}:${DEFAULT_PORT}/${controlQuery}`)
+      if (controlBridgeParam !== undefined) params.set('deepseekgui-control', controlBridgeParam)
+      const query = params.size === 0 ? '' : `?${params.toString()}`
+      await view.webContents.loadURL(`${baseUrl}/${query}`)
       // 下一代健康不能只看 HTTP：官方 UI 挂载 + DeepSeekGUI client 插件
       // settle（theme plugin 的 apply 成功标记）都必须成立。第三方坏插件
       // 会让 loader 拒绝整轮 composition 或卡在 boot——这条失败链正是
@@ -1049,8 +1112,23 @@ let installStampCache: string | null = null
  * @param path - 原始绝对路径。
  * @returns 打码后的显示值。
  */
+/**
+ * home 的 8.3 短名（P9-5）：经 cmd 的 %~s 展开从系统**真实解析**一次，
+ * 解析失败或与长名相同即为空——绝不硬编码 ~1 形态猜测。
+ */
+const homeShortAliases = ((): string[] => {
+  try {
+    const home = app.getPath('home')
+    const probe = spawnSync('cmd.exe', ['/d', '/c', `for %I in ("${home}") do @echo %~sI`], { encoding: 'utf8', windowsHide: true, windowsVerbatimArguments: true })
+    const short = probe.stdout.trim()
+    return short !== '' && short.toLowerCase() !== home.toLowerCase() ? [short] : []
+  } catch {
+    return []
+  }
+})()
+
 function maskUserHome(path: string): string {
-  return maskWindowsLiteral(path, app.getPath('home'), desktopLocaleZh() ? '<用户目录>' : '<USER_HOME>')
+  return maskWindowsLiterals(path, [app.getPath('home'), ...homeShortAliases], desktopLocaleZh() ? '<用户目录>' : '<USER_HOME>')
 }
 
 /**
@@ -1233,6 +1311,8 @@ function buildPluginManagerView(): DesktopControlModel['pluginManager'] {
         failure: recoveryJournal.failure,
         autoRecoveredOnce: recoveryJournal.autoRecoveredOnce,
       },
+    // B3-13：随包内置插件的真实来源（launcher overlay 层），只读投影。
+    builtin: BUILTIN_PLUGIN_NAMES,
   }
 }
 
@@ -1539,12 +1619,12 @@ function createWindow(ui: DesktopUiStateV1): BrowserWindow {
   // 不允许新窗口；官方 Markdown 的 http/https 外链交给系统默认浏览器，
   // 其余协议拒绝。远程页面绝不在 Electron 内加载。
   compatView.webContents.setWindowOpenHandler(({ url }) => {
-    if (classifyLinkOpen(url) === 'external') void shell.openExternal(url)
+    if (classifyLinkOpen(url, DEFAULT_HOST, APP_PORT) === 'external') void shell.openExternal(url)
     return { action: 'deny' }
   })
   // 视图内导航只允许本机 DSH 页面；指向外部的普通链接同样交给系统浏览器。
   compatView.webContents.on('will-navigate', (event, url) => {
-    const target = classifyLinkOpen(url)
+    const target = classifyLinkOpen(url, DEFAULT_HOST, APP_PORT)
     if (target === 'app') return
     event.preventDefault()
     if (target === 'external') void shell.openExternal(url)
@@ -1790,6 +1870,7 @@ function runHeadlessDiagnosticsExport(): void {
     }
     const files = assembleDiagnosticsBundle({
       home: app.getPath('home'),
+      homeAliases: homeShortAliases,
       version: versionInfo,
       logEntries,
       buildInfo: buildInfoText(buildInfoLines({
@@ -1830,6 +1911,13 @@ const PICKER_BRIDGE_PATH = '/pick'
  * 3080 时没有它，桌面控制分区于是不出现（那里本来也没有桌面可控）。
  */
 let controlBridgeParam: string | undefined
+
+/**
+ * 当前界面形态（B3-P2）：Workbench（带 DeepSeekGUI 产品插件）或
+ * Compatibility View（不带 Workbench 插件的官方界面）。内存态，不
+ * 持久化——应用重开默认 Workbench；切换经 controller.restart 唯一路径。
+ */
+let workbenchViewMode: 'workbench' | 'compatibility' = 'workbench'
 
 /**
  * 目录选择桥：把官方 `host.pickDirectory` 落到宿主自己的系统对话框上（P8-D11）。
@@ -2013,6 +2101,12 @@ async function offerSessionImport(targetHome: string): Promise<void> {
   })
 }
 
+// Windows toasts need the AppUserModelID that the NSIS Start Menu shortcut
+// carries (electron-builder's appId); without it `new Notification().show()`
+// is silently dropped by the shell. P9 on-machine acceptance: the log said
+// `notify show` while no toast ever appeared.
+if (process.platform === 'win32') app.setAppUserModelId('io.github.see-sol-lab.deepseekgui')
+
 void app.whenReady().then(async () => {
   // 配置自检要早：网关地址配错时用户仍能本地导出反馈，但得先知道为什么
   // 提交按钮不见了。
@@ -2089,8 +2183,13 @@ void app.whenReady().then(async () => {
   // （绝不直接编辑 settings.yaml）。只在 Harness 运行时调用；创建时无需
   // 服务在线（lazy fetch）。
   harnessApi = createHarnessApi({
-    baseUrl: `http://${DEFAULT_HOST}:${DEFAULT_PORT}`,
-    fetch: (url, init) => fetch(url, init),
+    baseUrl: `http://${DEFAULT_HOST}:${APP_PORT}`,
+    // B5-P2：官方 /api 鉴权走 browser-auth 会话 cookie——cookie 由 launch
+    // token 交换而来（见 harnessSessionCookie）；没有 cookie 时照发（服务
+    // 会 401，调用方按既有 fail-closed 语义处理）。
+    fetch: (url, init) => harnessSessionCookie === null
+      ? fetch(url, init)
+      : fetch(url, { ...init, headers: { ...init.headers, cookie: harnessSessionCookie } }),
     zh: desktopLocaleZh,
   })
   // 闭包内的调用点用 non-null 局部别名：模块级 let 的 undefined 形态只
@@ -2201,6 +2300,33 @@ void app.whenReady().then(async () => {
     return `${home.kind}:${path}:${state.active.profile}:${harness.status().phase}`
   }
 
+  /**
+   * 模型内容版本号：内容指纹变化时递增（P7：控制桥条件拉取靠它判断
+   * 「变了没有」，settings-plugin 不再无条件拉全量模型）。指纹对比用
+   * JSON 序列化——模型是几十 KB 的普通对象，广播频率低，开销可忽略；
+   * 换来的是 revision 只反映**真实内容变化**，无变化的广播不会虚增。
+   */
+  let modelRevision = 0
+  let modelFingerprint: string | null = null
+
+  /**
+   * 全局记忆 memory.md 的当前内容（D5-c，设置页「记忆（全局）」分区的编辑
+   * 起点）。不存在 = 空串；读不到或超过 MEMORY_GLOBAL_CONTENT_MAX = null，
+   * 分区据此禁用保存，绝不用截断的内容覆盖原文件。
+   * @param home - 解析后的 DSH home。
+   * @returns 文件内容、空串或 null。
+   */
+  const readGlobalMemory = (home: string): string | null => {
+    const path = join(home, 'memory.md')
+    try {
+      if (!existsSync(path)) return ''
+      const content = readFileSync(path, 'utf8')
+      return content.length > MEMORY_GLOBAL_CONTENT_MAX ? null : content
+    } catch {
+      return null
+    }
+  }
+
   const buildModel = (): DesktopControlModel => {
     // 派生事实在一次构建里只读一次盘：state 与 feedUrl 读到后向下传，
     // 绝不让 buildDiagnosticsView 再读一遍（同一次广播里两次读同一个
@@ -2208,7 +2334,8 @@ void app.whenReady().then(async () => {
     const state = launcher.read()
     const feedUrl = readUpdateFeed(userDataDir)
     const activeHome = resolveHarnessHome(state.active.home, userDataDir)
-    return buildControlModel({
+    const model = buildControlModel({
+      revision: modelRevision,
       locale: desktopLocaleZh() ? 'zh' : 'en',
       state,
       status: harness.status(),
@@ -2241,7 +2368,24 @@ void app.whenReady().then(async () => {
         present: browserPaneView !== undefined && !browserPaneView.webContents.isDestroyed(),
         open: browserPaneOpen,
       },
+      // 当前界面形态（B3-P2）：tray 据此显示对向切换入口。
+      viewMode: workbenchViewMode,
+      // B4-P8 通知点击的一次性会话导航请求（B5-P6 恢复）：由 notify 命令的
+      // 点击写入，Web 的 DesktopActions 轮询读到后恰好打开一次该会话。
+      navigateRequest: pendingNavigate,
+      // D5-c：全局记忆内容给设置页分区做编辑起点（有界读一次盘）。
+      globalMemory: readGlobalMemory(activeHome),
     })
+    // 指纹必须剥掉 revision 自身：模型序列化里若含上一轮的 revision，
+    // 每次构建指纹都因这个字段而不同，revision 恒自增、`?since=` 门控
+    // 永远判「变了」——条件拉取整个失效（验收实推抓获）。
+    const { revision: _stamped, ...content } = model
+    const fingerprint = JSON.stringify(content)
+    if (fingerprint !== modelFingerprint) {
+      modelRevision += 1
+      modelFingerprint = fingerprint
+    }
+    return modelRevision === model.revision ? model : { ...model, revision: modelRevision }
   }
 
   /**
@@ -2286,6 +2430,12 @@ void app.whenReady().then(async () => {
         return
       case 'open-terminal':
         await runCommand({ type: 'show-terminal' })
+        return
+      case 'open-compatibility-view':
+        await runCommand({ type: 'open-compatibility-view' })
+        return
+      case 'open-workbench':
+        await runCommand({ type: 'open-workbench' })
         return
       case 'check-updates':
         // 托盘入口 = Manual Check：打开更新面板展示结果。
@@ -2340,10 +2490,38 @@ void app.whenReady().then(async () => {
     zh: desktopLocaleZh,
     // 七相状态每次变化都推送 ControlModel：切换/重启/恢复期间胶囊实时变化。
     onStatusChanged: () => {
+      // B5-P6：通知事实由官方 Web 连接（官方 heartbeat/reconnect）在页面侧
+      // 消费，经 notify 控制命令推给桌面；桌面不再自建事件流，没有可断开的
+      // 连接，也没有要清的重连补偿。桌面只负责弹通知与点击导航。
       broadcast()
     },
   })
   controller = harness
+
+  // ---- B5-P6 Desktop 通知展示（无状态）：只弹系统通知 + 点击写导航 ----
+  // Web 侧消费端以「会话 + 官方事件 id」完成去重后才发 notify 命令；这里
+  // 不缓存、不记账、不持久化，同一事件重复到达只是重复展示由发送端负责。
+  // 是否正看着目标会话由 Web 消费者判断，桌面不再按整个窗口焦点过滤。
+  const showNotify = (command: Extract<DesktopControlCommand, { type: 'notify' }>): void => {
+    // The Session-aware Web consumer already suppresses the fact being viewed.
+    const notification = new Notification({
+      title: command.title,
+      body: command.body,
+      silent: false,
+    })
+    notification.on('click', () => {
+      // 点击定位：聚焦主窗，并把一次性会话导航请求写进控制模型
+      // （nonce 去重）；Workbench 的桌面动作轮询读到后打开该会话。
+      if (mainWindow !== undefined && !mainWindow.isDestroyed()) {
+        mainWindow.show()
+        mainWindow.focus()
+      }
+      navigateNonce += 1
+      pendingNavigate = { sessionId: command.sessionId, nonce: navigateNonce }
+      broadcast()
+    })
+    notification.show()
+  }
 
   /**
    * 恢复通知的结算：纯计算（recovery-notice.ts）依据磁盘权威的 launcher
@@ -2448,7 +2626,7 @@ void app.whenReady().then(async () => {
    * - welcome 显示 DeepSeekGUI/DSH 版本、Active Profile、DSH_HOME 与私有
    *   Runtime 来源。
    */
-  const openDshTerminal = (): void => {
+  const openDshTerminal = async (currentSessionId?: string): Promise<void> => {
     if (terminalWindow !== undefined && !terminalWindow.isDestroyed()) {
       terminalWindow.show()
       terminalWindow.focus()
@@ -2485,7 +2663,22 @@ void app.whenReady().then(async () => {
         process.env.LOCALAPPDATA,
       )
       : resolvePosixTerminalShell({ exists: path => existsSync(path) }, process.env.SHELL)
-    const cwdChoice = resolveTerminalCwd(controlState.discovery, state.active.profile, dshHome, path => existsSync(path), localeOf())
+    // P9-3：cwd 对齐 Workbench **当前打开的会话**。浏览器只送会话 id
+    // （不可信输入），cwd 由 main 从权威 session.list 解析；id 不存在、
+    // 会话无 cwd、Harness 不可达或未带 id（tray/chrome 菜单入口）都静默
+    // 回退 Profile 目录 → Harness Home。B5-P1：task workdir 支路随
+    // task.get 退役删除；任务 cwd 的终端入口等 P4 工具路径恢复。
+    let sessionCwd: string | null = null
+    if (currentSessionId !== undefined && harness.status().phase === 'running' && harnessApi !== undefined) {
+      try {
+        sessionCwd = resolveSessionCwdById((await harnessApi.sessionList()).items, currentSessionId)
+      } catch {
+        sessionCwd = null
+      }
+    }
+    const cwdChoice = resolveTerminalCwd(
+      controlState.discovery, state.active.profile, dshHome, path => existsSync(path), localeOf(), sessionCwd,
+    )
     const welcomeLines = buildTerminalWelcome({
       appVersion: versionInfo.appVersion,
       dshVersion: versionInfo.embeddedDshVersion,
@@ -2519,11 +2712,7 @@ void app.whenReady().then(async () => {
         command: shell.executable,
         args: wtArgs,
         cwd: cwdChoice.cwd,
-        env: {
-          ...process.env,
-          DSH_HOME: dshHome,
-          PATH: shimPath,
-        },
+        env: withPath({ ...process.env, DSH_HOME: dshHome }, shimPath),
         onExit: (result) => {
           const dict = stringsFor(localeOf())
           if (result.error !== undefined) {
@@ -3552,7 +3741,7 @@ void app.whenReady().then(async () => {
       command: launch.command,
       args: launch.args,
       cwd: launch.cwd,
-      env: { ...launch.env, PATH: shimPath },
+      env: withPath(launch.env, shimPath),
       onOutput: (_stream, text) => {
         appendPluginOutput(text)
         broadcast()
@@ -4157,6 +4346,7 @@ void app.whenReady().then(async () => {
       const lastExit = uncleanExit === null ? 'unknown' : uncleanExit ? 'unclean (previous run did not end normally)' : 'clean (previous run ended normally)'
       const files = assembleDiagnosticsBundle({
         home,
+        homeAliases: homeShortAliases,
         version: versionInfo,
         logEntries,
         buildInfo: buildInfoText(buildDiagnosticsView().buildInfo),
@@ -4258,33 +4448,7 @@ void app.whenReady().then(async () => {
     })
   }
 
-  /** 首条诊断消息：系统上下文（模型不可见性靠正文说明）+ 用户问题 + 诊断包。 */
-  const feedbackPromptText = (userText: string): string => [
-    '你是 DeepSeekGUI 的诊断助手。用户正在报告一个问题。',
-    '以下是自动收集的诊断信息（已脱敏）。帮助用户准确描述问题，并生成一份适合提交到 GitHub issue 的报告。',
-    '要求：你的回答第一行必须写 `**标题：** <一句话标题>`，空一行后写排查分析与建议的 issue 正文（正文里不要重复粘贴诊断包全文，用"诊断包已随 issue 附上"代替）。',
-    // 以下两条是 P8-D30 加的，起因是住户实测：AI 洋洋洒洒写完一大篇，末尾却写
-    // 「若本环境已接入自动提交通道，请直接使用本内容发送」——**而我们并没有接**，
-    // 用户拿着长文不知道往哪去。报告的长度与去向都由这条提示词决定，所以在这里治。
-    '正文必须收敛成一段话，总长不超过 400 字：说清现象、可能原因与建议，不要分成多个小节、不要列长清单。用户要的是一段能直接粘贴出去的话，不是一篇文档。',
-    // 提交动作归界面，不归正文（住户 2026-08-26 验收实测）。这条原本让 AI 在正文
-    // 末尾写一个提交地址并教用户复制粘贴，结果是把用户从好路径推去了差路径：
-    // 「复制并打开 GitHub」按钮会把标题、正文和诊断包一起预填进 GitHub，而手工
-    // 复制那条只带得走 AI 这段分析——标题是空的、诊断包没跟过去，偏偏正文里还
-    // 写着「诊断包已随 issue 附上」，自相矛盾。
-    '不要在正文里写提交地址，也不要教用户复制粘贴——界面上的「复制并打开 GitHub」按钮会把标题、正文与诊断包一起带去 GitHub。正文最后用一句话提示用户点这个按钮即可。',
-    '',
-    '[用户的问题]',
-    userText,
-    '',
-    '[诊断包 — 用户可见可编辑]',
-    feedbackView.diagnostics,
-    '',
-    '[诊断信息说明]',
-    '诊断包文本可能已被用户编辑；一切以「用户的问题」为准。',
-  ].join('\n')
-
-  /** 发送用户问题：AI 可用走排查会话，不可用（3080 不通/recovery 状态）走静态模板。 */
+  /** 发送用户问题（B5-P1：AI 草拟依赖已退役的 history 轮询，恒走静态模板；官方 follow/WS 通道恢复后回到排查会话）。 */
   const sendFeedback = (text: string, diagnostics: string): void => {
     // 一次只跑一个排查：in-flight 期间再点发送直接忽略（按钮渲染层已灰）。
     if (feedbackView.phase === 'sending') return
@@ -4302,30 +4466,14 @@ void app.whenReady().then(async () => {
       broadcast()
       return
     }
-    feedbackView.phase = 'sending'
+    // B5-P1：AI 排查回复的读取依赖旧 APIProxy session.history 轮询，
+    // 0.1.2 的等价读取走官方 session follow/WS 通道（B5-P2/P6 随 token
+    // 对齐恢复）。此前 Feedback 恒走静态模板——用户照常复制诊断包提交
+    // issue，不显示 AI 草拟文本。
+    feedbackView.phase = 'degraded'
     feedbackView.reply = null
+    feedbackView.issueTitle = issueTitle(null, text, desktopLocaleZh())
     broadcast()
-    void (async () => {
-      // 降级条件二/三（§5.1）：session.create 失败 / 30s 无回复 → runFeedbackTurn 返回 null。
-      const reply = await runFeedbackTurn({
-        api: harnessApi,
-        // 独立 cwd：不挂在出问题的工作区下（userData 恒存在，目录即隔离）。
-        cwd: userDataDir,
-        promptText: feedbackPromptText(text),
-        now: Date.now,
-        sleep: ms => new Promise((resolveSleep) => { setTimeout(resolveSleep, ms) }),
-      })
-      if (reply === null) {
-        feedbackView.phase = 'degraded'
-        feedbackView.reply = null
-        feedbackView.issueTitle = issueTitle(null, text, desktopLocaleZh())
-      } else {
-        feedbackView.phase = 'replied'
-        feedbackView.reply = reply
-        feedbackView.issueTitle = issueTitle(reply, text, desktopLocaleZh())
-      }
-      broadcast()
-    })()
   }
 
   /** 复制 issue 正文 + 打开 GitHub issue 页（零后端零 Token；正文走剪贴板）。 */
@@ -4432,6 +4580,70 @@ void app.whenReady().then(async () => {
     })()
   }
 
+  /** 会打断运行中会话的动作的确认（switch/restart/换 Home/视图切换共用）。 */
+  const confirmDisruptive: ControlDispatchDeps['confirmDisruptive'] = async (action) => {
+    // 文案只说真话：会中断什么、丢什么、不动什么。绝不用"可能会有影响"
+    // 之类的模糊说法糊过去——用户要凭这句话决定敢不敢点。
+    const dict = stringsFor(localeOf())
+    const active = launcher.read().active.profile
+    const restartLike = action.kind === 'restart-harness'
+    const message = action.kind === 'switch-profile'
+      ? dictText(dict, 'dialog.confirm.switch.title', { profile: JSON.stringify(action.profile) })
+      : action.kind === 'use-managed-home'
+        ? dictText(dict, 'dialog.confirm.use-managed.title')
+        : action.kind === 'choose-existing-home'
+          ? dictText(dict, 'dialog.confirm.choose-existing.title', { profile: JSON.stringify(action.profile) })
+          : dictText(dict, 'dialog.confirm.restart.title')
+    const choice = await dialog.showMessageBox({
+      type: 'warning',
+      noLink: true,
+      buttons: [dictText(dict, restartLike ? 'dialog.confirm.restart' : 'dialog.confirm.switch-restart'), dictText(dict, 'dialog.cancel')],
+      defaultId: 1,
+      cancelId: 1,
+      message,
+      detail: [
+        action.kind === 'switch-profile'
+          ? dictText(dict, 'dialog.confirm.switch.detail', { profile: JSON.stringify(active) })
+          : action.kind === 'use-managed-home'
+            ? dictText(dict, 'dialog.confirm.use-managed.detail')
+            : action.kind === 'choose-existing-home'
+              ? dictText(dict, 'dialog.confirm.choose-existing.detail')
+              : dictText(dict, 'dialog.confirm.restart.detail'),
+        // 这句原本写的是「未保存的对话内容会丢失」——那是假话（P8-D27，DS 第 12
+        // 扇窗走查抓获）。DSH 的会话是落盘持久化的（jsonl，官方 UI 的会话列表与
+        // 续聊就靠它），被打断的只是进行中的这一轮，历史仍在磁盘上。
+        //
+        // 说假话的代价不是吓退一次，是**门铃从此没人信**：用户怕丢全部对话不敢
+        // 切，切了发现什么都在，下回就直接点确认了。P7-F 的铁律「宁可说得弱，
+        // 不可说得假」管的正是这种地方。
+        //
+        // 换 Home 的情形单独点名：会话不是没了，是留在原来那个 Home 里——不说
+        // 清楚，用户在新 Home 的空列表前一样会以为丢了。
+        dictText(dict, 'dialog.confirm.session-note'),
+        action.kind === 'use-managed-home' || action.kind === 'choose-existing-home'
+          ? dictText(dict, 'dialog.confirm.home-note')
+          : dictText(dict, 'dialog.confirm.resume-note'),
+        dictText(dict, 'dialog.confirm.files-note'),
+      ].join('\n'),
+    })
+    return choice.response === 0
+  }
+
+  /**
+   * Workbench ↔ Compatibility View 切换（B3-P2）：同一控制器 restart
+   * 唯一路径，运行中先走现有 disrupt 确认（与重启同杀伤力）。内存态，
+   * 不持久化——应用重开默认 Workbench。
+   * @param target - 目标界面形态。
+   */
+  const switchViewMode = async (target: 'workbench' | 'compatibility'): Promise<void> => {
+    if (workbenchViewMode === target) return
+    // 与 restart-harness 同一条门铃：只在真的有东西会丢时问。
+    if (harness.status().phase === 'running' && !await confirmDisruptive({ kind: 'restart-harness' })) return
+    workbenchViewMode = target
+    await harness.restart()
+    broadcast()
+  }
+
   const dispatch = createControlDispatcher({
     zh: desktopLocaleZh,
     controller: harness,
@@ -4478,53 +4690,10 @@ void app.whenReady().then(async () => {
         // 诊断记录失败绝不能连累切换本身：用户要的是换 Home，不是这条笔记。
       }
     },
-    confirmDisruptive: async (action) => {
-      // 文案只说真话：会中断什么、丢什么、不动什么。绝不用"可能会有影响"
-      // 之类的模糊说法糊过去——用户要凭这句话决定敢不敢点。
-      const dict = stringsFor(localeOf())
-      const active = launcher.read().active.profile
-      const restartLike = action.kind === 'restart-harness'
-      const message = action.kind === 'switch-profile'
-        ? dictText(dict, 'dialog.confirm.switch.title', { profile: JSON.stringify(action.profile) })
-        : action.kind === 'use-managed-home'
-          ? dictText(dict, 'dialog.confirm.use-managed.title')
-          : action.kind === 'choose-existing-home'
-            ? dictText(dict, 'dialog.confirm.choose-existing.title', { profile: JSON.stringify(action.profile) })
-            : dictText(dict, 'dialog.confirm.restart.title')
-      const choice = await dialog.showMessageBox({
-        type: 'warning',
-        noLink: true,
-        buttons: [dictText(dict, restartLike ? 'dialog.confirm.restart' : 'dialog.confirm.switch-restart'), dictText(dict, 'dialog.cancel')],
-        defaultId: 1,
-        cancelId: 1,
-        message,
-        detail: [
-          action.kind === 'switch-profile'
-            ? dictText(dict, 'dialog.confirm.switch.detail', { profile: JSON.stringify(active) })
-            : action.kind === 'use-managed-home'
-              ? dictText(dict, 'dialog.confirm.use-managed.detail')
-              : action.kind === 'choose-existing-home'
-                ? dictText(dict, 'dialog.confirm.choose-existing.detail')
-                : dictText(dict, 'dialog.confirm.restart.detail'),
-          // 这句原本写的是「未保存的对话内容会丢失」——那是假话（P8-D27，DS 第 12
-          // 扇窗走查抓获）。DSH 的会话是落盘持久化的（jsonl，官方 UI 的会话列表与
-          // 续聊就靠它），被打断的只是进行中的这一轮，历史仍在磁盘上。
-          //
-          // 说假话的代价不是吓退一次，是**门铃从此没人信**：用户怕丢全部对话不敢
-          // 切，切了发现什么都在，下回就直接点确认了。P7-F 的铁律「宁可说得弱，
-          // 不可说得假」管的正是这种地方。
-          //
-          // 换 Home 的情形单独点名：会话不是没了，是留在原来那个 Home 里——不说
-          // 清楚，用户在新 Home 的空列表前一样会以为丢了。
-          dictText(dict, 'dialog.confirm.session-note'),
-          action.kind === 'use-managed-home' || action.kind === 'choose-existing-home'
-            ? dictText(dict, 'dialog.confirm.home-note')
-            : dictText(dict, 'dialog.confirm.resume-note'),
-          dictText(dict, 'dialog.confirm.files-note'),
-        ].join('\n'),
-      })
-      return choice.response === 0
-    },
+    // 会打断运行中会话的动作的确认（switch/restart/换 Home 共用）：文案
+    // 只说真话——会中断什么、丢什么、不动什么。绝不用"可能会有影响"
+    // 之类的模糊说法糊过去——用户要凭这句话决定敢不敢点。
+    confirmDisruptive,
     showRecoveryDialog: () => {
       const model = buildModel()
       if (model.recovery === null) return
@@ -4583,9 +4752,10 @@ void app.whenReady().then(async () => {
       recoveryNotice = null
       broadcast()
     },
-    showTerminal: () => {
-      // DSH Terminal：同一控制路径（Chrome/Tray 均经此出口）。
-      openDshTerminal()
+    showTerminal: (sessionId) => {
+      // DSH Terminal：同一控制路径（Chrome/Tray 均经此出口）。Workbench 的
+      // 桌面动作带当前会话 id，菜单/托盘入口不带（Profile/Home 回退）。
+      void openDshTerminal(sessionId)
     },
     requestPluginOperation: (request) => {
       void requestPluginOperation(request)
@@ -4671,6 +4841,15 @@ void app.whenReady().then(async () => {
       animateBrowserPane(win, opening)
       broadcast()
     },
+    // 视图切换（B3-P2）：Workbench ↔ Compatibility View，同一控制器
+    // restart 唯一路径；运行中先走现有 disrupt 确认（与重启同杀伤力）。
+    // 内存态，不持久化——应用重开默认 Workbench。
+    openCompatibilityView: () => {
+      void switchViewMode('compatibility')
+    },
+    openWorkbench: () => {
+      void switchViewMode('workbench')
+    },
     quit: () => {
       // 显式 Quit：真实提示 + orderly cleanup（见 requestQuit/proceedQuit）。
       void requestQuit()
@@ -4696,6 +4875,119 @@ void app.whenReady().then(async () => {
   ])
 
   /**
+   * B5-P7 记忆文件的本机管理（无状态）：只「打开/保存」两份扁平 memory.md
+   * 之一，路径一律由 main 从权威事实推出——全局 = active DSH home 的
+   * memory.md；项目 = 官方 session.list 解析会话 cwd 后的 memory.md。
+   * 绝不接受调用方传来的任意路径，也不经 agent 权限门（全局文件用户经
+   * 面板编辑、模型只读；项目文件模型经普通 fs 工具自行维护）。
+   * @param command - 已验证的记忆命令。
+   */
+  const runMemoryCommand = async (
+    command: Extract<DesktopControlCommand, { type: 'open-memory' | 'save-global-memory' | 'create-project-agents' }>,
+  ): Promise<void> => {
+    const home = resolveHarnessHome(launcher.read().active.home, userDataDir)
+    const globalPath = join(home, 'memory.md')
+    if (command.type === 'save-global-memory') {
+      atomicWriteFile(globalPath, command.content, message => new Error(message))
+      return
+    }
+    // D20：项目 AGENTS.md 只按用户按钮从随包模板生成一次；已有即原样保留。
+    if (command.type === 'create-project-agents') {
+      const cwd = await sessionCwdOf(command.sessionId, command.type)
+      seedProjectAgents(cwd, localeOf(), seedTemplatesDir)
+      return
+    }
+    // 记忆文件：在文件管理器里定位（用户看得见它在哪、用自己的编辑器改）；
+    // AGENTS.md：直接用系统默认程序打开（按钮文案就是「打开 AGENTS.md」）。
+    // 目标不存在时退回打开所在目录。
+    const show = async (path: string, fallbackDir: string, editor: boolean): Promise<void> => {
+      if (!existsSync(path)) {
+        const error = await shell.openPath(fallbackDir)
+        if (error !== '') throw new Error(error)
+        return
+      }
+      if (!editor) { shell.showItemInFolder(path); return }
+      const error = await shell.openPath(path)
+      if (error !== '') throw new Error(error)
+    }
+    if (command.which === 'global' || command.which === 'global-agents') {
+      // 全局两份文件在 Managed Home 首启已种；Existing Home 这里只补建
+      // memory.md（空文件，模型只读），绝不替用户写 AGENTS.md。
+      if (command.which === 'global' && !existsSync(globalPath)) writeFileSync(globalPath, '', 'utf8')
+      await show(command.which === 'global' ? globalPath : join(home, 'AGENTS.md'), home, command.which === 'global-agents')
+      return
+    }
+    if (command.sessionId === undefined) throw new Error('memory: project open requires a session')
+    const cwd = await sessionCwdOf(command.sessionId, 'memory')
+    // 项目记忆文件名 `<文件夹名>.memory.md`（D20；规则与 workbench-inspector
+    // 的 projectMemoryFileName 相同，桌面宿主不依赖该包所以就地写）。
+    if (command.which === 'project') {
+      await show(join(cwd, `${basename(cwd)}.memory.md`), cwd, false)
+      return
+    }
+    await show(join(cwd, 'AGENTS.md'), cwd, true)
+  }
+
+  /** D20 随包模板目录：与 chrome/terminal 资产同一套 lib→src 相对路径。 */
+  const seedTemplatesDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'templates')
+
+  /**
+   * D20 首启种子：Managed Home 缺 AGENTS.md / memory.md 时按当前语言种下；
+   * 只写缺失的，Existing Home 一律不动。失败只记日志——种子缺席不影响运行。
+   */
+  const ensureManagedMemorySeed = (): void => {
+    const state = launcher.read()
+    if (state.active.home.kind !== 'managed') return
+    try {
+      const home = resolveHarnessHome(state.active.home, userDataDir)
+      const result = seedManagedHome(home, localeOf(), seedTemplatesDir)
+      if (result.agents === 'created' || result.memory === 'created') {
+        console.log(`[deepseekgui] D20 seeded managed home files: AGENTS.md=${result.agents} memory.md=${result.memory}`)
+      }
+    } catch (error) {
+      console.error(`[deepseekgui] D20 managed home seed failed: ${String(error instanceof Error ? error.message : error)}`)
+    }
+  }
+
+  /** 会话 cwd（官方 session.list 权威解析）；Harness 未运行或会话无 cwd 时抛错。 */
+  const sessionCwdOf = async (sessionId: string, what: string): Promise<string> => {
+    if (harness.status().phase !== 'running' || harnessApi === undefined) {
+      throw new Error(`${what}: harness is not running; cannot resolve the session working directory`)
+    }
+    const cwd = resolveSessionCwdById((await harnessApi.sessionList()).items, sessionId)
+    if (cwd === null) throw new Error(`${what}: the session has no working directory`)
+    return cwd
+  }
+
+  /**
+   * D7 / D5-f / D6（莉莉丝 2026-09-06）：在系统文件管理器里打开整个工作区，
+   * 或定位工作区内的一个路径。路径只从会话事实推出；reveal 的目标解析后
+   * 必须仍在 cwd 之内，越界即拒绝（对话里任何像路径的文字都可能点到这里）。
+   * @param command - 已验证的命令。
+   */
+  const runRevealCommand = async (
+    command: Extract<DesktopControlCommand, { type: 'open-workspace' | 'reveal-path' }>,
+  ): Promise<void> => {
+    const cwd = await sessionCwdOf(command.sessionId, command.type)
+    if (command.type === 'open-workspace') {
+      const error = await shell.openPath(cwd)
+      if (error !== '') throw new Error(error)
+      return
+    }
+    const root = resolve(cwd)
+    const target = resolve(root, command.path)
+    const inside = target === root || target.startsWith(root.endsWith(sep) ? root : root + sep)
+    if (!inside) throw new Error('reveal-path: the path is outside the session workspace')
+    if (!existsSync(target)) throw new Error('reveal-path: the path does not exist')
+    if (statSync(target).isDirectory()) {
+      const error = await shell.openPath(target)
+      if (error !== '') throw new Error(error)
+      return
+    }
+    shell.showItemInFolder(target)
+  }
+
+  /**
    * 命令统一出口：dispatch 失败统一报错，随后重算恢复通知并推送最新
    * 模型。恢复通知必须在这里算（而不是 controller 的 onStatusChanged）：
    * switchTo 的 store 写入发生在状态回调之后，命令完成后读到的才是
@@ -4703,6 +4995,30 @@ void app.whenReady().then(async () => {
    * @param command - 已验证的命令。
    */
   const runCommand = async (command: DesktopControlCommand): Promise<void> => {
+    // B5-P6：notify 是无状态的通知展示命令——不经过 dispatch（dispatch 只
+    // 服务桌面状态命令），不结算恢复通知、不动模型、不广播（点击时的导航
+    // 广播由 showNotify 自己触发）。
+    if (command.type === 'notify') {
+      showNotify(command)
+      return
+    }
+    // B5-P7：记忆管理命令同样由 main 直办（需要 DSH home、shell 与官方
+    // session.list），不经 dispatch。
+    if (command.type === 'open-memory' || command.type === 'save-global-memory' || command.type === 'create-project-agents') {
+      await runMemoryCommand(command).catch((error: unknown) => { reportFailure(error); throw error })
+      broadcast()
+      return
+    }
+    // D6/D7：定位路径不弹错误对话框——对话里被点的文字未必真是路径，
+    // 失败只回给调用方（桥返回错误，页面静默忽略）；打开工作区照常报错。
+    if (command.type === 'reveal-path') {
+      await runRevealCommand(command)
+      return
+    }
+    if (command.type === 'open-workspace') {
+      await runRevealCommand(command).catch((error: unknown) => { reportFailure(error); throw error })
+      return
+    }
     await dispatch(command).catch(reportFailure)
     if (command.type === 'choose-existing-profile' || command.type === 'use-managed-home') {
       followHarnessPreferences(resolveHarnessHome(launcher.read().active.home, userDataDir))
@@ -4750,7 +5066,7 @@ void app.whenReady().then(async () => {
     // 一把钥匙等于把整个桌面命令面（quit、导出诊断、反馈外发、切 profile）
     // 交到 agent 手里；分开之后 pane token 只能开 pane 这一扇门。
     const browserPaneToken = randomUUID()
-    const controlOrigin = `http://${DEFAULT_HOST}:${DEFAULT_PORT}`
+    const controlOrigin = `http://${DEFAULT_HOST}:${APP_PORT}`
     const corsHeaders = {
       'access-control-allow-origin': controlOrigin,
       'access-control-allow-headers': 'content-type, x-deepseekgui-control-token',
@@ -4775,8 +5091,19 @@ void app.whenReady().then(async () => {
         reply(404, { error: 'not found' })
         return
       }
-      if (request.method === 'GET' && request.url === '/control/model') {
-        reply(200, { model: buildModel() })
+      if (request.method === 'GET' && request.url !== undefined
+        && request.url.startsWith('/control/model')) {
+        // P7：条件拉取。`?since=<revision>` 时内容未变只回小包
+        // `{ revision, changed: false }`；无 since 或已变化回全量模型。
+        // settings-plugin 的轮询由此从「无条件全量」变成「条件小包」。
+        const sinceRaw = new URL(request.url, 'http://127.0.0.1').searchParams.get('since')
+        const since = parseModelSinceParam(sinceRaw)
+        const model = buildModel()
+        if (since !== undefined && since === model.revision) {
+          reply(200, { revision: model.revision, changed: false })
+          return
+        }
+        reply(200, { revision: model.revision, changed: true, model })
         return
       }
       // ---- B3-11 内置浏览器 pane：browser-plugin（DSH 进程）经此通道请求
@@ -4927,6 +5254,8 @@ void app.whenReady().then(async () => {
   // Home 无明确 preset 时补 DeepSeekGUI 推荐默认（官方唯一写路径，绝不暗改
   // Existing Home）。
   void refreshPermissions().then(() => ensureManagedPermissionDefault())
+  // D20：Managed Home 出厂文件（AGENTS.md 模板 + 空 memory.md），只补缺失。
+  ensureManagedMemorySeed()
   // 插件事务结算：pending journal + 本次 boot 的结果 → verified（健康）或
   // 恢复链（Managed 自动恢复一次 / Existing 等待确认 / drift fail closed）。
   await settlePluginRecovery()

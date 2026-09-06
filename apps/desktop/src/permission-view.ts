@@ -17,7 +17,7 @@
 import type { SettingsDescribeValue } from './harness-api-types.ts'
 
 /** 官方 permission settings namespace 名。 */
-export const PERMISSION_SETTINGS_NAMESPACE = 'permission'
+const PERMISSION_SETTINGS_NAMESPACE = 'permission'
 
 /** 官方 permission settings 的 defaultPreset 字段。 */
 export const PERMISSION_DEFAULT_FIELD = 'defaultPreset'

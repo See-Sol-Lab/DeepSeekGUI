@@ -98,7 +98,12 @@ if (shellArgsRaw !== undefined && shellArgsRaw !== '') {
 const env: NodeJS.ProcessEnv = { ...process.env }
 // 显式注入桌面事实：DSH_HOME 与只含 shims + 系统目录的 PATH。
 env.DSH_HOME = process.env.DEEPSEEKGUI_TERMINAL_DSH_HOME ?? ''
-env.PATH = process.env.DEEPSEEKGUI_TERMINAL_PATH ?? process.env.PATH ?? ''
+// PATH 必须写回继承对象里已有的那个键（Windows 通常是 `Path`）：再添一个
+// `PATH` 键只会并存两份，shell 先读到旧的那份，shim 目录整个被绕开
+// （与 terminal-service.ts 的 withPath 同一条规则；本文件是独立 CJS 入口，
+// 不引 TS 模块，故就地实现）。
+const pathKey = Object.keys(env).find(name => name.toUpperCase() === 'PATH') ?? 'PATH'
+env[pathKey] = process.env.DEEPSEEKGUI_TERMINAL_PATH ?? env[pathKey] ?? ''
 env.TERM = 'xterm-256color'
 
 let spawned: PtyProcess

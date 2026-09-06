@@ -10,10 +10,10 @@
  */
 
 /** issue 标题的最大长度（字符；URL query 的安全界）。 */
-export const ISSUE_TITLE_MAX = 80
+const ISSUE_TITLE_MAX = 80
 
 /** 用户自由文本进入 issue 正文的最大长度（字符；剪贴板无长度压力，防失控）。 */
-export const ISSUE_USER_TEXT_MAX = 20_000
+const ISSUE_USER_TEXT_MAX = 20_000
 
 /** Feedback issue 组装的事实输入。 */
 export interface FeedbackIssueInput {

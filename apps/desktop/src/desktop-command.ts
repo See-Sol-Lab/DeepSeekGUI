@@ -36,7 +36,7 @@ export interface DesktopCommandResult {
 }
 
 /** 一次桌面维护操作的输出事件。 */
-export type DesktopCommandOutput = (stream: 'stdout' | 'stderr', text: string) => void
+type DesktopCommandOutput = (stream: 'stdout' | 'stderr', text: string) => void
 
 /** runDesktopCommand 的输入。 */
 export interface DesktopCommandInput {

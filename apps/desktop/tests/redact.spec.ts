@@ -11,6 +11,8 @@ import { createStreamingRedactor, maskWindowsLiteral, redactSecrets, redactUserC
 
 /** 每个受支持凭据形态的假样本与期望的脱敏标记。 */
 const FAKE_SECRETS: readonly { name: string; secret: string; marker: string }[] = [
+  { name: 'Harness launch URL', secret: '?token=FAKE_launch_1234567890', marker: '?token=<redacted>' },
+  { name: 'Desktop bridge URL', secret: '&deepseekgui-control=3081.FAKE_bridge', marker: '&deepseekgui-control=<redacted>' },
   { name: 'OpenAI 风格 sk-', secret: 'sk-FAKEfake1234567890abcdef', marker: 'sk-<redacted>' },
   { name: 'GitHub ghp_', secret: `ghp_${'Fake1234'.repeat(4)}`, marker: 'gh*_<redacted>' },
   { name: 'GitHub gho_', secret: `gho_${'Fake1234'.repeat(4)}`, marker: 'gh*_<redacted>' },
@@ -218,5 +220,43 @@ describe('Windows 的路径与主机名遮罩要按 Windows 的规矩来', () =>
     const out = redactUserContext('D:\\USERS\\Bob\\x', { home: '', hostname: '' })
     expect(out).not.toContain('Bob')
     expect(out).toContain('[REDACTED]')
+  })
+})
+
+describe('maskWindowsLiterals（P9-5：长/短路径等价形态同占位）', () => {
+  it('长名与 8.3 短名两个形态都被同一占位符遮掉（形态由调用方解析后传入，不硬编码猜测）', async () => {
+    const { maskWindowsLiterals } = await import('../src/redact.ts')
+    const sep = String.fromCharCode(92)
+    const long = ['C:', 'Users', 'Administrator'].join(sep)
+    const short = ['C:', 'Users', 'ADMINI~1'].join(sep)
+    const text = 'log: ' + long + sep + 'proj and temp ' + short + sep + ['AppData', 'Local', 'Temp', 'x.png'].join(sep)
+    const masked = maskWindowsLiterals(text, [long, short], '<USER_HOME>')
+    expect(masked).not.toContain('Administrator')
+    expect(masked).not.toContain('ADMINI~1')
+    expect(masked).toContain('<USER_HOME>' + sep + 'proj')
+    expect(masked).toContain('<USER_HOME>' + sep + ['AppData', 'Local', 'Temp', 'x.png'].join(sep))
+  })
+
+  it('空串成员被忽略，大小写与分隔符等价沿用单形态语义', async () => {
+    const { maskWindowsLiterals } = await import('../src/redact.ts')
+    const long = ['C:', 'Users', 'Administrator'].join(String.fromCharCode(92))
+    const masked = maskWindowsLiterals('c:/users/administrator/x', ['', long], '<H>')
+    expect(masked).toBe('<H>/x')
+  })
+
+  it('可验证的真实 8.3 形式：本机解析出的短名与长名指向同一目录并同占位', async () => {
+    // 系统真实解析（cmd 的 %~s 展开），与 main 的 homeShortAliases 同一来源；
+    // 环境不产生短名（8.3 已关闭）时如实跳过——绝不用硬编码 ~1 顶替。
+    const { spawnSync } = await import('node:child_process')
+    const { homedir } = await import('node:os')
+    const { realpathSync } = await import('node:fs')
+    const home = homedir()
+    const probe = spawnSync('cmd.exe', ['/d', '/c', 'for %I in ("' + home + '") do @echo %~sI'], { encoding: 'utf8', windowsHide: true, windowsVerbatimArguments: true })
+    const short = (probe.stdout ?? '').trim()
+    if (short === '' || short.toLowerCase() === home.toLowerCase()) return
+    expect(realpathSync.native(short).toLowerCase()).toBe(realpathSync.native(home).toLowerCase())
+    const { maskWindowsLiterals } = await import('../src/redact.ts')
+    const masked = maskWindowsLiterals('a ' + short + ' b ' + home + ' c', [home, short], '<USER_HOME>')
+    expect(masked).toBe('a <USER_HOME> b <USER_HOME> c')
   })
 })

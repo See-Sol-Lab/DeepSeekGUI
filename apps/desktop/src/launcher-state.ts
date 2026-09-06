@@ -15,13 +15,13 @@ import { atomicWriteFile } from './atomic-write.ts'
 export const LAUNCHER_STATE_FILENAME = 'launcher-state.json'
 
 /** 当前状态 schema 版本。 */
-export const LAUNCHER_STATE_VERSION = 1 as const
+const LAUNCHER_STATE_VERSION = 1 as const
 
 /**
  * Managed Harness Home：运行时解析为 `join(userData, 'dsh')`，
  * 即应用专属数据目录，不触碰全局 `~/.dsh`。
  */
-export interface ManagedHarnessHome {
+interface ManagedHarnessHome {
   readonly kind: 'managed'
 }
 
@@ -30,7 +30,7 @@ export interface ManagedHarnessHome {
  * 只接受绝对路径，原样保留（含空格与 Unicode）；启动时不创建、
  * 不迁移、不合并该目录。
  */
-export interface ExistingHarnessHome {
+interface ExistingHarnessHome {
   readonly kind: 'existing'
   /** 显式绝对路径。 */
   readonly path: string
@@ -333,7 +333,7 @@ export function serializeLauncherState(state: LauncherStateV1): string {
  * 消失，会以缺失字段被拒绝）。
  * @param state - 待写盘的状态。
  */
-export function assertLauncherState(state: LauncherStateV1, zh = true): void {
+function assertLauncherState(state: LauncherStateV1, zh = true): void {
   parseLauncherState(JSON.stringify(state), zh)
 }
 

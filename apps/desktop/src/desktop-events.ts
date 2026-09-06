@@ -31,7 +31,7 @@ export const EVENTS_FILENAME = 'events.md'
  * 查阅的，不是审计归档，留着几个月前的失败没有意义，反而会把最新的那条
  * 推到看不见的地方。
  */
-export const EVENTS_MAX_BYTES = 256 * 1024
+const EVENTS_MAX_BYTES = 256 * 1024
 
 /** 一条事件。 */
 export interface DesktopEvent {

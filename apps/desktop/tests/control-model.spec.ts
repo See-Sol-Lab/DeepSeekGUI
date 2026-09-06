@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildControlModel,
   parseControlCommand,
+  parseModelSinceParam,
   toRuntimeStatus,
   type ControlModelInput,
   type DesktopRuntimeStatus,
@@ -40,6 +41,7 @@ const discovery = (profiles: ProfileDiscoveryV1['profiles']): ProfileDiscoveryV1
 
 function input(overrides: Partial<ControlModelInput> = {}): ControlModelInput {
   return {
+    revision: 0,
     locale: 'zh',
     state: managedState(),
     status: running,
@@ -51,7 +53,8 @@ function input(overrides: Partial<ControlModelInput> = {}): ControlModelInput {
     effectiveTheme: 'dark',
     highContrast: false,
     recoveryNotice: null,
-    pluginManager: { profiles: [], error: null, operation: null, handoffPending: false, recovery: null },
+    pluginManager: { profiles: [], error: null, operation: null, handoffPending: false, recovery: null, builtin: [] },
+    viewMode: 'workbench',
     update: {
       channel: null, state: 'idle', result: null, latestVersion: null, releaseNotes: null,
       progressBytes: null, progressTotal: null, message: null,
@@ -262,5 +265,126 @@ describe('parseControlCommand 边界验证', () => {
     [{ type: 'choose-existing-profile', profile: 42 }],
   ])('拒绝非法输入 %j', (raw) => {
     expect(parseControlCommand(raw)).toBeNull()
+  })
+})
+
+describe('模型 revision 与条件拉取参数', () => {
+  it('buildControlModel 透传 revision（main 单处递增的版本号）', () => {
+    expect(buildControlModel(input({ revision: 7 })).revision).toBe(7)
+    expect(buildControlModel(input()).revision).toBe(0)
+  })
+
+  it('navigateRequest（B4-P8）：缺省为 null，传入时原样透传', () => {
+    expect(buildControlModel(input()).navigateRequest).toBeNull()
+    expect(buildControlModel(input({ navigateRequest: { sessionId: 's1', nonce: 3 } })).navigateRequest)
+      .toEqual({ sessionId: 's1', nonce: 3 })
+  })
+
+  it('parseModelSinceParam 接受非负整数，拒绝缺失/空/非数字/负数', () => {
+    expect(parseModelSinceParam(null)).toBeUndefined()
+    expect(parseModelSinceParam('')).toBeUndefined()
+    expect(parseModelSinceParam('abc')).toBeUndefined()
+    expect(parseModelSinceParam('-1')).toBeUndefined()
+    expect(parseModelSinceParam('1.5')).toBeUndefined()
+    expect(parseModelSinceParam('0')).toBe(0)
+    expect(parseModelSinceParam('42')).toBe(42)
+  })
+})
+
+describe('parseControlCommand: show-terminal 的可选 sessionId（P9-3）', () => {
+  it('裸命令与带 sessionId 的命令都合法——这是桌面动作真实发出的形状（回归：解析器曾把带 id 的命令整条拒绝）', async () => {
+    const { parseControlCommand } = await import('../src/control-model.ts')
+    expect(parseControlCommand({ type: 'show-terminal' })).toEqual({ type: 'show-terminal' })
+    expect(parseControlCommand({ type: 'show-terminal', sessionId: 'sess-a' }))
+      .toEqual({ type: 'show-terminal', sessionId: 'sess-a' })
+  })
+
+  it('空串 id、非字符串 id、多余字段整条拒绝', async () => {
+    const { parseControlCommand } = await import('../src/control-model.ts')
+    expect(parseControlCommand({ type: 'show-terminal', sessionId: '' })).toBeNull()
+    expect(parseControlCommand({ type: 'show-terminal', sessionId: 7 })).toBeNull()
+    expect(parseControlCommand({ type: 'show-terminal', sessionId: 'a', extra: 1 })).toBeNull()
+  })
+})
+
+describe('parseControlCommand: B5-P6 notify（无状态桌面通知命令）', () => {
+  const valid = {
+    type: 'notify',
+    id: 's1/approval/call-1',
+    sessionId: 's1',
+    kind: 'approval',
+    title: '需要审批',
+    body: 'git_commit · 提交暂存内容',
+  }
+
+  it('合法载荷原样通过（kind 收窄为封闭三值）', () => {
+    expect(parseControlCommand(valid)).toEqual(valid)
+    for (const kind of ['question', 'job']) {
+      expect(parseControlCommand({ ...valid, kind })).toEqual({ ...valid, kind })
+    }
+  })
+
+  it('未知 kind、空 id/sessionId、超长字段、多余字段整条拒绝', () => {
+    expect(parseControlCommand({ ...valid, kind: 'spam' })).toBeNull()
+    expect(parseControlCommand({ ...valid, id: '' })).toBeNull()
+    expect(parseControlCommand({ ...valid, sessionId: '' })).toBeNull()
+    expect(parseControlCommand({ ...valid, title: '   ' })).toBeNull()
+    expect(parseControlCommand({ ...valid, id: 'x'.repeat(201) })).toBeNull()
+    expect(parseControlCommand({ ...valid, body: 'x'.repeat(801) })).toBeNull()
+    expect(parseControlCommand({ ...valid, extra: 1 })).toBeNull()
+    expect(parseControlCommand({ type: 'notify' })).toBeNull()
+    expect(parseControlCommand({ ...valid, title: 7 })).toBeNull()
+  })
+})
+describe('parseControlCommand: B5-P7 记忆管理命令', () => {
+  it('open-memory 全局只带 which；项目必须带 sessionId；多余/缺字段整条拒绝', async () => {
+    const { parseControlCommand } = await import('../src/control-model.ts')
+    expect(parseControlCommand({ type: 'open-memory', which: 'global' }))
+      .toEqual({ type: 'open-memory', which: 'global' })
+    expect(parseControlCommand({ type: 'open-memory', which: 'project', sessionId: 's1' }))
+      .toEqual({ type: 'open-memory', which: 'project', sessionId: 's1' })
+    expect(parseControlCommand({ type: 'open-memory', which: 'project' })).toBeNull()
+    expect(parseControlCommand({ type: 'open-memory', which: 'spam' })).toBeNull()
+    expect(parseControlCommand({ type: 'open-memory', which: 'global', sessionId: 's1' })).toBeNull()
+    expect(parseControlCommand({ type: 'open-memory', which: 'project', sessionId: '' })).toBeNull()
+    // D20：AGENTS.md 两个入口与项目模板生成。
+    expect(parseControlCommand({ type: 'open-memory', which: 'global-agents' }))
+      .toEqual({ type: 'open-memory', which: 'global-agents' })
+    expect(parseControlCommand({ type: 'open-memory', which: 'project-agents', sessionId: 's1' }))
+      .toEqual({ type: 'open-memory', which: 'project-agents', sessionId: 's1' })
+    expect(parseControlCommand({ type: 'open-memory', which: 'project-agents' })).toBeNull()
+    expect(parseControlCommand({ type: 'create-project-agents', sessionId: 's1' }))
+      .toEqual({ type: 'create-project-agents', sessionId: 's1' })
+    expect(parseControlCommand({ type: 'create-project-agents' })).toBeNull()
+    expect(parseControlCommand({ type: 'create-project-agents', sessionId: 's1', extra: 1 })).toBeNull()
+  })
+
+  it('open-workspace / reveal-path：只认会话 id 与相对路径，越界判定留给 main', async () => {
+    const { parseControlCommand, REVEAL_PATH_MAX } = await import('../src/control-model.ts')
+    expect(parseControlCommand({ type: 'open-workspace', sessionId: 's1' }))
+      .toEqual({ type: 'open-workspace', sessionId: 's1' })
+    expect(parseControlCommand({ type: 'open-workspace' })).toBeNull()
+    expect(parseControlCommand({ type: 'open-workspace', sessionId: 's1', path: 'x' })).toBeNull()
+    expect(parseControlCommand({ type: 'reveal-path', sessionId: 's1', path: 'src/a.ts' }))
+      .toEqual({ type: 'reveal-path', sessionId: 's1', path: 'src/a.ts' })
+    // 形态合法但越界的路径这里放行——main 解析后再拒绝，避免两处各写一套规则。
+    expect(parseControlCommand({ type: 'reveal-path', sessionId: 's1', path: '../outside' }))
+      .toEqual({ type: 'reveal-path', sessionId: 's1', path: '../outside' })
+    expect(parseControlCommand({ type: 'reveal-path', sessionId: 's1', path: '' })).toBeNull()
+    expect(parseControlCommand({ type: 'reveal-path', sessionId: 's1', path: 'a\u0001b' })).toBeNull()
+    // 空格是合法路径字符（「验收练手 仓库」）；控制字符不是。
+    expect(parseControlCommand({ type: 'reveal-path', sessionId: 's1', path: '验收练手 仓库/a.txt' }))
+      .toEqual({ type: 'reveal-path', sessionId: 's1', path: '验收练手 仓库/a.txt' })
+    expect(parseControlCommand({ type: 'reveal-path', sessionId: 's1', path: 'x'.repeat(REVEAL_PATH_MAX + 1) })).toBeNull()
+    expect(parseControlCommand({ type: 'reveal-path', sessionId: '', path: 'a' })).toBeNull()
+  })
+
+  it('save-global-memory 接受空串清空，拒绝超长与非字符串', async () => {
+    const { parseControlCommand, MEMORY_GLOBAL_CONTENT_MAX } = await import('../src/control-model.ts')
+    expect(parseControlCommand({ type: 'save-global-memory', content: '' }))
+      .toEqual({ type: 'save-global-memory', content: '' })
+    expect(parseControlCommand({ type: 'save-global-memory', content: 'x'.repeat(MEMORY_GLOBAL_CONTENT_MAX + 1) })).toBeNull()
+    expect(parseControlCommand({ type: 'save-global-memory', content: 7 })).toBeNull()
+    expect(parseControlCommand({ type: 'save-global-memory' })).toBeNull()
   })
 })

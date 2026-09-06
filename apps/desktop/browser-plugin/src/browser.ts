@@ -254,6 +254,11 @@ export function cdpTreeToNodes(raw: readonly CdpAxNode[], maxDepth: number, maxN
  * @param paneUrl - the URL the shell reported for its pane.
  * @returns the matching page, or undefined.
  */
+/** The shell's empty-state page: a data: document titled by the pane marker. */
+export function isPanePlaceholder(url: string, title: string): boolean {
+  return url.startsWith('data:') && title === 'deepseekgui-browser-pane'
+}
+
 function findPaneByUrl(browser: Browser, paneUrl: string): Page | undefined {
   for (const context of browser.contexts()) {
     for (const page of context.pages()) {
@@ -562,6 +567,12 @@ export class DeepSeekGUIBrowser implements BrowserFacade {
   async snapshot(maxDepth: number): Promise<{ title: string; url: string; nodes: A11yNode[]; text: string }> {
     await this.ensure()
     const page = this.activePage()
+    // The shell's own empty-state page is never what the caller wants to
+    // read (DS 验房 2026-09-06: after a long wait the pane had been rebuilt
+    // and snapshot quietly returned the placeholder copy).
+    if (isPanePlaceholder(page.url(), await page.title().catch(() => ''))) {
+      throw new Error('the embedded browser pane shows its empty placeholder page (it was reopened or rebuilt); call browser_navigate again before reading it')
+    }
     const nodes = cdpTreeToNodes(await cdpAccessibilityTree(page), maxDepth)
     // Cache the ref → (role, name) table so interaction tools can resolve
     // snapshot refs into ARIA locators without re-reading the tree.
@@ -573,7 +584,21 @@ export class DeepSeekGUIBrowser implements BrowserFacade {
   async screenshot(fullPage: boolean): Promise<string> {
     await this.ensure()
     const page = this.activePage()
-    const buffer = fullPage ? await this.boundedFullPageShot(page) : await page.screenshot({ type: 'png' })
+    if (isPanePlaceholder(page.url(), await page.title().catch(() => ''))) {
+      throw new Error('the embedded browser pane shows its empty placeholder page (it was reopened or rebuilt); call browser_navigate again before taking a screenshot')
+    }
+    let buffer: Buffer
+    try {
+      buffer = fullPage ? await this.boundedFullPageShot(page) : await page.screenshot({ type: 'png' })
+    } catch (error) {
+      // A hidden or not-yet-composited pane has no bitmap; say so instead of
+      // surfacing Playwright's "0 width" (DS 验房 2026-09-06).
+      const message = error instanceof Error ? error.message : String(error)
+      if (/0 width|0 height/u.test(message)) {
+        throw new Error('the embedded browser pane is not rendering right now (hidden or just rebuilt); open the browser panel or call browser_navigate again, then retry')
+      }
+      throw error
+    }
     const { mkdirSync, writeFileSync } = await import('node:fs')
     const { join } = await import('node:path')
     mkdirSync(this.options.screenshotDir, { recursive: true })

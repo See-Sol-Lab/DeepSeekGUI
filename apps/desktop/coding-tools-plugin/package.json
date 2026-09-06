@@ -1,0 +1,30 @@
+{
+  "name": "@see-sol-lab/deepseekgui-coding-tools",
+  "description": "DeepSeekGUI coding toolset (B5-P4): Git status/diff/index writes, guarded commit, push preview/push, and pull-request tools over the dsh git and pull-request capabilities — model-visible results only, approval at the action boundary",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib"
+  ],
+  "license": "SEE LICENSE IN ../../../DEEPSEEKGUI-LICENSE.md",
+  "devDependencies": {
+    "@deepseek-ai/cordis": "workspace:*",
+    "@deepseek-ai/dsh-agent": "workspace:*",
+    "@deepseek-ai/dsh-git": "workspace:*",
+    "@deepseek-ai/dsh-git-local": "workspace:*",
+    "@deepseek-ai/dsh-llm": "workspace:*",
+    "@deepseek-ai/dsh-pull-request": "workspace:*",
+    "@deepseek-ai/dsh-pull-request-gh": "workspace:*",
+    "@deepseek-ai/dsh-sandbox-policy": "workspace:*",
+    "@deepseek-ai/dsh-sandbox": "workspace:*",
+    "@deepseek-ai/dsh-tools": "workspace:*",
+    "@deepseek-ai/dsh-user-approval": "workspace:*",
+    "typescript": "^5.0.0"
+  }
+}

@@ -274,6 +274,15 @@ function render(): void {  if (model === null) return
       }
     }
   }
+  // 视图切换项（D3，莉莉丝 2026-09-05）：Workbench 下写「官方原生界面」，
+  // 官方原生界面下同一项变成「切回 DeepSeekGUI 界面」——与托盘那条同一对
+  // 命令，用户不用知道托盘的存在。
+  const compatibilityItem = document.getElementById('menu-compatibility')
+  if (compatibilityItem !== null) {
+    const inCompatibility = model.viewMode === 'compatibility'
+    compatibilityItem.textContent = tr(inCompatibility ? 'menu.workbench' : 'menu.compatibility')
+    compatibilityItem.dataset.command = inCompatibility ? 'open-workbench' : 'compatibility-view'
+  }
   // 内置浏览器 pane（B3-11）：菜单项只在插件创建过 pane 后出现，文案随开合。
   const browserPaneItem = document.getElementById('menu-browser-pane')
   if (browserPaneItem !== null) {
@@ -437,6 +446,22 @@ el.mainMenu.addEventListener('click', (event) => {
     // 终端此前只有托盘一个入口（住客走查连提两次）：主菜单直接给一个。
     // 走的是同一条 show-terminal 命令，不新开执行面。
     run({ type: 'show-terminal' })
+    closeMenu()
+    return
+  }
+  const compatibility = target.closest<HTMLElement>('[data-command="compatibility-view"]')
+  if (compatibility !== null) {
+    // 官方原生界面（2026-09-02 从 Workbench 侧栏收编进壳菜单）：逃生门
+    // 语义住在逃生层。同一条 open-compatibility-view 命令出口，main 侧
+    // 的确认与重启语义不变。
+    run({ type: 'open-compatibility-view' })
+    closeMenu()
+    return
+  }
+  const workbench = target.closest<HTMLElement>('[data-command="open-workbench"]')
+  if (workbench !== null) {
+    // D3：同一个菜单项在官方原生界面下的回程命令。
+    run({ type: 'open-workbench' })
     closeMenu()
     return
   }

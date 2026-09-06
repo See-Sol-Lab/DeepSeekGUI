@@ -26,7 +26,6 @@ const apiWith = (value: SessionListValue): HarnessApi => ({
   sessionList: async () => value,
   sessionCreate: async () => { throw new Error('unused') },
   sessionPrompt: async () => { throw new Error('unused') },
-  sessionHistory: async () => { throw new Error('unused') },
 })
 
 const summary = (overrides: Partial<SessionListValue['items'][number]> = {}): SessionListValue['items'][number] => ({

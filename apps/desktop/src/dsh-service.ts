@@ -32,7 +32,7 @@ export const PROBE_INTERVAL_MS = 250
  */
 export const PROBE_FAST_INTERVAL_MS = 50
 /** 前段快速探测的持续时长，之后退回 {@link PROBE_INTERVAL_MS}。 */
-export const PROBE_FAST_WINDOW_MS = 2_000
+const PROBE_FAST_WINDOW_MS = 2_000
 /**
  * 单次 readiness 探测的上限。端口已经能建连、但服务永远不写响应时，
  * 一个没有 signal 的 fetch 会一直挂着——那种情况下总超时也永远轮不到
@@ -40,7 +40,7 @@ export const PROBE_FAST_WINDOW_MS = 2_000
  */
 export const PROBE_TIMEOUT_MS = 3_000
 /** 停止子进程的宽限时间，超时后强制终止。 */
-export const STOP_TIMEOUT_MS = 5_000
+const STOP_TIMEOUT_MS = 5_000
 
 /**
  * 终止子进程的最终期限。宽限期过后我们已经发过 SIGKILL / taskkill，如果
@@ -48,7 +48,7 @@ export const STOP_TIMEOUT_MS = 5_000
  * 到期必须明确失败——继续等下去只会让退出或重启永远转圈，而且会对用户
  * 谎称"已经停了"。
  */
-export const STOP_HARD_TIMEOUT_MS = 10_000
+const STOP_HARD_TIMEOUT_MS = 10_000
 
 /** 子进程在最终期限内没有退出。 */
 export class ProcessStopError extends Error {
@@ -84,6 +84,25 @@ export function repoRoot(): string {
 export const MANAGED_HOME_BLOCKED_ENV = 'DEEPSEEK_API_KEY'
 
 /**
+ * Managed Home 下同样不透传的宿主变量族：用户为**他自己那套 dsh** 设的
+ * 官方 `DSH_*`（技能目录 DSH_AGENTS_HOME、DSH_BUNDLED_SKILL_DIR、搜索/抓取
+ * 提供方、telemetry 开关……）与会改写内嵌 Node 运行时行为的 NODE_OPTIONS /
+ * NODE_PATH。装桌面版的人大多自己装过 dsh，两套必须互不知道对方存在
+ * （2026-09-05 莉莉丝定：全部隔离，我们这套不受宿主影响）。我们自己要注入
+ * 的 DSH_HOME / DSH_PNPM_ENTRY 由调用方在过滤**之后**显式写入。
+ * Existing Home 不在此列：接管用户的 Home 就该与他自己跑 `dsh web` 一致。
+ * @param name - 宿主环境变量名。
+ * @returns true = Managed Home 下丢弃。
+ */
+export function isHostDshEnv(name: string): boolean {
+  const upper = name.toUpperCase()
+  return upper === MANAGED_HOME_BLOCKED_ENV
+    || upper.startsWith('DSH_')
+    || upper === 'NODE_OPTIONS'
+    || upper === 'NODE_PATH'
+}
+
+/**
  * 构造要透传给 DSH 的环境。
  *
  * Managed Home 是「DeepSeekGUI 自己管的干净目录」，宿主的模型密钥不该漏进去；拦掉
@@ -91,18 +110,18 @@ export const MANAGED_HOME_BLOCKED_ENV = 'DEEPSEEK_API_KEY'
  * ——**不必开命令行**。Existing Home 是接管用户自己的 DSH Home，行为必须和他自己
  * 跑 `dsh web` 一致，因此原样透传。
  *
- * 只拦这一个变量：`EXA_API_KEY` / `PERPLEXITY_API_KEY` 那些不会锁住任何输入框，
- * 拦掉反而会悄悄弄坏用户既有的搜索配置。
+ * 拦的范围见 {@link isHostDshEnv}：模型密钥 + 宿主的 `DSH_*` 族 + NODE_OPTIONS /
+ * NODE_PATH。`EXA_API_KEY` / `PERPLEXITY_API_KEY` 那些不会锁住任何输入框，
+ * 拦掉反而会悄悄弄坏用户既有的搜索配置，所以照旧透传。
  * @param managedHome - 本次启动是否托管 Home。
  * @param base - 宿主环境（调用方传 `process.env`）。
  * @returns 透传给子进程的环境副本。
  */
 export function inheritedEnv(managedHome: boolean, base: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   if (!managedHome) return { ...base }
-  // 过滤重建而不是 `delete env[KEY]`：动态键的 delete 被 lint 规则挡下，而这个键
-  // 本来就该是具名常量（测试要引用它，文案里也要指名道姓）。
+  // 过滤重建而不是 `delete env[KEY]`：动态键的 delete 被 lint 规则挡下。
   return Object.fromEntries(
-    Object.entries(base).filter(([name]) => name !== MANAGED_HOME_BLOCKED_ENV),
+    Object.entries(base).filter(([name]) => !isHostDshEnv(name)),
   )
 }
 
@@ -196,7 +215,7 @@ export function resolveDshCommand(options: {
  * @returns spawn 参数：可执行文件、参数、工作目录与环境。
  */
 /** 皮肤插件的包名，也是它在模块 fallback 里的链接名。 */
-export const THEME_PLUGIN_PACKAGE = '@see-sol-lab/deepseekgui-theme'
+const THEME_PLUGIN_PACKAGE = '@see-sol-lab/deepseekgui-theme'
 
 /**
  * 让皮肤插件对所有 profile 可解析。
@@ -217,7 +236,7 @@ export const THEME_PLUGIN_PACKAGE = '@see-sol-lab/deepseekgui-theme'
  * @returns 是否可解析。false 时调用方**必须**不传 `--patch`——overlay 指向
  * 的插件加载不了会让整个 Harness 起不来，没有皮肤远好过起不来。
  */
-export function ensureThemePluginResolvable(dshHome: string, packageDir: string): boolean {
+function ensureThemePluginResolvable(dshHome: string, packageDir: string): boolean {
   return ensurePluginResolvable(dshHome, packageDir, THEME_PLUGIN_PACKAGE)
 }
 
@@ -348,7 +367,7 @@ export function resolveThemePatchFile(options: {
 }
 
 /** 设置分区插件的包名（P8-D39：官方设置页里的 DeepSeekGUI 控制分区）。 */
-export const SETTINGS_PLUGIN_PACKAGE = '@see-sol-lab/deepseekgui-settings'
+const SETTINGS_PLUGIN_PACKAGE = '@see-sol-lab/deepseekgui-settings'
 
 /** 设置分区 overlay 的文件名（随包发行，非用户资产）。 */
 export const SETTINGS_PATCH_FILENAME = 'deepseekgui-settings.patch.yml'
@@ -359,7 +378,7 @@ export const SETTINGS_PATCH_FILENAME = 'deepseekgui-settings.patch.yml'
  * @param options - 形态与路径。
  * @returns 插件目录绝对路径；缺少定位信息时返回 undefined（不加 --patch）。
  */
-export function resolveSettingsPluginDir(options: {
+function resolveSettingsPluginDir(options: {
   packaged: boolean
   root?: string
   resourcesPath?: string
@@ -379,7 +398,7 @@ export function resolveSettingsPluginDir(options: {
  * @param options - 形态与路径。
  * @returns overlay 绝对路径；缺少定位信息时返回 undefined。
  */
-export function resolveSettingsPatchFile(options: {
+function resolveSettingsPatchFile(options: {
   packaged: boolean
   root?: string
   resourcesPath?: string
@@ -395,7 +414,7 @@ export function resolveSettingsPatchFile(options: {
 }
 
 /** 目录选择器插件的包名，也是它在模块 fallback 里的链接名（P8-D11）。 */
-export const PICKER_PLUGIN_PACKAGE = '@see-sol-lab/deepseekgui-directory-picker'
+const PICKER_PLUGIN_PACKAGE = '@see-sol-lab/deepseekgui-directory-picker'
 
 /** 目录选择器 overlay 的文件名（随包发行，非用户资产）。 */
 export const PICKER_PATCH_FILENAME = 'deepseekgui-picker.patch.yml'
@@ -413,7 +432,7 @@ export const PICKER_PATCH_FILENAME = 'deepseekgui-picker.patch.yml'
  * @param options - 形态与路径。
  * @returns 插件目录绝对路径；开发态或缺少定位信息时返回 undefined。
  */
-export function resolvePickerPluginDir(options: {
+function resolvePickerPluginDir(options: {
   packaged: boolean
   resourcesPath?: string
 }): string | undefined {
@@ -428,7 +447,7 @@ export function resolvePickerPluginDir(options: {
  * @param options - 形态与路径。
  * @returns overlay 绝对路径；开发态或缺少定位信息时返回 undefined。
  */
-export function resolvePickerPatchFile(options: {
+function resolvePickerPatchFile(options: {
   packaged: boolean
   resourcesPath?: string
 }): string | undefined {
@@ -443,6 +462,12 @@ export const BROWSER_PLUGIN_PACKAGE = '@see-sol-lab/deepseekgui-browser'
 
 /** 浏览器 overlay 的文件名（随包发行，非用户资产）。 */
 export const BROWSER_PATCH_FILENAME = 'deepseekgui-browser.patch.yml'
+
+/** Workbench 产品插件的包名，也是它在模块 fallback 里的链接名（B3-P1）。 */
+const WORKBENCH_PLUGIN_PACKAGE = '@see-sol-lab/deepseekgui-workbench'
+
+/** Workbench overlay 的文件名（随包发行，非用户资产）。 */
+export const WORKBENCH_PATCH_FILENAME = 'deepseekgui-workbench.patch.yml'
 
 /**
  * profile 的清单是否已经把某个包列进 bundles 层。
@@ -487,7 +512,7 @@ export function profileBundlesInclude(dshHome: string, profile: string, packageN
  * @param options - 形态与路径。
  * @returns 插件目录绝对路径；缺少定位信息时 undefined。
  */
-export function resolveBrowserPluginDir(options: {
+function resolveBrowserPluginDir(options: {
   packaged: boolean
   root?: string
   resourcesPath?: string
@@ -505,7 +530,7 @@ export function resolveBrowserPluginDir(options: {
  * @param options - 形态与路径。
  * @returns overlay 绝对路径；缺少定位信息时 undefined。
  */
-export function resolveBrowserPatchFile(options: {
+function resolveBrowserPatchFile(options: {
   packaged: boolean
   root?: string
   resourcesPath?: string
@@ -518,6 +543,50 @@ export function resolveBrowserPatchFile(options: {
   return options.root === undefined
     ? undefined
     : join(options.root, 'apps', 'desktop', 'browser-plugin', 'cordis.patch.yml')
+}
+
+/**
+ * Workbench 产品插件目录的绝对路径（B3-P1）。
+ *
+ * 与皮肤/设置分区同形：开发态用仓库里的插件源码目录（依赖由 workspace
+ * 解析），打包态用 DSH 运行时目录内的真实文件（那个 Node 进程读不到
+ * asar）。插件与 overlay 都必须是真实文件。
+ * @param options - 形态与路径。
+ * @returns 插件目录绝对路径；缺少定位信息时 undefined（不加 --patch）。
+ */
+export function resolveWorkbenchPluginDir(options: {
+  packaged: boolean
+  root?: string
+  resourcesPath?: string
+}): string | undefined {
+  if (options.packaged) {
+    return options.resourcesPath === undefined
+      ? undefined
+      : join(options.resourcesPath, 'dsh', 'node_modules', ...WORKBENCH_PLUGIN_PACKAGE.split('/'))
+  }
+  return options.root === undefined
+    ? undefined
+    : join(options.root, 'apps', 'desktop', 'workbench-plugin')
+}
+
+/**
+ * Workbench overlay 的绝对路径（形态取舍同上）。
+ * @param options - 形态与路径。
+ * @returns overlay 绝对路径；缺少定位信息时 undefined。
+ */
+export function resolveWorkbenchPatchFile(options: {
+  packaged: boolean
+  root?: string
+  resourcesPath?: string
+}): string | undefined {
+  if (options.packaged) {
+    return options.resourcesPath === undefined
+      ? undefined
+      : join(options.resourcesPath, 'dsh', WORKBENCH_PATCH_FILENAME)
+  }
+  return options.root === undefined
+    ? undefined
+    : join(options.root, 'apps', 'desktop', 'workbench-plugin', WORKBENCH_PATCH_FILENAME)
 }
 
 export function resolveDshLaunch(options: {
@@ -543,6 +612,12 @@ export function resolveDshLaunch(options: {
   nodeExecutable?: string
   /** 是否托管 Home：true 时不向 DSH 透传宿主的模型密钥（见 {@link inheritedEnv}）。 */
   managedHome?: boolean
+  /**
+   * Compatibility View（B3-P2）：true 时不带 Workbench 产品插件 overlay，
+   * 页面就是不带 DeepSeekGUI 品牌的官方 DSH Web UI；其余四条 overlay
+   * （皮肤/选择器/设置/浏览器）照常。默认 false = Workbench。
+   */
+  compatibility?: boolean
 }): { command: string; args: string[]; cwd: string; env: NodeJS.ProcessEnv } {
   // 皮肤：先确认插件能被 profile 解析，再决定要不要带 overlay。
   // 顺序不能反——overlay 指向一个加载不了的插件会让整个 Harness 起不来，
@@ -611,6 +686,22 @@ export function resolveDshLaunch(options: {
       ...options.resourcesPath === undefined ? {} : { resourcesPath: options.resourcesPath },
     })
     : undefined
+  // Workbench 产品插件（B3-P1）：同一模式第五次。解析不了就不带 overlay——
+  // 没有它只是少了 DeepSeekGUI 品牌与 Workbench 标识，官方 UI 照常完整。
+  // Compatibility View（B3-P2）特意跳过这条：官方原版界面不带产品插件。
+  const workbenchDir = resolveWorkbenchPluginDir({
+    packaged: options.packaged,
+    ...options.root === undefined ? {} : { root: options.root },
+    ...options.resourcesPath === undefined ? {} : { resourcesPath: options.resourcesPath },
+  })
+  const workbenchPatch = options.compatibility !== true && workbenchDir !== undefined
+    && ensurePluginResolvable(options.dshHome, workbenchDir, WORKBENCH_PLUGIN_PACKAGE)
+    ? resolveWorkbenchPatchFile({
+      packaged: options.packaged,
+      ...options.root === undefined ? {} : { root: options.root },
+      ...options.resourcesPath === undefined ? {} : { resourcesPath: options.resourcesPath },
+    })
+    : undefined
   return resolveDshCommand({
     packaged: options.packaged,
     ...options.root === undefined ? {} : { root: options.root },
@@ -635,6 +726,8 @@ export function resolveDshLaunch(options: {
       ...settingsPatch === undefined ? [] : ['--patch', settingsPatch],
       // 内置浏览器 overlay（B3-11）：注册 browser_* 工具族。
       ...browserPatch === undefined ? [] : ['--patch', browserPatch],
+      // Workbench overlay（B3-P1）：注册 DeepSeekGUI 品牌与 Workbench 标识。
+      ...workbenchPatch === undefined ? [] : ['--patch', workbenchPatch],
       '--host', options.host ?? DEFAULT_HOST,
       '--port', String(options.port ?? DEFAULT_PORT),
       // DeepSeekGUI owns the browser surface inside its Compatibility View.
@@ -644,20 +737,8 @@ export function resolveDshLaunch(options: {
   })
 }
 
-/**
- * 子进程 stdio 策略：开发态与 smoke 模式保留输出（继承宿主控制台），
- * 正常打包 GUI 无控制台可写，改为 pipe 进主进程写入本地诊断日志
- * （直接 inherit 会因管道已关闭触发 EPIPE）。
- * @param packaged - 打包态（发行目录）还是开发态。
- * @param smoke - 是否 smoke 模式。
- * @returns spawn 的 stdio 值。
- */
-export function childStdio(packaged: boolean, smoke: boolean): 'inherit' | 'pipe' {
-  return packaged && !smoke ? 'pipe' : 'inherit'
-}
-
 /** 诊断日志的单文件大小上限；超过后停止写入并留下截断标记。 */
-export const SERVICE_LOG_MAX_BYTES = 5 * 1024 * 1024
+const SERVICE_LOG_MAX_BYTES = 5 * 1024 * 1024
 
 /**
  * 判断链接应如何打开。本应用的本机 DSH 页面在窗口内导航；其余 http/https

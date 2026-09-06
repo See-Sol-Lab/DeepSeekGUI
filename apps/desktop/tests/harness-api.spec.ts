@@ -1,6 +1,7 @@
 /**
- * harness-api 测试：官方 RPC 信封构造、响应严格解析、业务错误与传输
- * 失败的 fail-closed 语义。fake fetch 注入，零网络。
+ * harness-api 测试：官方 Remote 信封构造（B5-P1：`namespace/method` 端点 +
+ * `payload.args` 包裹）、响应严格解析、业务错误与传输失败的 fail-closed
+ * 语义。fake fetch 注入，零网络。
  * @module @see-sol-lab/deepseekgui/tests/harness-api
  */
 
@@ -10,77 +11,73 @@ import {
   HarnessRpcError,
 } from '../src/harness-api.ts'
 
+type FetchState = {
+  seenUrl: string
+  seenBody: { type: string; rpcId: string; method: string; payload: { args: unknown } }
+}
+
+function fakeFetch(responder: (state: FetchState) => unknown) {
+  const state: FetchState = { seenUrl: '', seenBody: { type: '', rpcId: '', method: '', payload: { args: {} } } }
+  const fetch = async (url: string, init: { method: string; headers: Record<string, string>; body: string }): Promise<unknown> => {
+    state.seenUrl = url
+    state.seenBody = JSON.parse(init.body) as FetchState['seenBody']
+    const value = await responder(state)
+    return {
+      ok: true,
+      status: 200,
+      json: async () => value,
+    }
+  }
+  return { state, fetch }
+}
+
+function okEnvelope(state: FetchState, value: unknown): unknown {
+  return {
+    type: 'server-response',
+    rpcId: state.seenBody.rpcId,
+    result: { ok: true, value },
+  }
+}
+
 describe('createHarnessApi / settingsDescribe', () => {
-  it('构造官方信封并解析 describe 值', async () => {
-    let seenUrl = ''
-    let seenBody: unknown = null
-    const api = createHarnessApi({
-      baseUrl: 'http://127.0.0.1:3080',
-      fetch: async (url, init) => {
-        seenUrl = url
-        seenBody = JSON.parse(init.body) as unknown
-        const rpcId = (seenBody as { rpcId: string }).rpcId
-        return {
-          ok: true,
-          status: 200,
-          json: async () => ({
-            type: 'server-response',
-            rpcId,
-            result: {
-              ok: true,
-              value: {
-                writable: true,
-                hasDocument: true,
-                namespaces: [
-                  { ns: 'permission', value: { defaultPreset: 'workspace-write' }, applies: 'live', revision: 3 },
-                ],
-              },
-            },
-          }),
-        }
-      },
-    })
+  it('构造官方信封：settings/describe 端点、空 args，并解析 describe 值', async () => {
+    const { state, fetch } = fakeFetch(state => okEnvelope(state, {
+      writable: true,
+      hasDocument: true,
+      namespaces: [
+        { ns: 'permission', value: { defaultPreset: 'workspace-write' }, applies: 'live', revision: 3 },
+      ],
+    }))
+    const api = createHarnessApi({ baseUrl: 'http://127.0.0.1:3080', fetch: fetch as never })
     const value = await api.settingsDescribe()
-    expect(seenUrl).toBe('http://127.0.0.1:3080/api/settings.describe')
-    const request = seenBody as { type: string; method: string; payload: unknown }
-    expect(request.type).toBe('client-request')
-    expect(request.method).toBe('settings.describe')
-    expect(request.payload).toEqual({})
+    expect(state.seenUrl).toBe('http://127.0.0.1:3080/api/settings/describe')
+    expect(state.seenBody.type).toBe('client-request')
+    expect(state.seenBody.method).toBe('settings/describe')
+    expect(state.seenBody.payload.args).toEqual({})
     expect(value.namespaces[0]?.ns).toBe('permission')
     expect(value.namespaces[0]?.value).toEqual({ defaultPreset: 'workspace-write' })
   })
 
   it('业务错误（ok:false）转为 HarnessRpcError 并携带 code', async () => {
-    const api = createHarnessApi({
-      baseUrl: 'http://127.0.0.1:3080',
-      fetch: async (_url, init) => {
-        const rpcId = (JSON.parse(init.body) as { rpcId: string }).rpcId
-        return {
-          ok: true,
-          status: 200,
-          json: async () => ({
-            type: 'server-response',
-            rpcId,
-            result: {
-              ok: false,
-              error: { code: 'settings-conflict', message: 'revision mismatch', details: { ns: 'x', expected: 1, actual: 2 } },
-            },
-          }),
-        }
+    const { fetch } = fakeFetch(state => ({
+      type: 'server-response',
+      rpcId: state.seenBody.rpcId,
+      result: {
+        ok: false,
+        error: { code: 'settings-conflict', message: 'revision mismatch', details: { ns: 'x', expected: 1, actual: 2 } },
       },
-    })
+    }))
+    const api = createHarnessApi({ baseUrl: 'http://127.0.0.1:3080', fetch: fetch as never })
     await expect(api.settingsDescribe()).rejects.toMatchObject({ code: 'settings-conflict' })
   })
 
   it('响应形状不符按坏响应失败，绝不猜测', async () => {
-    const api = createHarnessApi({
-      baseUrl: 'http://127.0.0.1:3080',
-      fetch: async () => ({ ok: true, status: 200, json: async () => ({ type: 'server-response', rpcId: 'other', result: { ok: true, value: {} } }) }),
-    })
+    const { fetch } = fakeFetch(() => ({ type: 'server-response', rpcId: 'other', result: { ok: true, value: {} } }))
+    const api = createHarnessApi({ baseUrl: 'http://127.0.0.1:3080', fetch: fetch as never })
     await expect(api.settingsDescribe()).rejects.toBeInstanceOf(HarnessRpcError)
   })
 
-  it('传输失败与超时抛 unreachable（fail closed 由调用方处理）', async () => {
+  it('fetch 抛错（网络失败/超时）映射为 unreachable，不裸奔', async () => {
     const api = createHarnessApi({
       baseUrl: 'http://127.0.0.1:3080',
       fetch: async () => { throw new Error('ECONNREFUSED') },
@@ -88,233 +85,104 @@ describe('createHarnessApi / settingsDescribe', () => {
     await expect(api.settingsDescribe()).rejects.toMatchObject({ code: 'unreachable' })
   })
 
-  it('describe 值缺失 writable 时按坏响应失败', async () => {
-    const api = createHarnessApi({
-      baseUrl: 'http://127.0.0.1:3080',
-      fetch: async (_url, init) => {
-        const rpcId = (JSON.parse(init.body) as { rpcId: string }).rpcId
-        return {
-          ok: true,
-          status: 200,
-          json: async () => ({ type: 'server-response', rpcId, result: { ok: true, value: { hasDocument: true, namespaces: [] } } }),
-        }
-      },
-    })
+  it('value 形状不符（缺 writable）按 bad-response 拒绝', async () => {
+    const { fetch } = fakeFetch(state => okEnvelope(state, { hasDocument: true, namespaces: [] }))
+    const api = createHarnessApi({ baseUrl: 'http://127.0.0.1:3080', fetch: fetch as never })
     await expect(api.settingsDescribe()).rejects.toMatchObject({ code: 'bad-response' })
   })
 })
 
 describe('createHarnessApi / settingsMutate', () => {
-  it('构造 mutate 载荷并解析新视图', async () => {
-    let seenPayload: unknown = null
-    const api = createHarnessApi({
-      baseUrl: 'http://127.0.0.1:3080',
-      fetch: async (_url, init) => {
-        seenPayload = (JSON.parse(init.body) as { payload: unknown }).payload
-        const rpcId = (JSON.parse(init.body) as { rpcId: string }).rpcId
-        return {
-          ok: true,
-          status: 200,
-          json: async () => ({
-            type: 'server-response',
-            rpcId,
-            result: { ok: true, value: { ns: 'ui-theme', value: { preference: 'dark' }, applies: 'live', revision: 1 } },
-          }),
-        }
-      },
-    })
+  it('平铺 args（ns/ops/expectedRevision）并严格解析 namespace 视图', async () => {
+    const { state, fetch } = fakeFetch(state => okEnvelope(state, {
+      ns: 'ui-theme', value: { preference: 'dark' }, applies: 'live', revision: 8,
+    }))
+    const api = createHarnessApi({ baseUrl: 'http://127.0.0.1:3080', fetch: fetch as never })
     const view = await api.settingsMutate('ui-theme', [{ op: 'set', path: ['preference'], value: 'dark' }])
-    expect(seenPayload).toEqual({ ns: 'ui-theme', ops: [{ op: 'set', path: ['preference'], value: 'dark' }] })
-    expect(view.value).toEqual({ preference: 'dark' })
+    expect(state.seenBody.method).toBe('settings/mutate')
+    expect(state.seenBody.payload.args).toEqual({
+      ns: 'ui-theme',
+      ops: [{ op: 'set', path: ['preference'], value: 'dark' }],
+    })
+    expect(view.revision).toBe(8)
   })
 
-  it('expectedRevision 仅在提供时进入载荷', async () => {
-    let seenPayload: unknown = null
-    const api = createHarnessApi({
-      baseUrl: 'http://127.0.0.1:3080',
-      fetch: async (_url, init) => {
-        seenPayload = (JSON.parse(init.body) as { payload: unknown }).payload
-        const rpcId = (JSON.parse(init.body) as { rpcId: string }).rpcId
-        return {
-          ok: true,
-          status: 200,
-          json: async () => ({
-            type: 'server-response',
-            rpcId,
-            result: { ok: true, value: { ns: 'permission', value: {}, applies: 'live', revision: 9 } },
-          }),
-        }
-      },
-    })
+  it('expectedRevision 传入时随 args 发送（乐观并发防护）', async () => {
+    const { state, fetch } = fakeFetch(state => okEnvelope(state, {
+      ns: 'permission', value: { defaultPreset: 'workspace-write' }, applies: 'live', revision: 7,
+    }))
+    const api = createHarnessApi({ baseUrl: 'http://127.0.0.1:3080', fetch: fetch as never })
     await api.settingsMutate('permission', [{ op: 'set', path: ['defaultPreset'], value: 'workspace-write' }], 7)
-    expect(seenPayload).toMatchObject({ expectedRevision: 7 })
+    expect(state.seenBody.payload.args).toMatchObject({ expectedRevision: 7 })
   })
 })
 
 describe('createHarnessApi / sessionList', () => {
-  const okSessionList = (items: unknown[]): import('../src/harness-api.ts').HarnessApi => createHarnessApi({
-    baseUrl: 'http://127.0.0.1:3080',
-    fetch: async (_url, init) => {
-      const rpcId = (JSON.parse(init.body) as { rpcId: string }).rpcId
-      return {
-        ok: true,
-        status: 200,
-        json: async () => ({
-          type: 'server-response',
-          rpcId,
-          result: { ok: true, value: { items } },
-        }),
-      }
-    },
-  })
-
-  it('构造官方信封并解析受信字段（running/blank 与可选字段）', async () => {
-    let seenPayload: unknown = null
-    let seenSignal: AbortSignal | null = null
-    const api = createHarnessApi({
-      baseUrl: 'http://127.0.0.1:3080',
-      fetch: async (_url, init) => {
-        seenPayload = (JSON.parse(init.body) as { payload: unknown }).payload
-        seenSignal = init.signal
-        const rpcId = (JSON.parse(init.body) as { rpcId: string }).rpcId
-        return {
-          ok: true,
-          status: 200,
-          json: async () => ({
-            type: 'server-response',
-            rpcId,
-            result: {
-              ok: true,
-              value: {
-                items: [
-                  { sessionId: 's1', updatedAt: 100, running: true, blank: false, cwd: 'C:\\w' },
-                  { sessionId: 's2', updatedAt: 90, running: false, blank: true },
-                ],
-              },
-            },
-          }),
-        }
-      },
-    })
+  it('session/list 端点、args 键为 _request（host 签名参数名）并解析受信摘要字段', async () => {
+    const { state, fetch } = fakeFetch(state => okEnvelope(state, {
+      items: [
+        {
+          sessionId: 's1', updatedAt: 123, running: true, blank: false,
+          cwd: 'C:\\ws', origin: 'subagent', parentSessionId: 'p',
+        },
+      ],
+    }))
+    const api = createHarnessApi({ baseUrl: 'http://127.0.0.1:3080', fetch: fetch as never })
     const value = await api.sessionList()
-    expect(seenPayload).toEqual({})
-    expect(seenSignal).not.toBeNull()
-    expect(value.items).toHaveLength(2)
-    expect(value.items[0]).toMatchObject({ sessionId: 's1', running: true, blank: false, cwd: 'C:\\w' })
-    expect(value.items[1]).toMatchObject({ sessionId: 's2', running: false, blank: true })
+    expect(state.seenUrl).toContain('/api/session/list')
+    expect(state.seenBody.method).toBe('session/list')
+    expect(state.seenBody.payload.args).toEqual({ _request: {} })
+    expect(value.items).toEqual([
+      expect.objectContaining({ sessionId: 's1', running: true, blank: false, cwd: 'C:\\ws' }),
+    ])
   })
 
-  it('响应形状不符按坏响应失败（fail closed），绝不猜测', async () => {
-    const noItems = okSessionList([])
-    // items 缺失
-    const broken1 = createHarnessApi({
-      baseUrl: 'http://127.0.0.1:3080',
-      fetch: async (_url, init) => {
-        const rpcId = (JSON.parse(init.body) as { rpcId: string }).rpcId
-        return { ok: true, status: 200, json: async () => ({ type: 'server-response', rpcId, result: { ok: true, value: {} } }) }
-      },
-    })
-    await expect(broken1.sessionList()).rejects.toMatchObject({ code: 'bad-response' })
-    // 行内 running 缺失
-    const broken2 = createHarnessApi({
-      baseUrl: 'http://127.0.0.1:3080',
-      fetch: async (_url, init) => {
-        const rpcId = (JSON.parse(init.body) as { rpcId: string }).rpcId
-        return {
-          ok: true,
-          status: 200,
-          json: async () => ({
-            type: 'server-response',
-            rpcId,
-            result: { ok: true, value: { items: [{ sessionId: 's', updatedAt: 1, blank: false }] } },
-          }),
-        }
-      },
-    })
-    await expect(broken2.sessionList()).rejects.toMatchObject({ code: 'bad-response' })
-    await expect(noItems.sessionList()).resolves.toEqual({ items: [] })
+  it('行形状不符按 bad-response 拒绝', async () => {
+    const { fetch } = fakeFetch(state => okEnvelope(state, { items: [{ sessionId: 7 }] }))
+    const api = createHarnessApi({ baseUrl: 'http://127.0.0.1:3080', fetch: fetch as never })
+    await expect(api.sessionList()).rejects.toMatchObject({ code: 'bad-response' })
   })
 
-  it('传输失败与超时抛 unreachable', async () => {
-    const api = createHarnessApi({
-      baseUrl: 'http://127.0.0.1:3080',
-      fetch: async () => { throw new Error('TimeoutError') },
-    })
-    await expect(api.sessionList()).rejects.toMatchObject({ code: 'unreachable' })
+  it('空列表是合法结果', async () => {
+    const { fetch } = fakeFetch(state => okEnvelope(state, { items: [] }))
+    const api = createHarnessApi({ baseUrl: 'http://127.0.0.1:3080', fetch: fetch as never })
+    await expect(api.sessionList()).resolves.toEqual({ items: [] })
   })
 })
 
-describe('createHarnessApi / session.create / prompt / history', () => {
-  const fakeSessionApi = (value: unknown): ReturnType<typeof createHarnessApi> => createHarnessApi({
-    baseUrl: 'http://127.0.0.1:3080',
-    fetch: async (_url, init) => {
-      const rpcId = (JSON.parse(init.body) as { rpcId: string }).rpcId
-      return {
-        ok: true,
-        status: 200,
-        json: async () => ({ type: 'server-response', rpcId, result: { ok: true, value } }),
-      }
-    },
-  })
-
-  it('session.create：解析 sessionId 并透传 cwd', async () => {
-    let seenPayload: unknown = null
-    const api = createHarnessApi({
-      baseUrl: 'http://127.0.0.1:3080',
-      fetch: async (_url, init) => {
-        seenPayload = (JSON.parse(init.body) as { payload: unknown }).payload
-        const rpcId = (JSON.parse(init.body) as { rpcId: string }).rpcId
-        return {
-          ok: true,
-          status: 200,
-          json: async () => ({ type: 'server-response', rpcId, result: { ok: true, value: { sessionId: 'diag-1' } } }),
-        }
-      },
-    })
+describe('createHarnessApi / sessionCreate', () => {
+  it('session/create：request 包裹 cwd 载荷，解析 sessionId', async () => {
+    const { state, fetch } = fakeFetch(state => okEnvelope(state, { sessionId: 'fk-new' }))
+    const api = createHarnessApi({ baseUrl: 'http://127.0.0.1:3080', fetch: fetch as never })
     const created = await api.sessionCreate({ cwd: 'C:\\ud' })
-    expect(seenPayload).toEqual({ cwd: 'C:\\ud' })
-    expect(created).toEqual({ sessionId: 'diag-1' })
+    expect(state.seenBody.method).toBe('session/create')
+    expect(state.seenBody.payload.args).toEqual({ request: { cwd: 'C:\\ud' } })
+    expect(created.sessionId).toBe('fk-new')
   })
 
-  it('session.create 形状不符 → bad-response', async () => {
-    const api = fakeSessionApi({ sessionId: '' })
+  it('响应缺 sessionId 按 bad-response 拒绝', async () => {
+    const { fetch } = fakeFetch(state => okEnvelope(state, {}))
+    const api = createHarnessApi({ baseUrl: 'http://127.0.0.1:3080', fetch: fetch as never })
     await expect(api.sessionCreate({ cwd: 'C:\\ud' })).rejects.toMatchObject({ code: 'bad-response' })
   })
+})
 
-  it('session.prompt：accepted 必须为 true，否则 bad-response', async () => {
-    let seenPayload: unknown = null
-    const api = createHarnessApi({
-      baseUrl: 'http://127.0.0.1:3080',
-      fetch: async (_url, init) => {
-        seenPayload = (JSON.parse(init.body) as { payload: unknown }).payload
-        const rpcId = (JSON.parse(init.body) as { rpcId: string }).rpcId
-        return {
-          ok: true,
-          status: 200,
-          json: async () => ({ type: 'server-response', rpcId, result: { ok: true, value: { accepted: true } } }),
-        }
-      },
-    })
+describe('createHarnessApi / sessionPrompt', () => {
+  it('session/prompt：request 携带客户端 mint 的 requestId（关联身份必填）', async () => {
+    const { state, fetch } = fakeFetch(state => okEnvelope(state, { accepted: true }))
+    const api = createHarnessApi({ baseUrl: 'http://127.0.0.1:3080', fetch: fetch as never })
     await api.sessionPrompt({ sessionId: 's1', mode: 'queue', content: [{ type: 'text', text: 'hi' }] })
-    expect(seenPayload).toEqual({ sessionId: 's1', mode: 'queue', content: [{ type: 'text', text: 'hi' }] })
-    const rejected = fakeSessionApi({ accepted: false })
-    await expect(rejected.sessionPrompt({ sessionId: 's1', mode: 'queue', content: [] }))
-      .rejects.toMatchObject({ code: 'bad-response' })
+    expect(state.seenBody.method).toBe('session/prompt')
+    const request = (state.seenBody.payload.args as { request: Record<string, unknown> }).request
+    expect(request).toMatchObject({ sessionId: 's1', mode: 'queue', content: [{ type: 'text', text: 'hi' }] })
+    expect(typeof request.requestId).toBe('string')
+    expect((request.requestId as string).length).toBeGreaterThan(0)
   })
 
-  it('session.history：严格解析事件 envelope，坏形状 fail closed', async () => {
-    const api = fakeSessionApi({
-      events: [
-        { event: { type: 'assistant/message', seq: 1, time: 2, data: { message: { content: [] } } } },
-        { event: { type: 'turn/end', seq: 2, time: 3, data: { turn: 1 } } },
-      ],
-      hasMore: false,
-    })
-    const history = await api.sessionHistory({ sessionId: 's1', maxMessages: 20 })
-    expect(history.events.map(entry => entry.event.type)).toEqual(['assistant/message', 'turn/end'])
-    const broken = fakeSessionApi({ events: [{ event: { type: 'turn/end', seq: -1, time: 1, data: {} } }], hasMore: false })
-    await expect(broken.sessionHistory({ sessionId: 's1' })).rejects.toMatchObject({ code: 'bad-response' })
-    const noEvents = fakeSessionApi({ hasMore: false })
-    await expect(noEvents.sessionHistory({ sessionId: 's1' })).rejects.toMatchObject({ code: 'bad-response' })
+  it('accepted 不为 true 按 bad-response 拒绝', async () => {
+    const { fetch } = fakeFetch(state => okEnvelope(state, { accepted: false }))
+    const api = createHarnessApi({ baseUrl: 'http://127.0.0.1:3080', fetch: fetch as never })
+    await expect(api.sessionPrompt({ sessionId: 's1', mode: 'queue', content: [] }))
+      .rejects.toMatchObject({ code: 'bad-response' })
   })
 })

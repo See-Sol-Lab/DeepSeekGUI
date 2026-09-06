@@ -1,14 +1,6 @@
 /* Visual baseline: deepsuite `@deepseek/md` markdown.css, adapted to CSS
    Modules. Cite pills, header anchors, and thinking-small variants are
-   intentionally absent (no matching DOM). Token names match that sheet.
-
-   Host hooks (DeepSeekGUI D45 续, 2026-08-24): the block rhythm below —
-   32px above a heading, 16px between paragraphs and lists — is drawn for
-   the 16px figma body. A host that shrinks the body type keeps every one
-   of these gaps at full size, and the transcript reads airier the smaller
-   the text gets. Each is a var() with the figma value as its fallback, so
-   vanilla `dsh web` renders byte-identical; only a host that supplies the
-   variables (DeepSeekGUI's theme plugin, via overrideTokens) tightens them. */
+   intentionally absent (no matching DOM). Token names match that sheet. */
 
 .markdown {
   min-width: 0;
@@ -23,27 +15,27 @@
 
 .markdown h1 {
   font: var(--dsw-font-markdown-h1);
-  margin: var(--dsh-markdown-heading-top, 32px) 0 var(--dsh-markdown-block-margin, 16px);
+  margin: 32px 0 16px;
 }
 
 .markdown h2 {
   font: var(--dsw-font-markdown-h2);
-  margin: var(--dsh-markdown-heading-top, 32px) 0 var(--dsh-markdown-block-margin, 16px);
+  margin: 32px 0 16px;
 }
 
 .markdown h3 {
   font: var(--dsw-font-markdown-h3);
-  margin: var(--dsh-markdown-heading-top, 32px) 0 var(--dsh-markdown-block-margin, 16px);
+  margin: 32px 0 16px;
 }
 
 .markdown h4 {
   font: var(--dsw-font-markdown-h4);
-  margin: var(--dsh-markdown-block-margin, 16px) 0;
+  margin: 16px 0;
 }
 
 .markdown :where(h5, h6) {
   font: var(--dsw-font-markdown-base-strong);
-  margin: var(--dsh-markdown-block-margin, 16px) 0;
+  margin: 16px 0;
 }
 
 .markdown :where(h1, h2, h3, h4, h5, h6) strong {
@@ -51,7 +43,7 @@
 }
 
 .markdown p {
-  margin: var(--dsh-markdown-block-margin, 16px) 0;
+  margin: 16px 0;
 }
 
 /* Tighten h4–h6 against a following list (design: 8px gap). */
@@ -91,12 +83,12 @@
 }
 
 .markdown :where(ul, ol) {
-  margin: var(--dsh-markdown-block-margin, 16px) 0;
+  margin: 16px 0;
   padding-left: 18px;
 }
 
 .markdown li:not(:first-child) {
-  margin-top: var(--dsh-markdown-list-gap, 6px);
+  margin-top: 6px;
 }
 
 .markdown li > :where(ul, ol) {
@@ -104,9 +96,7 @@
 }
 
 .markdown li::marker {
-  /* Must track the body's line-height or the bullet drifts off its own text
-     baseline; the figma 28px belongs to the 16px body. */
-  line-height: var(--dsh-markdown-marker-line-height, 28px);
+  line-height: 24px;
   color: var(--dsw-alias-label-secondary);
 }
 
@@ -136,7 +126,7 @@
 .markdown hr {
   display: block;
   border: none;
-  height: 1px;
+  height: 0.5px;
   margin: 32px 0;
   background: var(--dsw-alias-border-l2);
 }
@@ -235,7 +225,7 @@
 .tableScroll th {
   text-align: start;
   padding: 10px 16px;
-  border-bottom: 1px solid var(--dsw-alias-border-l3);
+  border-bottom: 0.5px solid var(--dsw-alias-border-l3);
   border-top: none;
   font: var(--dsw-font-markdown-table-head);
   max-width: 320px;
@@ -245,7 +235,7 @@
 
 .tableScroll td {
   padding: 10px 16px;
-  border-bottom: 1px solid var(--dsw-alias-border-l2);
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
   font: var(--dsw-font-markdown-table);
   max-width: 320px;
   max-width: min(30vw, 320px);
@@ -262,7 +252,7 @@
 }
 
 .tableScroll table code {
-  font-size: 13px;
+  font-size: 11px;
 }
 
 .markdown > *:first-child,

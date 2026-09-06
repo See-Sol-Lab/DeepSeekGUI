@@ -8,6 +8,7 @@
     "src"
   ],
   "references": [
+    { "path": "../../boot/cmdline" },
     {
       "path": "../../../vendor/cordis"
     },
@@ -24,6 +25,9 @@
       "path": "../../core/agent"
     },
     {
+      "path": "../../attachment/attachment"
+    },
+    {
       "path": "../../core/session"
     },
     {
@@ -31,9 +35,6 @@
     },
     {
       "path": "../../subagent/subagent"
-    },
-    {
-      "path": "../../runtime-diagnostics/invariants"
     }
   ]
 }

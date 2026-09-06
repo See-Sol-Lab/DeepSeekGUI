@@ -25,9 +25,10 @@ import {
   shutdownApp,
   waitForCompMount,
   waitForWindow,
+  TEST_APP_PORT,
 } from './chrome-driver.ts'
 
-const APP_URL = 'http://127.0.0.1:3080/'
+const APP_URL = `${COMP_URL_PREFIX}/`
 
 describe('打包产物门禁', () => {
   it('dist/desktop/win-unpacked/DeepSeekGUI.exe 存在（成品验收入口不得假绿）', () => {
@@ -116,7 +117,7 @@ describe.runIf(packagedExists)('官方 Web 等价：打包 Electron 启动与生
     const closing = app!
     app = undefined
     await closing.close()
-    await expect.poll(() => portOpen(3080), { timeout: 15_000 }).toBe(false)
+    await expect.poll(() => portOpen(TEST_APP_PORT), { timeout: 15_000 }).toBe(false)
     const tasklist = spawnSync('tasklist', ['/FI', 'IMAGENAME eq DeepSeekGUI.exe'], { encoding: 'utf8' })
     expect(tasklist.stdout).not.toContain('DeepSeekGUI.exe')
   })

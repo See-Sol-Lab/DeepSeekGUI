@@ -81,17 +81,33 @@ describe('buildPluginInventory（三分类绝不混写）', () => {
       dependencies: { 'my-plugin': '^1.0.0', 'plain-lib': '^2.0.0' },
     })
     expect(inventory.bundles).toEqual([
-      { name: '@deepseek-ai/dsh-base', fromDependency: false },
-      { name: '@deepseek-ai/dsh-web-app', fromDependency: false },
-      { name: 'my-plugin', fromDependency: true },
+      { name: '@deepseek-ai/dsh-base', fromDependency: false, builtin: false },
+      { name: '@deepseek-ai/dsh-web-app', fromDependency: false, builtin: false },
+      { name: 'my-plugin', fromDependency: true, builtin: false },
     ])
     expect(inventory.dependencies).toEqual([
-      { name: 'my-plugin', spec: '^1.0.0', inBundles: true },
-      { name: 'plain-lib', spec: '^2.0.0', inBundles: false },
+      { name: 'my-plugin', spec: '^1.0.0', inBundles: true, builtin: false },
+      { name: 'plain-lib', spec: '^2.0.0', inBundles: false, builtin: false },
     ])
     expect(inventory.staticStatus).toBe('web-capable')
     expect(inventory.evidence.join('')).toContain('web surface')
     expect(inventory.manifestError).toBeNull()
+  })
+
+  it('B3-13：与 DeepSeekGUI 随包内置同名的 bundle/依赖标记 builtin（真实来源在 launcher overlay 层）', () => {
+    const profile: DiscoveredProfile = {
+      ...WEB_PROFILE,
+      bundles: ['@deepseek-ai/dsh-base', '@see-sol-lab/deepseekgui-browser'],
+    }
+    const inventory = buildPluginInventory(profile, {
+      ok: true,
+      dependencies: { '@see-sol-lab/deepseekgui-browser': '1.0.0' },
+    })
+    const browserBundle = inventory.bundles.find(entry => entry.name === '@see-sol-lab/deepseekgui-browser')
+    expect(browserBundle?.builtin).toBe(true)
+    expect(inventory.bundles.find(entry => entry.name === '@deepseek-ai/dsh-base')?.builtin).toBe(false)
+    const browserDep = inventory.dependencies.find(entry => entry.name === '@see-sol-lab/deepseekgui-browser')
+    expect(browserDep?.builtin).toBe(true)
   })
 
   it('manifest 读取失败只影响 dependencies 区并如实展示错误', () => {
@@ -257,6 +273,17 @@ describe('validatePluginRequest / buildPluginOperationArgs（exact argv，无 sh
     expect(validatePluginRequest(base({ spec: './local', anchorDir: null }))).toContain('锚定目录')
     expect(validatePluginRequest(base({ spec: './local', anchorDir: 'relative' }))).toContain('锚定目录')
     expect(validatePluginRequest(base({ spec: './local', anchorDir: 'C:\\abs' }))).toBeNull()
+  })
+
+  it('B3-13：add/update 内置包名直接拒绝（不提供重复安装入口），remove 放行', () => {
+    const builtinAdd = validatePluginRequest(base({ spec: '@see-sol-lab/deepseekgui-workbench' }))
+    expect(builtinAdd).toContain('已随 DeepSeekGUI 内置')
+    const builtinUpdate = validatePluginRequest(base({ action: 'update', spec: '@see-sol-lab/deepseekgui-browser@1.0.0' }))
+    expect(builtinUpdate).toContain('已随 DeepSeekGUI 内置')
+    // remove 放行：用户手动装进 profile 的那份可以移除，内置 overlay 不受影响。
+    expect(validatePluginRequest(base({ action: 'remove', spec: '@see-sol-lab/deepseekgui-browser' }))).toBeNull()
+    // 无关包名照常。
+    expect(validatePluginRequest(base({ spec: 'some-other-plugin' }))).toBeNull()
   })
 
   it('含空白字符的 spec 一律拒绝（官方 CLI Windows shell:true 会拆词；desktop 不绕开）', () => {

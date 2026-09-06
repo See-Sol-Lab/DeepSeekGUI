@@ -11,6 +11,7 @@ DeepSeekGUI 浏览器插件通过官方 Harness 工具调用循环，向 agent �
 - `browser_navigate` 在 SSRF 策略允许后打开 URL。本机、内网与保留网段地址都会被拒绝，包括 DeepSeekGUI 自己的 loopback 控制服务。
 - `browser_snapshot` 返回无障碍树与可见文本，并提供稳定 `ref` 供后续交互。
 - `browser_screenshot` 把页面截图保存在本地。模型需要支持视觉才能检查图片本身。
+- 对壳自己的空占位页（面板被重新打开或重建过）的读取会明确失败并提示重新导航，而不是把占位文案当成网页内容返回；面板隐藏或尚未合成时同样给出人话提示，而不是原始的 "0 width" 报错。
 - `browser_wait` 等待 load、network idle、selector 或有上限的延时。
 - `browser_tabs` 列出、新建、切换与关闭标签页。
 

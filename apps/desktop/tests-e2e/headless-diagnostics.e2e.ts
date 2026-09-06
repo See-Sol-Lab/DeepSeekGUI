@@ -19,6 +19,7 @@ import {
 } from './fixtures.ts'
 import {
   portConnectable,
+  TEST_APP_PORT,
 } from './chrome-driver.ts'
 
 /** 本套件的隔离根：无空格（headless argv 无需空格路径，保持断言简单）。 */
@@ -58,7 +59,7 @@ describe.runIf(packagedExists)('S11 — Headless diagnostics（打包态）', ()
     expect(existsSync(dir)).toBe(true)
 
     // Harness 从未启动：3080 未被监听（headless 全程不 spawn 任何服务）。
-    await expect(portConnectable(3080)).resolves.toBe(false)
+    await expect(portConnectable(TEST_APP_PORT)).resolves.toBe(false)
 
     // bundle 内容：manifest + 日志（已脱敏）+ dump + last-exit + build info。
     const names = readdirSync(dir)
@@ -103,6 +104,6 @@ describe.runIf(packagedExists)('S11 — Headless diagnostics（打包态）', ()
     expect(names).toContain('bundle-manifest.json')
     expect(names).toContain('dsh-service.log.unavailable.txt')
     expect(names).toContain('last-exit.txt')
-    await expect(portConnectable(3080)).resolves.toBe(false)
+    await expect(portConnectable(TEST_APP_PORT)).resolves.toBe(false)
   })
 })

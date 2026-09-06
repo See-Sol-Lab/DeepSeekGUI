@@ -37,7 +37,7 @@ export function selectionLabel(selection: HarnessSelection): string {
 }
 
 /** Chrome 面板里一个 profile 条目的展示事实。 */
-export interface DesktopProfileItem {
+interface DesktopProfileItem {
   name: string
   staticStatus: 'web-capable' | 'headless' | 'candidate' | 'malformed'
   /** 是当前 active profile（勾选显示）。 */
@@ -76,7 +76,7 @@ export interface PluginOperationView {
 }
 
 /** Plugin Manager 面板的完整展示事实（全量 inventory + 运行中操作 + handoff）。 */
-export interface PluginManagerView {
+interface PluginManagerView {
   /** 每个已发现 profile 的 inventory（三分类事实；空数组 = 尚未发现）。 */
   profiles: { name: string; inventory: PluginInventory }[]
   /** inventory 无法取得的明确原因（discovery 错误等）。 */
@@ -97,10 +97,21 @@ export interface PluginManagerView {
     /** Managed Home 是否已执行过一次自动恢复（UI 说明用）。 */
     autoRecoveredOnce: boolean
   } | null
+  /**
+   * DeepSeekGUI 随包内置插件（B3-13）：launcher overlay 层的真实来源，
+   * 只读投影，绝不提供重复安装入口。
+   */
+  builtin: readonly string[]
 }
 
 /** Desktop Chrome renderer 消费的完整可序列化模型。 */
 export interface DesktopControlModel {
+  /**
+   * 模型内容版本号（main 单处递增）：控制桥的条件拉取（`/control/model?since=`
+   * 与 settings-plugin 的轮询）靠它判断「内容是否变了」——没有变化时只回
+   * `{ revision, changed: false }` 小包，全量模型只在变化时传输。
+   */
+  revision: number
   /** 文案语言：zh 用中文字典，其余 locale 回退英文。 */
   locale: 'zh' | 'en'
   homeKind: 'managed' | 'existing'
@@ -159,6 +170,26 @@ export interface DesktopControlModel {
   powerShell7Available: boolean
   /** 内置浏览器 pane（B3-11）：present = 曾被插件创建；open = 当前展开。 */
   browserPane: { present: boolean; open: boolean }
+  /**
+   * 当前界面形态（B3-P2）：Workbench（带 DeepSeekGUI 产品插件）或
+   * Compatibility View（不带 Workbench 插件的官方界面）。内存态，
+   * 不持久化——应用重开默认 Workbench。
+   */
+  viewMode: 'workbench' | 'compatibility'
+  /**
+   * 一次性的会话导航请求（B4-P8 通知点击）：main 在系统通知被点击时
+   * 写入 { sessionId, nonce }，Workbench 的桌面动作轮询读到后打开该
+   * 会话并记住 nonce——同一请求不会重复导航。null = 无请求。
+   * Compatibility View 没有 Workbench 插件，读不到此字段；通知点击
+   * 在那里只聚焦窗口。
+   */
+  navigateRequest: { sessionId: string; nonce: number } | null
+  /**
+   * D5-c（莉莉丝 2026-09-06）：全局记忆 memory.md 的当前内容，给设置页的
+   * 「记忆（全局）」分区做编辑起点。main 每次构建模型时读一次盘（有界，
+   * 见 MEMORY_GLOBAL_CONTENT_MAX）；文件不存在为空串，读不到为 null。
+   */
+  globalMemory: string | null
 }
 
 /** Update service 的运行状态（单一状态机，main 单处持有）。 */
@@ -250,7 +281,15 @@ export type DesktopControlCommand =
   | { type: 'acknowledge-recovery' }
   | { type: 'copy-full-path' }
   | { type: 'show-about' }
-  | { type: 'show-terminal' }
+  | {
+    type: 'show-terminal'
+    /**
+     * 当前选中会话（P9-3，可选）：Workbench 桌面动作携带官方 client-runtime
+     * 的当前选择；main 从权威 session.list 解析该会话的 cwd——浏览器只送
+     * id，绝不送路径。无此字段（tray/chrome 菜单入口）走 Profile/Home 回退。
+     */
+    sessionId?: string
+  }
   | { type: 'quit' }
   | { type: 'plugin-op-request'; action: PluginAction; profile: string; spec: string | null }
   | { type: 'plugin-op-cancel' }
@@ -276,6 +315,55 @@ export type DesktopControlCommand =
   | { type: 'feedback-submit-gateway' }
   /** 内置浏览器 pane 开合（B3-11；pane 未创建时为 no-op）。 */
   | { type: 'browser-pane-toggle' }
+  /** 切到 Compatibility View（不带 Workbench 插件的官方界面；重启 Harness）。 */
+  | { type: 'open-compatibility-view' }
+  /** 回到 Workbench（重启 Harness）。 */
+  | { type: 'open-workbench' }
+  /**
+   * B5-P6 桌面通知：Web 侧的官方事件消费端推来的一次性通知请求。桌面
+   * 只弹系统通知并在点击时写一次性会话导航请求（navigateRequest）——
+   * 不缓存、不记账、不持久化任何事件状态；去重由 Web 侧以官方事件 id
+   * 负责。
+   */
+  | {
+    type: 'notify'
+    /** Web 侧去重键（会话 + 官方事件 id）；桌面只用于日志与调试，不存储。 */
+    id: string
+    /** 事件归属的会话；点击导航回到该会话。 */
+    sessionId: string
+    kind: 'approval' | 'question' | 'job'
+    /** 通知标题。 */
+    title: string
+    /** 通知正文（发送端已按官方事实生成并限长）。 */
+    body: string
+  }
+  /**
+   * B5-P7 记忆管理（本机交互，不是新数据面）：在系统文件管理器打开记忆
+   * 文件（全局 = active DSH home 的 memory.md；项目 = 官方 session.list
+   * 解析出会话 cwd 后的 memory.md）。绝不接受调用方传来的任意路径。
+   */
+  | { type: 'open-memory'; which: 'global' | 'project' | 'global-agents' | 'project-agents'; sessionId?: string }
+  /**
+   * D20（莉莉丝 2026-09-06）：把随包的项目 AGENTS.md 模板写进会话工作区。
+   * 只在文件不存在时写；路径由 main 从官方 session.list 解析。
+   */
+  | { type: 'create-project-agents'; sessionId: string }
+  /**
+   * B5-P7：保存全局记忆 memory.md（用户经面板编辑，桌面主进程写盘——走
+   * 本机权限，不经 agent 权限门；模型对全局文件只读）。
+   */
+  | { type: 'save-global-memory'; content: string }
+  /**
+   * D7（莉莉丝 2026-09-06）：在系统文件管理器里打开会话的整个工作区。
+   * 路径由 main 从官方 session.list 解析，不接受调用方传路径。
+   */
+  | { type: 'open-workspace'; sessionId: string }
+  /**
+   * D5-f / D6（莉莉丝 2026-09-06）：在文件管理器里定位工作区内的一个
+   * 文件或目录。`path` 相对会话 cwd；main 解析后必须仍在 cwd 之内，否则
+   * 拒绝——对话里任何一段像路径的文字都可能点到这里，越界一律不开。
+   */
+  | { type: 'reveal-path'; sessionId: string; path: string }
 
 /** 不带载荷的命令类型集合。 */
 const BARE_COMMANDS = new Set([
@@ -288,7 +376,6 @@ const BARE_COMMANDS = new Set([
   'acknowledge-recovery',
   'copy-full-path',
   'show-about',
-  'show-terminal',
   'quit',
   'plugin-op-cancel',
   'plugin-handoff-restart',
@@ -308,10 +395,26 @@ const BARE_COMMANDS = new Set([
   'feedback-copy-open',
   'feedback-submit-gateway',
   'browser-pane-toggle',
+  'open-compatibility-view',
+  'open-workbench',
 ])
 
 /** 带 profile 载荷的命令类型集合。 */
 const PROFILE_COMMANDS = new Set(['switch-profile', 'choose-existing-profile'])
+
+/**
+ * 解析控制桥条件拉取的 `?since=` 参数（P7）：合法非负整数返回它，
+ * 其余（缺失/空串/非数字/负数）返回 undefined——undefined 语义为
+ * 「无条件取全量」。
+ * @param raw - URL query 里的原始值。
+ * @returns 客户端已知的 revision，或 undefined。
+ */
+export function parseModelSinceParam(raw: string | null): number | undefined {
+  if (raw === null || raw === '') return undefined
+  if (!/^\d+$/.test(raw)) return undefined
+  const value = Number(raw)
+  return Number.isSafeInteger(value) ? value : undefined
+}
 
 /** set-permission-mode 的合法模式（UI 只暴露 sandbox / full-access 两个动作）。 */
 const PERMISSION_MODES: readonly string[] = ['sandbox', 'full-access']
@@ -321,6 +424,18 @@ const FEEDBACK_TEXT_MAX = 20_000
 
 /** feedback-send 的诊断包文本最大长度（字符；编辑稿的 IPC 边界限长）。 */
 const FEEDBACK_DIAGNOSTICS_MAX = 200_000
+
+/** notify 载荷各字段的边界（字符；Web 侧生成，桌面侧只校验与展示）。 */
+const NOTIFY_ID_MAX = 200
+const NOTIFY_SESSION_ID_MAX = 200
+const NOTIFY_TITLE_MAX = 200
+const NOTIFY_BODY_MAX = 800
+const NOTIFY_KINDS: readonly string[] = ['approval', 'question', 'job']
+
+/** 全局记忆 memory.md 内容上限（字符；面板编辑的 IPC 边界限长）。 */
+export const MEMORY_GLOBAL_CONTENT_MAX = 200_000
+/** reveal-path 的路径字符上限（Windows 长路径也远在此之下）。 */
+export const REVEAL_PATH_MAX = 4_096
 
 /**
  * IPC 输入边界验证：把 renderer 发来的未知值解析为封闭命令联合。
@@ -338,6 +453,20 @@ export function parseControlCommand(raw: unknown): DesktopControlCommand | null 
   if (BARE_COMMANDS.has(type)) {
     if (keys.length !== 1) return null
     return { type } as DesktopControlCommand
+  }
+  if (type === 'show-terminal') {
+    // P9-3：可选 sessionId（Workbench 桌面动作携带当前会话；tray/chrome
+    // 菜单不带）。多余字段或非法值照旧整条拒绝，绝不静默剥离。
+    if (keys.length === 1) return { type }
+    if (keys.length !== 2 || typeof record.sessionId !== 'string' || record.sessionId === '') return null
+    return { type, sessionId: record.sessionId }
+  }
+  if (type === 'show-terminal') {
+    // P9-3：可选 sessionId（Workbench 桌面动作携带当前会话；tray/chrome
+    // 菜单不带）。多余字段或非法值照旧整条拒绝，绝不静默剥离。
+    if (keys.length === 1) return { type }
+    if (keys.length !== 2 || typeof record.sessionId !== 'string' || record.sessionId === '') return null
+    return { type, sessionId: record.sessionId }
   }
   if (PROFILE_COMMANDS.has(type)) {
     if (keys.length !== 2 || !isValidProfileName(record.profile)) return null
@@ -362,11 +491,55 @@ export function parseControlCommand(raw: unknown): DesktopControlCommand | null 
     if (typeof diagnostics !== 'string' || diagnostics.length > FEEDBACK_DIAGNOSTICS_MAX) return null
     return { type, text, diagnostics }
   }
+  if (type === 'notify') {
+    const { id, sessionId, kind, title, body } = record
+    if (keys.length !== 6) return null
+    if (typeof id !== 'string' || id === '' || id.length > NOTIFY_ID_MAX) return null
+    if (typeof sessionId !== 'string' || sessionId === '' || sessionId.length > NOTIFY_SESSION_ID_MAX) return null
+    if (typeof kind !== 'string' || !NOTIFY_KINDS.includes(kind)) return null
+    if (typeof title !== 'string' || title.trim() === '' || title.length > NOTIFY_TITLE_MAX) return null
+    if (typeof body !== 'string' || body.length > NOTIFY_BODY_MAX) return null
+    return { type, id, sessionId, kind: kind as 'approval' | 'question' | 'job', title, body }
+  }
+  if (type === 'open-memory') {
+    // 全局类：{type, which:'global' | 'global-agents'}；项目类：{type, which:
+    // 'project' | 'project-agents', sessionId}。多余字段、非法 which、项目缺
+    // sessionId 一律整条拒绝。
+    const which = record.which
+    if (which === 'global' || which === 'global-agents') {
+      if (keys.length !== 2) return null
+      return { type, which }
+    }
+    if (which !== 'project' && which !== 'project-agents') return null
+    if (keys.length !== 3 || typeof record.sessionId !== 'string' || record.sessionId === '') return null
+    return { type, which, sessionId: record.sessionId }
+  }
+  if (type === 'create-project-agents') {
+    if (keys.length !== 2 || typeof record.sessionId !== 'string' || record.sessionId === '') return null
+    return { type, sessionId: record.sessionId }
+  }
+  if (type === 'save-global-memory') {
+    const { content } = record
+    if (keys.length !== 2) return null
+    if (typeof content !== 'string' || content.length > MEMORY_GLOBAL_CONTENT_MAX) return null
+    return { type, content }
+  }
+  if (type === 'open-workspace') {
+    if (keys.length !== 2 || typeof record.sessionId !== 'string' || record.sessionId === '') return null
+    return { type, sessionId: record.sessionId }
+  }
+  if (type === 'reveal-path') {
+    const { sessionId, path } = record
+    if (keys.length !== 3 || typeof sessionId !== 'string' || sessionId === '') return null
+    // 相对路径、限长、不含控制字符；是否在工作区之内由 main 解析后判定。
+    if (typeof path !== 'string' || path === '' || path.length > REVEAL_PATH_MAX || /[\u0000-\u001f]/u.test(path)) return null
+    return { type, sessionId, path }
+  }
   return null
 }
 
 /** 把 discovery 条目映射成面板条目（active 勾选 + boot-failing 标记）。 */
-export function toProfileItems(
+function toProfileItems(
   profiles: DiscoveredProfile[],
   activeHomeSelection: HarnessSelection,
   failure: BootFailure | null,
@@ -410,6 +583,8 @@ export function toRuntimeStatus(status: HarnessStatus): DesktopRuntimeStatus {
 
 /** buildControlModel 的输入快照（全部来自 main 已有的唯一来源）。 */
 export interface ControlModelInput {
+  /** 模型内容版本号（main 单处维护；见 {@link DesktopControlModel.revision}）。 */
+  revision: number
   locale: 'zh' | 'en'
   state: LauncherStateV1
   status: HarnessStatus
@@ -441,6 +616,12 @@ export interface ControlModelInput {
   powerShell7Available: boolean
   /** 内置浏览器 pane 事实（B3-11；main 单处持有）。 */
   browserPane: { present: boolean; open: boolean }
+  /** 当前界面形态（B3-P2；main 内存持有，不持久化）。 */
+  viewMode: 'workbench' | 'compatibility'
+  /** 一次性会话导航请求（B4-P8 通知点击）；缺省为 null。 */
+  navigateRequest?: { sessionId: string; nonce: number } | null
+  /** 全局记忆 memory.md 当前内容（D5-c）；缺省为 null = 读不到。 */
+  globalMemory?: string | null
 }
 
 /**
@@ -452,6 +633,7 @@ export function buildControlModel(input: ControlModelInput): DesktopControlModel
   const { state } = input
   const failure = state.lastBootFailure
   return {
+    revision: input.revision,
     locale: input.locale,
     homeKind: state.active.home.kind,
     dshHome: input.activeDshHome,
@@ -490,5 +672,8 @@ export function buildControlModel(input: ControlModelInput): DesktopControlModel
     permissions: input.permissions,
     powerShell7Available: input.powerShell7Available,
     browserPane: input.browserPane,
+    viewMode: input.viewMode,
+    navigateRequest: input.navigateRequest ?? null,
+    globalMemory: input.globalMemory ?? null,
   }
 }

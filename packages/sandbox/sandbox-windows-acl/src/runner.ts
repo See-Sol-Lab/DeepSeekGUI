@@ -47,6 +47,7 @@
 import { existsSync, mkdtempSync, rmSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
+import { anchorConsole } from './console-anchor.ts'
 import { win32 } from './ffi.ts'
 import { AclSandbox, assertTempRootOutsideWorkspace } from './index.ts'
 import { tempWriteSid, workspaceWriteSid } from './workspace-sid.ts'
@@ -131,6 +132,15 @@ async function main(): Promise<number> {
   }
 
   const api = await win32()
+  // DeepSeekGUI adaptation (D21, 2026-09-06): the confined child shares this
+  // runner's console (CREATE_NO_WINDOW is unavailable under the restriction).
+  // When the runner itself is hosted by a GUI-subsystem executable (the
+  // desktop's Electron binary running as Node) it starts with NO console, so
+  // the child would open a fresh, visible window and steal focus. Anchor one
+  // here: attach to the parent's (the Harness keeps a hidden one), else
+  // allocate and hide. A runner that already has a console (a terminal) is
+  // left alone. Best-effort: anchoring failure never blocks confinement.
+  anchorConsole(api)
   // Ignore this process's own CTRL+C: the confined child (same console) keeps
   // handling its own; the runner must survive to revoke grants and mirror the
   // child's exit code.

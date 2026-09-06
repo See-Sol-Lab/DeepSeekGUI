@@ -182,7 +182,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /** 校验单个资产条目：https URL、64 位 hex digest、正数 size、合法文件名。 */
-export function parseUpdateAsset(raw: unknown, where: string, zh = true): UpdateAsset {
+function parseUpdateAsset(raw: unknown, where: string, zh = true): UpdateAsset {
   if (!isRecord(raw)) throw new UpdateManifestError(zh ? `${where}: 必须是对象` : `${where}: must be an object`)
   const { url, sha256, size, filename } = raw
   if (typeof url !== 'string' || url.length === 0) {
@@ -299,7 +299,7 @@ export function verifyDigest(expected: string, actual: string): DigestVerdict {
 export const UPDATE_SIZE_LIMIT = 512 * 1024 * 1024
 
 /** 下载中止/失败时的明确错误。 */
-export class UpdateDownloadError extends Error {
+class UpdateDownloadError extends Error {
   constructor(message: string) {
     super(message)
     this.name = 'UpdateDownloadError'
@@ -508,7 +508,7 @@ export async function streamDownload(
 // ---- manifest 抓取（HTTP 层校验：状态码/大小/取消；复用 streamDownload 注入面） ----
 
 /** manifest 抓取的大小上限（feed 是 JSON 文本；异常 feed 绝不堆进内存）。 */
-export const MANIFEST_MAX_BYTES = 1024 * 1024
+const MANIFEST_MAX_BYTES = 1024 * 1024
 
 /**
  * 抓取 update manifest 文本。复用 {@link streamDownload} 的全部 HTTP 层

@@ -22,16 +22,16 @@ import { atomicWriteFile } from './atomic-write.ts'
 export const UI_STATE_FILENAME = 'desktop-ui-state.json'
 
 /** 当前 UI 状态 schema 版本。 */
-export const UI_STATE_VERSION = 2 as const
+const UI_STATE_VERSION = 2 as const
 
 /** 主题偏好：跟随系统 / 浅色 / 深色。 */
 export type ThemePreference = 'system' | 'light' | 'dark'
 
 /** 主题偏好三种取值（解析用）。 */
-export const THEME_PREFERENCES: readonly ThemePreference[] = ['system', 'light', 'dark']
+const THEME_PREFERENCES: readonly ThemePreference[] = ['system', 'light', 'dark']
 
 /** 窗口 normal bounds（未最大化时的几何）。 */
-export interface WindowBoundsV1 {
+interface WindowBoundsV1 {
   x: number
   y: number
   width: number
@@ -39,7 +39,7 @@ export interface WindowBoundsV1 {
 }
 
 /** acknowledgedRecoveryHash 的最大长度（SHA-256 hex = 64）。 */
-export const RECOVERY_HASH_MAX = 64
+const RECOVERY_HASH_MAX = 64
 
 /** desktop-ui-state.json 的内容（版本 2）。 */
 export interface DesktopUiStateV1 {
@@ -72,7 +72,7 @@ export interface DesktopUiStateV1 {
 }
 
 /** UI state 解析或写入失败时的明确错误。 */
-export class UiStateError extends Error {
+class UiStateError extends Error {
   constructor(message: string) {
     super(message)
     this.name = 'UiStateError'
@@ -236,7 +236,7 @@ export function serializeUiState(state: DesktopUiStateV1): string {
  * 任何非法字段值都会抛出 UiStateError。
  * @param state - 待写盘的状态。
  */
-export function assertUiState(state: DesktopUiStateV1, zh = true): void {
+function assertUiState(state: DesktopUiStateV1, zh = true): void {
   parseUiState(JSON.stringify(state), zh)
 }
 

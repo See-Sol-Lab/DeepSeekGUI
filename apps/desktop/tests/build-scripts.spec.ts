@@ -21,7 +21,8 @@ describe('build:desktop-dist freshness 链', () => {
     // build:lib（host+client 全编——只编 host 曾让 D25 的 client CSS 改动
     // 从未进包，2026-08-23 实机灾难）→ 品牌化 web 构建（P8-D34：
     // DSH_CLIENT_BRAND_* 经 build-web-branded.ts 注入）→ desktop → assemble。
-    const stages = ['build:lib', 'build-web-branded.ts', 'build:desktop', 'build:desktop-dist:assemble']
+    // 最前面是脏树门禁（B5 发布）：未提交的树默认拒绝打包，十分钟重建之前就拦。
+    const stages = ['require-clean-tree.ts', 'build:lib', 'build-web-branded.ts', 'build:desktop', 'build:desktop-dist:assemble']
     const positions = stages.map(stage => (command ?? '').indexOf(stage))
     for (const [index, position] of positions.entries()) {
       expect(position, `缺少阶段 ${stages[index] ?? ''}`).toBeGreaterThanOrEqual(0)

@@ -22,6 +22,30 @@ export interface TerminalShellChoice {
   args: string[]
 }
 
+/**
+ * 把 PATH 写回环境对象里**已有的那个键**。Windows 的环境块按大小写不敏感
+ * 查找，JS 对象却区分：从系统继承来的键通常叫 `Path`，再写一个 `PATH`
+ * 只会多出第二个键，子进程的 shell 先碰到哪个就用哪个——实机上用的是
+ * 继承的旧 `Path`，私有 shim 目录整个被绕开（2026-09-05 验收：DSH 终端里
+ * `dsh --version` 打出的是用户全局 npm 的旧版）。
+ * @param env - 将交给子进程的环境对象。
+ * @param value - 完整 PATH 值。
+ * @returns 只含一个 PATH 键的新对象。
+ */
+export function withPath(env: NodeJS.ProcessEnv, value: string): NodeJS.ProcessEnv {
+  const next: NodeJS.ProcessEnv = {}
+  let key: string | undefined
+  for (const [name, entry] of Object.entries(env)) {
+    if (name.toUpperCase() === 'PATH') {
+      key ??= name
+      continue
+    }
+    next[name] = entry
+  }
+  next[key ?? 'PATH'] = value
+  return next
+}
+
 /** 文件存在性探测注入面（测试 mock absent）。 */
 export interface ShellProbe {
   exists: (path: string) => boolean
@@ -46,7 +70,7 @@ export function hasPowerShell7(probe: ShellProbe, localAppData: string | undefin
 }
 
 /** PowerShell 7 的第一个可用 exact 路径；未安装返回 null。 */
-export function resolvePowerShell7Path(probe: ShellProbe, localAppData: string | undefined): string | null {
+function resolvePowerShell7Path(probe: ShellProbe, localAppData: string | undefined): string | null {
   return POWERSHELL7_CANDIDATES(localAppData).find(path => probe.exists(path)) ?? null
 }
 
@@ -108,14 +132,33 @@ export interface TerminalCwdChoice {
 }
 
 /**
- * 终端 cwd：优先 active Profile 目录（discovery 的 dir 事实）；无法解析
- * 时使用 Harness Home 并在 welcome 说明。绝不静默锚到 Electron install
- * dir。说明文案按 locale 双语（D29）。
+ * 按 id 从 session.list 权威摘要里解析一个会话的 cwd（P9-3）：id 是
+ * 浏览器经控制桥送来的**当前选中会话**，cwd 必须由 main 从 Harness
+ * 事实解析——浏览器提供的路径绝不可信。找不到该 id、或该会话没有
+ * cwd 时返回 null，调用方回退 Profile 目录 → Harness Home。
+ * @param items - session.list 摘要行（权威事实）。
+ * @param sessionId - 控制桥命令携带的当前会话 id。
+ * @returns 该会话的 cwd；无法解析时 null。
+ */
+export function resolveSessionCwdById(
+  items: readonly { sessionId: string; cwd?: string }[],
+  sessionId: string,
+): string | null {
+  const row = items.find(item => item.sessionId === sessionId)
+  return row === undefined || row.cwd === undefined || row.cwd === '' ? null : row.cwd
+}
+
+/**
+ * 终端 cwd：优先跟随 Workbench 当前打开会话的 workspace（P9-3：id 经控制桥传入、cwd 由 main 从权威事实解析）；
+ * 无会话或会话 cwd 不可用时回退 active Profile 目录（discovery 的 dir
+ * 事实），再回退 Harness Home。绝不静默锚到 Electron install dir。
+ * 说明文案按 locale 双语（D29）。
  * @param discovery - 最近一次只读 discovery（可能为 null）。
  * @param activeProfile - active Profile 名。
  * @param dshHome - launcher active Home 解析出的真实 DSH_HOME。
  * @param exists - 目录存在性探测。
  * @param locale - 界面语言（说明文案语言）。
+ * @param sessionCwd - 当前会话的 workspace；null = 无会话/不可用。
  * @returns cwd 选择。
  */
 export function resolveTerminalCwd(
@@ -124,8 +167,17 @@ export function resolveTerminalCwd(
   dshHome: string,
   exists: (path: string) => boolean,
   locale: 'zh' | 'en',
+  sessionCwd: string | null = null,
 ): TerminalCwdChoice {
   const zh = locale === 'zh'
+  if (sessionCwd !== null && exists(sessionCwd)) {
+    return {
+      cwd: sessionCwd,
+      note: zh
+        ? '工作目录跟随当前打开的会话；dsh 命令仍默认使用当前 Profile。'
+        : 'The working directory follows the currently open session; dsh commands still default to the active profile.',
+    }
+  }
   const profileDir = discovery?.profiles.find((profile: DiscoveredProfile) => profile.name === activeProfile)?.dir
   if (profileDir !== undefined && exists(profileDir)) {
     return { cwd: profileDir, note: null }

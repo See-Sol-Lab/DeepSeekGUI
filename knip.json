@@ -5,12 +5,16 @@
   ],
   "ignoreBinaries": [
     "bwrap",
+    "cmd.exe",
     "icacls",
     "musl-gcc",
+    "netstat",
+    "powershell",
     "python3",
     "sandbox-exec",
     "tar",
     "taskkill",
+    "tasklist",
     "where.exe"
   ],
   "ignoreWorkspaces": [
@@ -663,6 +667,53 @@
     "packages/bundle/web-app": {
       "ignoreDependencies": [
         "@deepseek-ai/.+"
+      ]
+    },
+    "apps/desktop/workbench-plugin": {
+      "entry": [
+        "src/index.ts",
+        "src/client/index.ts",
+        "tests/**/*.spec.ts",
+        "tests/**/*.spec.tsx"
+      ],
+      "project": [
+        "src/**/*.ts",
+        "src/**/*.tsx",
+        "tests/**/*.ts",
+        "tests/**/*.tsx"
+      ]
+    },
+    "apps/desktop": {
+      "entry": [
+        "src/chrome/preload.cts",
+        "src/terminal/preload.cts",
+        "src/terminal/renderer.ts",
+        "src/terminal-host.cts",
+        "scripts/**/*.mjs",
+        "tests/**/*.spec.ts",
+        "tests/**/*.e2e.ts",
+        "tests-e2e/**/*.e2e.ts"
+      ],
+      "project": [
+        "src/**/*.ts",
+        "src/**/*.cts",
+        "tests/**/*.ts",
+        "tests-e2e/**/*.ts"
+      ],
+      "ignoreDependencies": [
+        "@xterm/addon-fit",
+        "@xterm/xterm",
+        "node-pty"
+      ]
+    },
+    "packages/git/git": {
+      "project": [
+        "src/**/*.ts"
+      ]
+    },
+    "packages/pull-request/pull-request": {
+      "project": [
+        "src/**/*.ts"
       ]
     }
   }

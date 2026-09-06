@@ -10,6 +10,7 @@
 
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
+import { TEST_APP_PORT } from './chrome-driver.ts'
 
 /** 凭据形态的环境变量名。 */
 const CREDENTIAL_NAME = /key|token|secret|password|credential/i
@@ -49,6 +50,9 @@ export function parityEnv(tempRoot: string): Record<string, string> {
   // selection 决定），仍把它钉在测试临时根内作为纵深防御：任何未来
   // 仍读取该变量的消费者都不会碰到真实用户目录。
   env.DSH_HOME = dshHome
+  // P9-4：测试实例的显式端口——与住户实例的 3080 彻底分道。所有 APP
+  // URL、readiness、清场与 Compatibility 断言都必须消费 TEST_APP_PORT。
+  env.DEEPSEEKGUI_TEST_PORT = String(TEST_APP_PORT)
   // USERPROFILE 是 `os.homedir()` 在 Windows 上的来源，钉住它才算真的隔离：
   // 上面三项挡不住任何走 homedir() 的读取。2026-08-26 实机教训——首启的
   // 「导入已有对话」检测读 `homedir()/.dsh`，于是被测进程直接看进了操作者

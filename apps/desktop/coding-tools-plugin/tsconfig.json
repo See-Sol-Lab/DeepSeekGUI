@@ -1,0 +1,25 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "lib",
+    "tsBuildInfoFile": "lib/tsconfig.tsbuildinfo"
+  },
+  "include": [
+    "src"
+  ],
+  "references": [
+    { "path": "../../../vendor/cordis" },
+    { "path": "../../../packages/core/tools" },
+    { "path": "../../../packages/core/agent" },
+    { "path": "../../../packages/llm/llm" },
+    { "path": "../../../packages/util/values" },
+    { "path": "../../../packages/git/git" },
+    { "path": "../../../packages/git/git-local" },
+    { "path": "../../../packages/pull-request/pull-request" },
+    { "path": "../../../packages/pull-request/pull-request-gh" },
+    { "path": "../../../packages/sandbox/sandbox-policy" },
+    { "path": "../../../packages/sandbox/sandbox" },
+    { "path": "../../../packages/interaction/user-approval" }
+  ]
+}

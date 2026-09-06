@@ -32,22 +32,39 @@ export function isPluginAction(value: unknown): value is PluginAction {
 
 // ---- Inventory：三分类事实 ----
 
+/**
+ * DeepSeekGUI 随包内置插件（B3-13）：由 launcher overlay 层进入 composition，
+ * 绝不写进任何 profile 清单。插件管理把它们投影为只读的"已内置"来源，
+ * 不提供重复安装入口（add/update 直接拒绝）。
+ */
+export const BUILTIN_PLUGIN_NAMES: readonly string[] = [
+  '@see-sol-lab/deepseekgui-theme',
+  '@see-sol-lab/deepseekgui-directory-picker',
+  '@see-sol-lab/deepseekgui-settings',
+  '@see-sol-lab/deepseekgui-browser',
+  '@see-sol-lab/deepseekgui-workbench',
+]
+
 /** Profile Bundles 区的一个条目。 */
-export interface PluginBundleEntry {
+interface PluginBundleEntry {
   /** 包名（discovery bundles 里的 layer 名）。 */
   name: string
   /** 是否由 dependency 派生（依赖安装的插件已进 loader）；false = 模板/预置 bundle。 */
   fromDependency: boolean
+  /** 是否 DeepSeekGUI 随包内置（B3-13）：profile 里这份与内置同名。 */
+  builtin: boolean
 }
 
 /** Installed Dependencies 区的一个条目。 */
-export interface PluginDependencyEntry {
+interface PluginDependencyEntry {
   /** 包名（manifest dependencies 的键）。 */
   name: string
   /** 版本/spec 字符串（manifest dependencies 的值，原样展示）。 */
   spec: string
   /** 是否已进入 bundles 层（声明 dsh.bundle 且被官方 reconcile 进列表）。 */
   inBundles: boolean
+  /** 是否 DeepSeekGUI 随包内置（B3-13）：deps 里这份与内置同名。 */
+  builtin: boolean
 }
 
 /** 一个 target profile 的插件 inventory（三分类绝不混写）。 */
@@ -117,15 +134,18 @@ export function buildPluginInventory(
   }
   const dependencies = manifestResult.ok ? manifestResult.dependencies : {}
   const dependencyNames = new Set(Object.keys(dependencies))
+  const builtinNames = new Set(BUILTIN_PLUGIN_NAMES)
   return {
     bundles: profile.bundles.map(name => ({
       name,
       fromDependency: dependencyNames.has(name),
+      builtin: builtinNames.has(name),
     })),
     dependencies: Object.entries(dependencies).map(([name, spec]) => ({
       name,
       spec,
       inBundles: profile.bundles.includes(name),
+      builtin: builtinNames.has(name),
     })),
     staticStatus: profile.staticStatus,
     evidence: [...profile.evidence],
@@ -253,7 +273,7 @@ export function validateLocalSpecTarget(
  * @param value - 待检查的 argv 值。
  * @returns 含不安全字符时为 true。
  */
-export function unsafeForWindowsShellForward(value: string): boolean {
+function unsafeForWindowsShellForward(value: string): boolean {
   // 空白由 s 类覆盖（含制表/换行/回车与 Unicode 空白）；控制字符范围
   // 特意跳过 0009-000d 段，避免与空白类重复（lint: duplicates-in-character-class）。
   return /[\s&|<>^%!"'`();,\u0000-\u0008\u000e-\u001f]/.test(value)
@@ -338,6 +358,16 @@ export function validatePluginRequest(request: PluginOperationRequest): string |
       return `锚定目录的完整路径含官方 CLI 在 Windows shell 转发下无法安全携带的字符（空白或 & | < > ^ % ! " ' \` ( ) ; ,）：${request.anchorDir}；请把本地插件放到不含这些字符的路径下`
     }
   }
+  // B3-13：DeepSeekGUI 随包内置插件（launcher overlay 层）不提供重复安装
+  // 入口——add/update 内置包名直接拒绝，让用户去读"已内置"的事实而不是
+  // 装出第二份。remove 放行：用户手动装过的那份（profile bundles 层）可以
+  // 移除，内置 overlay 不受影响。
+  if (request.action === 'add' || request.action === 'update') {
+    const name = expectedPackageName(request.spec)
+    if (name !== null && BUILTIN_PLUGIN_NAMES.includes(name)) {
+      return `插件 ${name} 已随 DeepSeekGUI 内置（无需安装，也不提供重复安装入口）`
+    }
+  }
   if (request.action === 'remove') {
     // remove 只接受最严格的裸包名：带版本、路径或 git spec 都会被 pnpm 拒绝。
     if (!isStrictPackageName(request.spec)) {
@@ -361,7 +391,7 @@ export function validatePluginRequest(request: PluginOperationRequest): string |
 }
 
 /** npm 包名的最严格形态（小写、可含 -_.、@scope/name）。 */
-export function isStrictPackageName(spec: string): boolean {
+function isStrictPackageName(spec: string): boolean {
   return /^@[a-z0-9][a-z0-9-_.]*\/[a-z0-9][a-z0-9-_.]*$|^[a-z0-9][a-z0-9-_.]*$/.test(spec)
 }
 
@@ -509,7 +539,7 @@ export interface PluginConfirmText {
 }
 
 /** 操作动作的本地化标签。 */
-export function pluginActionLabel(action: PluginAction, zh: boolean): string {
+function pluginActionLabel(action: PluginAction, zh: boolean): string {
   if (zh) {
     return { add: '安装', remove: '移除', update: '更新', install: '安装 / 修复依赖' }[action]
   }

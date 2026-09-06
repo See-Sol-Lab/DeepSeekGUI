@@ -12,7 +12,7 @@
  * @module @see-sol-lab/deepseekgui/diagnostics-service
  */
 
-import { maskWindowsLiteral } from './redact.ts'
+import { maskWindowsLiterals } from './redact.ts'
 import type { DeepSeekGUIVersionInfo } from './version-info.ts'
 
 /**
@@ -46,7 +46,7 @@ export interface BuildInfoLine {
  * @param commit - 原始 commit 描述。
  * @returns 缩短后的描述。
  */
-export function shortSourceCommit(commit: string): string {
+function shortSourceCommit(commit: string): string {
   if (commit === 'unknown') return commit
   const mark = commit.search(/[+-]/)
   const hash = mark === -1 ? commit : commit.slice(0, mark)
@@ -189,8 +189,9 @@ export function formatStampLocal(iso: string): string {
  * @param home - 用户主目录绝对路径。
  * @returns 归一化文本。
  */
-export function normalizeUserPaths(text: string, home: string): string {
-  return maskWindowsLiteral(text, home, '<USER_HOME>')
+export function normalizeUserPaths(text: string, home: string, homeAliases: readonly string[] = []): string {
+  // P9-5：长名与系统解析出的 8.3 短名（以及 TEMP 等派生形态）同占位。
+  return maskWindowsLiterals(text, [home, ...homeAliases], '<USER_HOME>')
 }
 
 /** diagnostics bundle 的文件名 allowlist：白名单之外的文件结构上不可进入。 */
@@ -223,6 +224,8 @@ export interface BundleSkippedEntry {
 export function assembleDiagnosticsBundle(input: {
   /** 用户主目录（归一化基准）。 */
   home: string
+  /** home 的等价形态（8.3 短名等，系统真实解析；可空）。 */
+  homeAliases?: readonly string[]
   version: DeepSeekGUIVersionInfo
   /** 已脱敏的日志条目（content 经 redaction 后才传入）。 */
   logEntries: { name: string; content: string; source: string }[]
@@ -241,11 +244,11 @@ export function assembleDiagnosticsBundle(input: {
   const entries: BundleManifestEntry[] = []
   const write = (filename: string, content: string, source: string): void => {
     if (!isBundleFileAllowed(filename)) return
-    const normalized = normalizeUserPaths(content, input.home)
+    const normalized = normalizeUserPaths(content, input.home, input.homeAliases ?? [])
     files.set(filename, normalized)
     entries.push({
       file: filename,
-      source: normalizeUserPaths(source, input.home),
+      source: normalizeUserPaths(source, input.home, input.homeAliases ?? []),
       bytes: Buffer.byteLength(normalized),
     })
   }
@@ -261,7 +264,7 @@ export function assembleDiagnosticsBundle(input: {
     files.set(extra.name, extra.content)
     entries.push({
       file: extra.name,
-      source: normalizeUserPaths(extra.source, input.home),
+      source: normalizeUserPaths(extra.source, input.home, input.homeAliases ?? []),
       bytes: extra.content.length,
     })
   }

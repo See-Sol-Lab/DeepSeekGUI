@@ -1,7 +1,7 @@
 /**
  * Packaged e2e 的 Desktop Chrome 驱动：经 main-process evaluate 在真实
  * webContents 里执行 DOM 脚本——Chrome view（file: 页面）承接真实按钮
- * 点击（production 控制入口），Compatibility View（127.0.0.1:3080）承接
+ * 点击（production 控制入口），Compatibility View（127.0.0.1:TEST_APP_PORT）承接
  * 官方 UI 挂载断言。不依赖 playwright 是否把 WebContentsView 暴露为
  * Page，对视图架构变化稳健。
  * @module @see-sol-lab/deepseekgui/tests-e2e/chrome-driver
@@ -11,6 +11,13 @@ import { spawnSync } from 'node:child_process'
 import { createConnection } from 'node:net'
 import type { ElectronApplication } from 'playwright-core'
 import { expect } from 'vitest'
+
+/**
+ * 测试实例的固定端口（P9-4）：显式、测试拥有，与住户实例的生产 3080
+ * 分道。启动 env（parityEnv）、readiness、清场、teardown 与
+ * Compatibility View 断言全部消费这一个事实。
+ */
+export const TEST_APP_PORT = 3081
 
 /** 端口是否可连接（true=仍被占用）。 */
 export function portConnectable(port: number): Promise<boolean> {
@@ -27,19 +34,31 @@ export function portConnectable(port: number): Promise<boolean> {
 }
 
 /**
- * 场地清场（launch 之前）：杀掉任何遗留的 DeepSeekGUI 实例并等固定端口
- * 3080 释放。teardown 已尽力收割，但用例超时被 vitest 中断时 finally
+ * 场地清场（launch 之前）：收割占用测试端口的泄漏实例并等 TEST_APP_PORT 释放。teardown 已尽力收割，但用例超时被 vitest 中断时 finally
  * 可能还没跑完——下一个文件/用例不该因此连坐（实测：一个超时用例的
  * 泄漏实例会让后续 launch 全部撞 fail-loud 端口占用）。
  * @param timeoutMs - 等端口释放的上限。
  */
 export async function ensureCleanStage(timeoutMs = 20_000): Promise<void> {
-  if (!await portConnectable(3080)) return
-  spawnSync('taskkill', ['/IM', 'DeepSeekGUI.exe', '/T', '/F'], { stdio: 'ignore' })
+  if (!await portConnectable(TEST_APP_PORT)) return
+  // 只收割占用**测试端口**的进程（上一个用例泄漏的测试实例）——按端口
+  // 找 PID 再整树杀。绝不按映像名 taskkill：住户正在运行的生产实例
+  // （3080）与测试无关，测试没有权力动它（P9-4）。
+  const owners = spawnSync('netstat', ['-ano', '-p', 'tcp'], { encoding: 'utf8' })
+  const pids = new Set<string>()
+  for (const line of (owners.stdout ?? '').split(/\r?\n/)) {
+    if (line.includes(`:${String(TEST_APP_PORT)} `) && line.includes('LISTENING')) {
+      const pid = line.trim().split(/\s+/).at(-1)
+      if (pid !== undefined && /^\d+$/.test(pid) && pid !== '0') pids.add(pid)
+    }
+  }
+  for (const pid of pids) {
+    spawnSync('taskkill', ['/pid', pid, '/T', '/F'], { stdio: 'ignore' })
+  }
   const deadline = Date.now() + timeoutMs
-  while (await portConnectable(3080)) {
+  while (await portConnectable(TEST_APP_PORT)) {
     if (Date.now() >= deadline) {
-      throw new Error('场地清场失败：端口 3080 仍被占用（存在测试外的占用者？）')
+      throw new Error(`场地清场失败：测试端口 ${String(TEST_APP_PORT)} 仍被占用（存在测试外的占用者？）`)
     }
     await new Promise(resolve => setTimeout(resolve, 500))
   }
@@ -47,8 +66,8 @@ export async function ensureCleanStage(timeoutMs = 20_000): Promise<void> {
 
 /**
  * 确定性 teardown：限时 app.close（正常退出路径）→ 无论成败强制整树
- * taskkill（close-to-tray/quit 流程的偶发挂起不得泄漏实例）→ 等固定
- * 端口 3080 真正释放（下一个用例的启动场地必须干净——泄漏实例占住
+ * taskkill（close-to-tray/quit 流程的偶发挂起不得泄漏实例）→ 等测试
+ * 端口 TEST_APP_PORT 真正释放（下一个用例的启动场地必须干净——泄漏实例占住
  * 端口会让后续每次启动撞 fail-loud 对话框，造成连环超时与弹框风暴）。
  * 退出语义的断言属于用例体（G4/G5），本函数只负责场地卫生。
  * @param app - playwright Electron 应用（可能已死）。
@@ -70,9 +89,9 @@ export async function shutdownApp(app: ElectronApplication): Promise<void> {
     spawnSync('taskkill', ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore' })
   }
   const deadline = Date.now() + 15_000
-  while (await portConnectable(3080)) {
+  while (await portConnectable(TEST_APP_PORT)) {
     if (Date.now() >= deadline) {
-      throw new Error('teardown: 端口 3080 在 15s 内未释放（存在测试外的占用者？）')
+      throw new Error(`teardown: 测试端口 ${String(TEST_APP_PORT)} 在 15s 内未释放（存在测试外的占用者？）`)
     }
     await new Promise(resolve => setTimeout(resolve, 500))
   }
@@ -141,7 +160,7 @@ export async function waitForWindow(app: ElectronApplication, timeoutMs = 120_00
 export const CHROME_URL_PREFIX = 'file://'
 
 /** Compatibility View（官方 Web UI）。 */
-export const COMP_URL_PREFIX = 'http://127.0.0.1:3080'
+export const COMP_URL_PREFIX = `http://127.0.0.1:${String(TEST_APP_PORT)}`
 
 /** 等 Compatibility View 前端真正挂载（#root 有子元素）。 */
 export async function waitForCompMount(app: ElectronApplication, timeoutMs = 90_000): Promise<void> {

@@ -16,6 +16,8 @@ export type TrayAction =
   | { kind: 'switch-profile'; profile: string }
   | { kind: 'restart' }
   | { kind: 'open-terminal' }
+  | { kind: 'open-compatibility-view' }
+  | { kind: 'open-workbench' }
   | { kind: 'check-updates' }
   | { kind: 'about' }
   | { kind: 'quit' }
@@ -39,6 +41,8 @@ const ZH = {
   'tray.profiles': '切换 Profile',
   'tray.restart': '重启 Harness',
   'tray.terminal': '打开 DSH Terminal',
+  'tray.view.compatibility': '打开 Compatibility View（官方原版界面）',
+  'tray.view.workbench': '打开 Workbench',
   'tray.updates': '检查更新',
   'tray.updates.available': '检查更新（有新版本 {version}）',
   'tray.about': '关于 DeepSeekGUI',
@@ -52,6 +56,8 @@ const EN = {
   'tray.profiles': 'Profiles',
   'tray.restart': 'Restart Harness',
   'tray.terminal': 'Open DSH Terminal',
+  'tray.view.compatibility': 'Open Compatibility View (official interface)',
+  'tray.view.workbench': 'Open Workbench',
   'tray.updates': 'Check for Updates',
   'tray.updates.available': 'Check for Updates ({version} available)',
   'tray.about': 'About DeepSeekGUI',
@@ -114,6 +120,11 @@ export function trayMenuTemplate(input: TrayMenuInput): TrayMenuItem[] {
     { type: 'separator' },
     { label: dict['tray.profiles'], submenu: profiles },
     { label: dict['tray.restart'], action: { kind: 'restart' } },
+    // 视图切换（B3-P2）：显示对向入口；切换经同一控制器重启路径。
+    {
+      label: input.model.viewMode === 'compatibility' ? dict['tray.view.workbench'] : dict['tray.view.compatibility'],
+      action: input.model.viewMode === 'compatibility' ? { kind: 'open-workbench' } : { kind: 'open-compatibility-view' },
+    },
     { label: dict['tray.terminal'], action: { kind: 'open-terminal' } },
     // 更新状态：available/verified 时提示新版本；否则普通入口。
     { label: updateLabel, action: { kind: 'check-updates' } },
