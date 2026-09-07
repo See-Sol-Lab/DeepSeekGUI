@@ -166,6 +166,8 @@ Get-FileHash .\DeepSeekGUI-Setup-1.1.0.exe -Algorithm SHA256
 | [快速开始](docs/user/deepseekgui/quickstart.zh.md) | 第一次会话完整流程 |
 | [模型与视觉](docs/user/deepseekgui/models.zh.md) | API key、模型配置、图片输入 |
 | [工作区与会话](docs/user/deepseekgui/workspaces-sessions.zh.md) | 文件夹、会话管理 |
+| [工作台视图与 Git 工具](docs/user/deepseekgui/workbench.zh.md) | 改动、Git、并行工作区、Git / PR 工具 |
+| [记忆](docs/user/deepseekgui/memory.zh.md) | 全局记忆、项目记忆、规则模板 |
 | [Profile 与插件](docs/user/deepseekgui/profiles-plugins.zh.md) | Harness Profile 和插件管理 |
 | [权限与批准](docs/user/deepseekgui/permissions.zh.md) | 沙盒、权限、审批 |
 | [桌面工具](docs/user/deepseekgui/desktop-tools.zh.md) | 浏览器、终端、更新、诊断 |

@@ -33,6 +33,8 @@ Before approving, check:
 - Whether the request matches the task you gave the agent.
 - Whether a narrower action would be enough.
 
+Dedicated Git and PR tools follow the same rule: staging, committing, pushing, and creating a pull request each arrive as an explicit approval that names the operation and its target. [Workbench views and Git tools](workbench.md) describes the tools.
+
 An operating-system denial can happen before an approval dialog appears. For example, the Windows workspace sandbox can block an out-of-scope write directly. That is still a successful safety boundary, not a missing approval.
 
 ## Managed and Existing Homes

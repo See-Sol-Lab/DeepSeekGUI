@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/user/deepseekgui/desktop-tools.md
-desktop-tools.md: 6103c40f51fe10dc3453592fdb004fdea806e142
-desktop-tools.zh.md: 3be4b0f10b515ccae895f697b9c58b390242c9ea
+desktop-tools.md: c78d1005eed8da351727df4e26e5e36a93a15110
+desktop-tools.zh.md: 688b16bc5758f71440001cd033d7415b6b02083f

@@ -14,6 +14,8 @@ DeepSeekGUI keeps its application state and Managed Harness Home under the Windo
 | Service logs | `%APPDATA%\DeepSeekGUI\dsh-service.log` | Redacted and rotated; current file plus bounded history. |
 | Diagnostics exports | `%APPDATA%\DeepSeekGUI\diagnostics` | Local bundles created only when you request an export. |
 | Update cache | `%APPDATA%\DeepSeekGUI\updates` | At most one verified installer record and its file. |
+| Global memory | Inside the Managed Harness Home | Cross-project preferences edited in Settings. |
+| Project memory | `<folder-name>.memory.md` in the selected workspace | Project facts maintained by the assistant; part of your project files. |
 
 Windows resolves the real application-data directory through its Known Folder API. The table uses `%APPDATA%` as the familiar default notation.
 
@@ -29,6 +31,7 @@ Silent uninstall during an upgrade keeps the data and does not show the prompt.
 - Session data and credentials stay in the active Harness Home unless a configured provider or tool transmits requested content.
 - Service logs redact credential-shaped text before writing.
 - Diagnostics exports are local and are never uploaded automatically.
+- Project memory lives in the workspace as an ordinary Markdown file. Review it before publishing the project.
 - Existing Homes are used in place; DeepSeekGUI does not copy them into Managed Home.
 
 Review tool approvals and exported diagnostics before sharing anything outside your computer.

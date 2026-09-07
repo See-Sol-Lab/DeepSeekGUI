@@ -12,12 +12,12 @@
 
 ## 1. 下载 DeepSeekGUI
 
-下载 [`DeepSeekGUI-Setup-1.0.0.exe`](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.0.0/DeepSeekGUI-Setup-1.0.0.exe)。
+从[最新发布页](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/latest)下载 Windows 安装包 `DeepSeekGUI-Setup-<版本号>.exe`。每个版本同时发布实验性的 Linux AppImage。
 
-DeepSeekGUI V1 尚未进行代码签名。Windows SmartScreen 可能显示未知发布者警告。运行安装包前，请先用对应的 [`SHA256SUMS.txt`](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.0.0/SHA256SUMS.txt) 校验文件：
+DeepSeekGUI 目前的发行包未附代码签名，Windows SmartScreen 可能显示未知发布者警告。运行安装包前，请先用同一发布页的 `SHA256SUMS.txt` 校验文件：
 
 ```powershell
-Get-FileHash .\DeepSeekGUI-Setup-1.0.0.exe -Algorithm SHA256
+Get-FileHash .\DeepSeekGUI-Setup-<version>.exe -Algorithm SHA256
 ```
 
 输出的 hash 与发布清单完全一致时再继续。在 SmartScreen 中选择**更多信息**，然后选择**仍要运行**。
@@ -59,11 +59,19 @@ DeepSeekGUI 通过 Harness 凭据服务把 key 保存在应用数据目录中，
 
 工具批准由 Harness 提供。批准前请阅读请求执行的具体动作。DeepSeekGUI 绝不自动批准操作，也不维护另一份信任缓存。
 
+在会话旁边打开**改动**视图阅读文件差异，打开 **Git** 视图查看分支状态和本会话的提交结果。视图读取本地状态，检查项目不消耗模型请求。详见[工作台视图与 Git 工具](workbench.zh.md)。
+
+## 7. 留住协作经验
+
+把长期协作偏好写进 **设置 → 全局记忆**，助手会在每个项目中遵循；这个项目的事实由助手记录在会话的**记忆**视图中。详见[记忆](memory.zh.md)。
+
 日常工作请保持 **Sandbox**。只有任务确实需要 Windows 账户级访问，而且你理解界面显示的风险时，才启用 **Full Access**。
 
 ## 下一步
 
 - [模型与视觉](models.zh.md)
+- [工作台视图与 Git 工具](workbench.zh.md)
+- [记忆](memory.zh.md)
 - [工作区与会话](workspaces-sessions.zh.md)
 - [Profile 与插件](profiles-plugins.zh.md)
 - [权限与批准](permissions.zh.md)

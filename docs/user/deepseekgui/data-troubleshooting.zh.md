@@ -14,6 +14,8 @@ DeepSeekGUI 把应用状态与 Managed Harness Home 保存在 Windows 用户目�
 | 服务日志 | `%APPDATA%\DeepSeekGUI\dsh-service.log` | 已脱敏并轮转；包含当前文件与有上限的历史文件。 |
 | 诊断导出 | `%APPDATA%\DeepSeekGUI\diagnostics` | 只有你要求导出时才创建的本地诊断包。 |
 | 更新缓存 | `%APPDATA%\DeepSeekGUI\updates` | 最多保存一条已验证安装器记录及其文件。 |
+| 全局记忆 | 托管 Harness Home 内 | 在设置中编辑的跨项目偏好。 |
+| 项目记忆 | 所选工作区中的 `<文件夹名>.memory.md` | 助手维护的项目事实，属于项目文件的一部分。 |
 
 Windows 通过 Known Folder API 解析真实应用数据目录。表格使用 `%APPDATA%` 作为熟悉的默认写法。
 
@@ -29,6 +31,7 @@ Windows 通过 Known Folder API 解析真实应用数据目录。表格使用 `%
 - 会话数据与凭据保存在当前 Harness Home 中；已配置的提供方或工具仍可能发送任务要求的内容。
 - 服务日志会在写入前脱敏凭据形态文本。
 - 诊断导出保存在本地，绝不自动上传。
+- 项目记忆是工作区中的普通 Markdown 文件。公开项目之前，请先检查其中的内容。
 - Existing Home 会原地使用；DeepSeekGUI 不会把它复制进 Managed Home。
 
 向电脑外部分享任何内容前，请检查工具批准请求与导出的诊断信息。

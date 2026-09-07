@@ -61,12 +61,19 @@ The command starts no Harness, Profile, window, tray, or local server. It prints
 
 The Feedback section can collect an editable, redacted diagnostics summary and prepare a GitHub issue. Review the text before copying, opening, exporting, or submitting it. DeepSeekGUI does not package a personal GitHub token.
 
+## Desktop notifications
+
+DeepSeekGUI raises a desktop notification when a session needs you: a pending approval, a question waiting for an answer, or a background task that finished or failed. Selecting the notification opens the matching session.
+
+Notifications follow the Windows notification settings for the application.
+
 ## Tray and lifecycle
 
 DeepSeekGUI is a resident desktop application. Closing the window hides it; opening the shortcut again focuses the existing instance. **Quit DeepSeekGUI** is the action that stops Harness, destroys the tray and views, and exits.
 
 ## Related guides
 
+- [Workbench views and Git tools](workbench.md)
 - [Profiles and plugins](profiles-plugins.md)
 - [Permissions and approvals](permissions.md)
 - [Data and troubleshooting](data-troubleshooting.md)

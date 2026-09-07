@@ -12,12 +12,12 @@ This tutorial takes a new Windows user from download to a working DeepSeek codin
 
 ## 1. Download DeepSeekGUI
 
-Download [`DeepSeekGUI-Setup-1.0.0.exe`](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.0.0/DeepSeekGUI-Setup-1.0.0.exe).
+Download the Windows installer, `DeepSeekGUI-Setup-<version>.exe`, from the [latest release](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/latest). An experimental Linux AppImage is published beside each release.
 
-DeepSeekGUI V1 is not code-signed. Windows SmartScreen may show an unknown-publisher warning. Verify the installer against the matching [`SHA256SUMS.txt`](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.0.0/SHA256SUMS.txt) before running it:
+DeepSeekGUI is currently distributed without a code signature, so Windows SmartScreen may show an unknown-publisher warning. Verify the installer against the `SHA256SUMS.txt` file from the same release before running it:
 
 ```powershell
-Get-FileHash .\DeepSeekGUI-Setup-1.0.0.exe -Algorithm SHA256
+Get-FileHash .\DeepSeekGUI-Setup-<version>.exe -Algorithm SHA256
 ```
 
 Continue only when the printed hash matches the release manifest exactly. In SmartScreen, select **More info**, then **Run anyway**.
@@ -59,11 +59,19 @@ Once you are comfortable with the result, ask for a bounded change. DeepSeekGUI 
 
 Tool approvals come from Harness. Read the requested action before approving it. DeepSeekGUI never auto-approves an action and never maintains a separate trust cache.
 
+Open the **Changes** view beside the conversation to read file diffs, and the **Git** view to see branch state and the session's commit results. The views read local state, so checking your project costs no model request. See [Workbench views and Git tools](workbench.md).
+
+## 7. Keep what you learned
+
+Store durable collaboration preferences in **Settings → Global memory**; the assistant follows them in every project. Facts about this project accumulate in the session's **Memory** view. See [Memory](memory.md).
+
 Keep **Sandbox** enabled for ordinary work. Turn on **Full Access** only when the task genuinely needs Windows-account-level access and you understand the displayed risk.
 
 ## Next steps
 
 - [Models and vision](models.md)
+- [Workbench views and Git tools](workbench.md)
+- [Memory](memory.md)
 - [Workspaces and sessions](workspaces-sessions.md)
 - [Profiles and plugins](profiles-plugins.md)
 - [Permissions and approvals](permissions.md)

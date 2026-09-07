@@ -36,7 +36,7 @@ Attachments become model input only through Harness. DeepSeekGUI does not keep a
 
 ## Review agent work
 
-Ask the agent to summarize changed files and verification results. Use version-control review for source changes, and inspect tool approvals before allowing actions outside the ordinary workspace workflow.
+Ask the agent to summarize changed files and verification results. Open the **Changes** view to read the file diffs and the **Git** view to confirm branch state and recorded commits; both read local state without a model request. Use version-control review for source changes, and inspect tool approvals before allowing actions outside the ordinary workspace workflow. See [Workbench views and Git tools](workbench.md).
 
 An interrupted running turn does not erase the saved session history. The current operation may stop when Harness restarts or DeepSeekGUI quits, but the recorded conversation remains on disk.
 
@@ -46,6 +46,7 @@ Closing the main window hides DeepSeekGUI to the system tray. Harness and any cu
 
 ## Related guides
 
+- [Workbench views and Git tools](workbench.md)
+- [Memory](memory.md)
 - [Permissions and approvals](permissions.md)
-- [Profiles and plugins](profiles-plugins.md)
 - [Data and troubleshooting](data-troubleshooting.md)

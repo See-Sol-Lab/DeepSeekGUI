@@ -89,20 +89,6 @@ Compare it with [`SHA256SUMS.txt`](https://github.com/See-Sol-Lab/DeepSeekGUI/re
 
 See the [quick-start guide](docs/user/deepseekgui/quickstart.md) for a full walkthrough.
 
-## Why DeepSeekGUI
-
-**Visible project state.** Inspect file changes, branches, commits, and worktrees beside the conversation without requesting the model for each status check.
-
-**Lasting project knowledge.** Global memory stores cross-project preferences; project memory records decisions, conventions, and corrections. Each is managed separately.
-
-**Reviewable operations.** Git, PR, and browser result cards show summaries and details. Commits and pushes use Harness approvals, and you choose the permission mode.
-
-**Visible browsing.** The built-in browser shows the pages the assistant visits, with sensitive interactions subject to Harness approvals.
-
-**Local storage, network access as needed.** Sessions, credentials, settings, and memory are stored locally. Model requests go to your configured provider.
-
-**Built on Harness.** Use native profiles, plugins, hooks, and the CLI, with one runtime shared by the Workbench and conversations.
-
 ## Screenshots
 
 | Dark theme | Light theme |
@@ -159,6 +145,20 @@ See the [quick-start guide](docs/user/deepseekgui/quickstart.md) for a full walk
 
 See the [v1.1.0 release notes](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.1.0) for the complete version changes.
 
+## Why DeepSeekGUI
+
+**Visible project state.** Inspect file changes, branches, commits, and worktrees beside the conversation without requesting the model for each status check.
+
+**Lasting project knowledge.** Global memory stores cross-project preferences; project memory records decisions, conventions, and corrections. Each is managed separately.
+
+**Reviewable operations.** Git, PR, and browser result cards show summaries and details. Commits and pushes use Harness approvals, and you choose the permission mode.
+
+**Visible browsing.** The built-in browser shows the pages the assistant visits, with sensitive interactions subject to Harness approvals.
+
+**Local storage, network access as needed.** Sessions, credentials, settings, and memory are stored locally. Model requests go to your configured provider.
+
+**Built on Harness.** Use native profiles, plugins, hooks, and the CLI, with one runtime shared by the Workbench and conversations.
+
 ## Documentation
 
 | Guide | |
@@ -166,6 +166,8 @@ See the [v1.1.0 release notes](https://github.com/See-Sol-Lab/DeepSeekGUI/releas
 | [Quick start](docs/user/deepseekgui/quickstart.md) | First session walkthrough |
 | [Models and vision](docs/user/deepseekgui/models.md) | API keys, model setup, image input |
 | [Workspaces and sessions](docs/user/deepseekgui/workspaces-sessions.md) | Working with folders and sessions |
+| [Workbench views and Git tools](docs/user/deepseekgui/workbench.md) | Changes, Git, worktrees, Git / PR tools |
+| [Memory](docs/user/deepseekgui/memory.md) | Global memory, project memory, rules templates |
 | [Profiles and plugins](docs/user/deepseekgui/profiles-plugins.md) | Harness profiles and plugin management |
 | [Permissions](docs/user/deepseekgui/permissions.md) | Sandbox, approvals, and access levels |
 | [Desktop tools](docs/user/deepseekgui/desktop-tools.md) | Browser, terminal, updates, diagnostics |

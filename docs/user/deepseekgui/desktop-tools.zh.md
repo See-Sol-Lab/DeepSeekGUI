@@ -61,12 +61,19 @@ DeepSeekGUI.exe --export-diagnostics
 
 反馈区域可以收集一份可编辑、已脱敏的诊断摘要，并准备 GitHub issue。复制、打开、导出或提交前，请检查文本。DeepSeekGUI 不会打包个人 GitHub Token。
 
+## 桌面通知
+
+会话需要你时，DeepSeekGUI 会发出桌面通知：待处理的审批、等待回答的问题，以及后台任务的完成或失败。点击通知即可打开对应会话。
+
+通知遵循 Windows 中该应用的通知设置。
+
 ## 托盘与生命周期
 
 DeepSeekGUI 是常驻桌面应用。关闭窗口会把它隐藏起来；再次打开快捷方式会聚焦已有实例。**退出 DeepSeekGUI**才会停止 Harness、销毁托盘与视图，然后退出应用。
 
 ## 相关指南
 
+- [工作台视图与 Git 工具](workbench.zh.md)
 - [Profile 与插件](profiles-plugins.zh.md)
 - [权限与批准](permissions.zh.md)
 - [数据与故障排查](data-troubleshooting.zh.md)

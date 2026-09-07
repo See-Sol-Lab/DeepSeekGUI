@@ -36,7 +36,7 @@ DeepSeekGUI 通过 Harness 把会话保存在当前 Harness Home 中。从会话
 
 ## 检查 agent 的工作
 
-要求 agent 概述修改过的文件与验证结果。源代码改动请使用版本控制进行 review（审查），并在允许工作区日常流程之外的操作前检查工具批准请求。
+要求 agent 概述修改过的文件与验证结果。打开**改动**视图阅读文件差异，打开 **Git** 视图确认分支状态和已记录的提交；两者都读取本地状态，无需模型请求。源代码改动请使用版本控制进行 review（审查），并在允许工作区日常流程之外的操作前检查工具批准请求。详见[工作台视图与 Git 工具](workbench.zh.md)。
 
 正在运行的一轮被中断时，已保存的会话历史不会消失。Harness 重启或 DeepSeekGUI 退出可能停止当前操作，但已记录的对话仍保留在磁盘上。
 
@@ -46,6 +46,7 @@ DeepSeekGUI 通过 Harness 把会话保存在当前 Harness Home 中。从会话
 
 ## 相关指南
 
+- [工作台视图与 Git 工具](workbench.zh.md)
+- [记忆](memory.zh.md)
 - [权限与批准](permissions.zh.md)
-- [Profile 与插件](profiles-plugins.zh.md)
 - [数据与故障排查](data-troubleshooting.zh.md)
