@@ -23,7 +23,8 @@
   <a href="https://github.com/See-Sol-Lab/DeepSeekGUI/releases"><img alt="下载量" src="https://img.shields.io/github/downloads/See-Sol-Lab/DeepSeekGUI/total?style=flat-square" /></a>
   <img alt="Windows 10 与 11 x64" src="https://img.shields.io/badge/Windows-10%20%7C%2011%20x64-0078D4?style=flat-square&logo=windows" />
   <a href="https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.1.0-linux.1"><img alt="Linux x64 AppImage" src="https://img.shields.io/badge/Linux-x64%20AppImage-FCC624?style=flat-square&logo=linux&logoColor=black" /></a>
-  <a href="DEEPSEEKGUI-LICENSE.md"><img alt="源码可见" src="https://img.shields.io/badge/source-available-6f42c1?style=flat-square" /></a>
+  <a href="apps/desktop/LICENSE"><img alt="DeepSeekGUI 产品层：PolyForm Perimeter 1.0.1" src="https://img.shields.io/badge/DeepSeekGUI-PolyForm%20Perimeter%201.0.1-6f42c1?style=flat-square" /></a>
+  <a href="LICENSE-MIT-UPSTREAM"><img alt="上游 DeepSeek Harness：MIT" src="https://img.shields.io/badge/Upstream%20Harness-MIT-2ea44f?style=flat-square" /></a>
   <a href="https://doi.org/10.5281/zenodo.22205160"><img alt="DOI" src="https://zenodo.org/badge/DOI/10.5281/zenodo.22205160.svg" /></a>
 </p>
 
@@ -51,6 +52,8 @@ DeepSeekGUI 是基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek
 发行包自带运行时，配置模型 API key 后即可开始。
 
 **非官方产品：** 基于 DeepSeek Harness 构建，由第三方独立开发，与 DeepSeek 无隶属关系，未获官方背书。
+
+**许可分层：** DeepSeekGUI 原创产品层采用 [PolyForm Perimeter License 1.0.1](apps/desktop/LICENSE)；上游 DeepSeek Harness 继续采用 [MIT License](LICENSE-MIT-UPSTREAM)。
 
 **当前版本：[v1.1.0](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.1.0)。** 本地 Workbench、Git / PR 工具、两层记忆和桌面通知已发布。工作台通过插件扩展官方 Harness 客户端，继续使用 Harness 的会话、工具与权限机制。
 

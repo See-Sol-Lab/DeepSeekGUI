@@ -23,7 +23,8 @@ English | [中文](README.md)
   <a href="https://github.com/See-Sol-Lab/DeepSeekGUI/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/See-Sol-Lab/DeepSeekGUI/total?style=flat-square" /></a>
   <img alt="Windows 10 and 11 x64" src="https://img.shields.io/badge/Windows-10%20%7C%2011%20x64-0078D4?style=flat-square&logo=windows" />
   <a href="https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.1.0-linux.1"><img alt="Linux x64 AppImage" src="https://img.shields.io/badge/Linux-x64%20AppImage-FCC624?style=flat-square&logo=linux&logoColor=black" /></a>
-  <a href="DEEPSEEKGUI-LICENSE.md"><img alt="Source available" src="https://img.shields.io/badge/source-available-6f42c1?style=flat-square" /></a>
+  <a href="apps/desktop/LICENSE"><img alt="DeepSeekGUI product layer: PolyForm Perimeter 1.0.1" src="https://img.shields.io/badge/DeepSeekGUI-PolyForm%20Perimeter%201.0.1-6f42c1?style=flat-square" /></a>
+  <a href="LICENSE-MIT-UPSTREAM"><img alt="Upstream DeepSeek Harness: MIT" src="https://img.shields.io/badge/Upstream%20Harness-MIT-2ea44f?style=flat-square" /></a>
   <a href="https://doi.org/10.5281/zenodo.22205160"><img alt="DOI" src="https://zenodo.org/badge/DOI/10.5281/zenodo.22205160.svg" /></a>
 </p>
 
@@ -51,6 +52,8 @@ DeepSeekGUI is a local AI workbench built on [DeepSeek Harness](https://github.c
 The distribution bundles its runtime. Configure a model API key to get started.
 
 **Not an official DeepSeek product.** Built on DeepSeek Harness and independently developed, with no affiliation with or endorsement by DeepSeek. The upstream runtime and official Web UI are DeepSeek's work.
+
+**Layered licensing:** The original DeepSeekGUI product layer uses the [PolyForm Perimeter License 1.0.1](apps/desktop/LICENSE); upstream DeepSeek Harness remains under the [MIT License](LICENSE-MIT-UPSTREAM).
 
 **Current release: [v1.1.0](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.1.0).** The local Workbench, Git / PR tools, global and project memory, and desktop notifications are available. The Workbench extends the official Harness client through plugins and uses Harness sessions, tools, and permissions.
 
