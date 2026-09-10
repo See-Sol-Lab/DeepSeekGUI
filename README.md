@@ -1,6 +1,6 @@
 <div align="center">
 
-# <img src="./apps/desktop/src/chrome/icon.png" width="38" alt="" align="absmiddle" /> DeepSeekGUI
+# <img src="./apps/desktop/src/chrome/icon.png" width="38" alt="" align="absmiddle" /> DeepSeekGUI v1.1.0
 
 </div>
 
@@ -26,10 +26,6 @@
   <a href="apps/desktop/LICENSE"><img alt="DeepSeekGUI 产品层：PolyForm Perimeter 1.0.1" src="https://img.shields.io/badge/DeepSeekGUI-PolyForm%20Perimeter%201.0.1-6f42c1?style=flat-square" /></a>
   <a href="LICENSE-MIT-UPSTREAM"><img alt="上游 DeepSeek Harness：MIT" src="https://img.shields.io/badge/Upstream%20Harness-MIT-2ea44f?style=flat-square" /></a>
   <a href="https://doi.org/10.5281/zenodo.22205160"><img alt="DOI" src="https://zenodo.org/badge/DOI/10.5281/zenodo.22205160.svg" /></a>
-</p>
-
-<p align="center">
-  <a href="https://dshfind.com/zh/plugins/See-Sol-Lab/DeepSeekGUI?ref=badge"><img alt="DeepSeekGUI 收录于 dshfind" src="https://dshfind.com/api/card/See-Sol-Lab/DeepSeekGUI?lang=zh" width="440" /></a>
 </p>
 
 <p align="center">
