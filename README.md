@@ -43,9 +43,7 @@
 </p>
 -->
 
-DeepSeekGUI 是基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的本地 AI 工作台。选择项目文件夹，在会话中让助手读取代码、修改文件、运行命令和浏览网页；通过「改动」「Git」「并行工作区」「记忆」视图检查项目状态，用专用工具完成提交、推送与 Pull Request，并通过全局记忆和项目记忆延续协作。
-
-发行包自带运行时，配置模型 API key 后即可开始。
+DeepSeekGUI 是基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的本地 AI 工作台，配置模型 API key 后即可开始。选择项目文件夹，在会话中让助手读取代码、修改文件、运行命令和浏览网页；通过「改动」「Git」视图随时检查项目状态，用专用工具完成提交、推送与 Pull Request，并通过全局记忆和项目记忆延续协作。
 
 **非官方产品：** 基于 DeepSeek Harness 构建，由第三方独立开发，与 DeepSeek 无隶属关系，未获官方背书。
 
@@ -78,13 +76,6 @@ Get-FileHash .\DeepSeekGUI-Setup-1.1.0.exe -Algorithm SHA256
 </details>
 
 ## 快速开始
-
-1. 安装 DeepSeekGUI，打开它。
-2. 进入 **设置 → 模型**，填入你的 DeepSeek API key。
-3. 选择模型；需要处理图片时，选择支持视觉的模型。
-4. 回到主页，选择一个工作区文件夹。
-5. 开始会话并说明任务；在「改动」中检查文件差异，在「Git」中查看仓库状态与操作结果。
-6. 按需在 **设置 → 全局记忆** 保存协作偏好，在会话的 **记忆** 视图查看和整理项目记忆。
 
 详细步骤见[快速开始指南](docs/user/deepseekgui/quickstart.zh.md)。
 
@@ -144,20 +135,6 @@ Get-FileHash .\DeepSeekGUI-Setup-1.1.0.exe -Algorithm SHA256
 
 完整版本变更见 [v1.1.0 发布说明](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.1.0)。
 
-## 为什么用 DeepSeekGUI
-
-**项目状态看得见。** 对话旁边就能查看文件改动、分支、提交和 worktree，无需为每次状态检查请求模型。
-
-**协作经验留得住。** 全局记忆保存跨项目偏好，项目记忆记录决策、约定和修正，两者分别管理。
-
-**操作过程可检查。** Git、PR 和浏览器工具用结果卡片展示摘要与详情；提交、推送等操作通过 Harness 审批，权限模式由你选择。
-
-**浏览过程可见。** 内置浏览器展示助手正在访问的页面，敏感交互遵循 Harness 审批规则。
-
-**本地保存，按需联网。** 会话、凭据、设置和记忆保存在本地，模型请求发送到你配置的服务。
-
-**基于 Harness 扩展。** 使用原生 Profile、插件、钩子和 CLI，工作台与对话共用同一运行时。
-
 ## 文档
 
 | 指南 | |
@@ -173,6 +150,7 @@ Get-FileHash .\DeepSeekGUI-Setup-1.1.0.exe -Algorithm SHA256
 | [数据与故障排查](docs/user/deepseekgui/data-troubleshooting.zh.md) | 数据位置、隐私、常见问题 |
 
 文档里也保留了上游 Harness 的开发教程和插件开发参考。
+[产品自研workbench路线图](https://github.com/See-Sol-Lab/DeepSeekGUI/issues)
 
 ## 数据与隐私
 
@@ -230,9 +208,9 @@ pnpm dsh web
 
 ## 参与贡献
 
-- Bug 和反馈提到 [DeepSeekGUI Issues](https://github.com/See-Sol-Lab/DeepSeekGUI/issues)。
-- PR 之前先看 [CONTRIBUTING.md](CONTRIBUTING.zh.md)。
-- 上游 Harness 的问题去 [DeepSeek Harness Discussions](https://github.com/deepseek-ai/deepseek-harness/discussions)。
+- Bug 和反馈请提交到 [DeepSeekGUI Issues](https://github.com/See-Sol-Lab/DeepSeekGUI/issues)。
+- PR 之前请先阅读 [CONTRIBUTING.md](CONTRIBUTING.zh.md)。
+- 上游 Harness 问题去官方讨论区反馈 [DeepSeek Harness Discussions](https://github.com/deepseek-ai/deepseek-harness/discussions)。
 
 ## 许可证
 
@@ -243,6 +221,3 @@ pnpm dsh web
 
 根目录 [`LICENSE`](LICENSE) 说明了两部分怎么划分。重新分发前请读 [DeepSeekGUI 许可说明](DEEPSEEKGUI-LICENSE.md)和[第三方声明](THIRD_PARTY_NOTICES.md)。
 
----
-
-DeepSeekGUI 是公开发布仓库。日常开发在私有仓库里进行，Release 发布的是产品代码树。
