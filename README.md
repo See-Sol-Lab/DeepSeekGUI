@@ -47,8 +47,6 @@ DeepSeekGUI 是基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek
 
 **非官方产品：** 基于 DeepSeek Harness 构建，由第三方独立开发，与 DeepSeek 无隶属关系，未获官方背书。
 
-**分层许可：** DeepSeekGUI 原创产品层采用 [PolyForm Perimeter License 1.0.1](apps/deepseekgui/LICENSE)；上游 DeepSeek Harness 仍遵循 [MIT License](LICENSE-MIT-UPSTREAM)。
-
 **当前版本：[v1.1.1](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.1.1)。** 内嵌 Harness 升级到 0.1.5-rc.2，新增首次启动引导、就地更新、数据目录迁移和归档会话管理。工作台通过插件扩展官方 Harness 客户端，继续使用 Harness 的会话、工具与权限机制。
 
 ## 下载
