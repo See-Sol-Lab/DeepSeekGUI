@@ -164,7 +164,7 @@ See the [v1.1.1 release notes](https://github.com/See-Sol-Lab/DeepSeekGUI/releas
 
 The docs also include upstream Harness tutorials and plugin-authoring reference.
 
-[Product roadmap for the in-house Workbench](https://github.com/See-Sol-Lab/DeepSeekGUI/issues)
+[Product roadmap for the in-house Workbench](https://see-sol-lab.github.io/research/deepseekgui-single-task-signal.html)
 
 ## Data and privacy
 
