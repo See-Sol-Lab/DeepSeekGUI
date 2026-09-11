@@ -11,7 +11,7 @@
 </div>
 
 <p align="center">
-  <em>在本地工作台中，与 DeepSeek 一起完成项目。</em>
+  <em>稳定不炸的 DeepSeek 本地工作台。</em>
 </p>
 
 <p align="center">
