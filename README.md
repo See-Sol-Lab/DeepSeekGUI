@@ -162,7 +162,7 @@ Git、文件栏、模型设置、浏览器及归档页面截图来自 v1.1.1；�
 
 文档里也保留了上游 Harness 的开发教程和插件开发参考。
 
-[产品自研workbench路线图](https://github.com/See-Sol-Lab/DeepSeekGUI/issues)
+[产品自研workbench路线图](https://see-sol-lab.github.io/research/deepseekgui-single-task-signal.html)
 
 ## 数据与隐私
 
