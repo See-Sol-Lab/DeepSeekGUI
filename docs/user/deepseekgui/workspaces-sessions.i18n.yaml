@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/user/deepseekgui/workspaces-sessions.md
-workspaces-sessions.md: 8e96262f15be92d9284aa7262e155a0bdff75baf
-workspaces-sessions.zh.md: 8c7c11045253c86eaa0545ee958b58fd66fa5d4c
+workspaces-sessions.md: 8a2ddea88d1fff8d3430c658935f65b65cd5dd0e
+workspaces-sessions.zh.md: 3d3cd5d50ccd825de15dad65556d80c67ff3cbe3

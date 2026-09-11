@@ -33,7 +33,7 @@ Plugin Manager 会分开显示三类事实：
 
 ## 安装、更新或移除插件
 
-1. 打开**设置 → Harness → Plugin Manager**。
+1. 打开**设置 → 插件管理（本地）**。
 2. 确认目标 Home、完整路径、Profile、操作与包 spec。
 3. 执行操作并检查流式输出。
 4. 等待 DeepSeekGUI 完成事后检查。

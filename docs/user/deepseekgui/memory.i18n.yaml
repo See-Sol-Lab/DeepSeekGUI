@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/user/deepseekgui/memory.md
-memory.md: 0182554ee7b07f8fe3086ee2f3905e2575efc55a
-memory.zh.md: d16d8f29a2c3aa0510b12022a2af182a822b7b27
+memory.md: 756672af1281947390b947963e5524f896d4558f
+memory.zh.md: ef1adf31798cd1772d5c82980e4954d8cfb560d5

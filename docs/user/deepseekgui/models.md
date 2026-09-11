@@ -16,7 +16,7 @@ The provider may reject a key that is missing, invalid, expired, or not authoriz
 
 ## Use image input
 
-Select a model whose input modalities include images, such as `deepseek-v4-flash-vision-exp` when it is available to your account. Attach an image to the message, add a clear instruction, and send it like an ordinary prompt.
+The v1.1.1 catalog includes **DeepSeek V4.1 Flash** (`deepseek-flash`) with image input. Select an image-capable model available to your account, attach the image, and send a clear instruction; configure custom providers to match their actual capabilities.
 
 An image-capable model can inspect screenshots, diagrams, UI states, and other visual inputs. A text-only model cannot infer an attachment's contents; switch models before asking it to reason about the image.
 

@@ -10,7 +10,7 @@ DeepSeekGUI 把应用状态与 Managed Harness Home 保存在 Windows 用户目�
 | --- | --- | --- |
 | Managed Harness Home | `%APPDATA%\DeepSeekGUI\dsh` | Harness 管理的凭据、设置、会话、Profile 与插件。可从**数据位置**迁移；见下文。 |
 | Launcher selection | `%APPDATA%\DeepSeekGUI\launcher-state.json` | 当前 Home 与 Profile、last-known-good 选择和已脱敏的启动失败。 |
-| 桌面偏好 | `%APPDATA%\DeepSeekGUI\desktop-ui-state.json` | 窗口尺寸、主题与本地 UI 确认状态。 |
+| 桌面偏好 | `%APPDATA%\DeepSeekGUI\desktop-ui-state.json` | 窗口尺寸、更新偏好与本地 UI 确认状态；主题由 Harness 设置保存。 |
 | 服务日志 | `%APPDATA%\DeepSeekGUI\dsh-service.log` | 已脱敏并轮转；包含当前文件与有上限的历史文件。 |
 | 诊断导出 | `%APPDATA%\DeepSeekGUI\diagnostics` | 只有你要求导出时才创建的本地诊断包。 |
 | 更新缓存 | `%APPDATA%\DeepSeekGUI\updates` | 最多保存一条已验证安装器记录及其文件。 |
@@ -21,7 +21,7 @@ Windows 通过 Known Folder API 解析真实应用数据目录。表格使用 `%
 
 ## 迁移 Managed Harness Home
 
-从菜单选择**数据位置…**可以查看当前数据目录并迁移。选定目标文件夹后：DeepSeekGUI 复制每一项、按大小与 SHA-256 逐项校验、把 launcher 指向新目录，然后请你重启。重启会逐项核对新位置，只有核对通过后才会提示删除旧的那份。在那之前旧文件原样保留；核对失败时保留旧文件并停下。
+从菜单选择**数据位置…**可以查看当前数据目录并迁移。选定目标文件夹后：DeepSeekGUI 复制每一项、按大小与 SHA-256 逐项校验、把 launcher 指向新目录，并重启 Harness。重启会逐项核对新位置，只有核对通过后才会提示删除旧的那份。在那之前旧文件原样保留；核对失败时保留旧文件并停下。
 
 这条路径只搬 Managed Harness Home。它不搬程序安装位置——安装器、快捷方式、卸载项与更新器才是它的归属——也不搬你选择的 Existing Home、你的项目目录，或 `%APPDATA%\DeepSeekGUI` 下的其他文件。
 
@@ -74,7 +74,7 @@ Profile 切换失败后，DeepSeekGUI 可能回到 last-known-good Profile。恢
 
 ## 浏览器没有打开
 
-内置浏览器使用已安装的 Microsoft Edge 运行时，并在第一次浏览器工具调用时惰性启动。请确认 Edge 可用，而且目标是公开 `http` 或 `https` 地址。本机、内网、保留网段、带凭据与不受支持的 URL 会被刻意阻止。
+DeepSeekGUI 使用应用内的浏览器面板，首次浏览器操作时启动。确认 Harness 正在运行、目标是公开的 `http` 或 `https` 地址；本机、内网和不受支持的 URL 会被拒绝。截图分析还需要当前模型支持图片输入。
 
 ## 检查更新报告没有可用更新
 

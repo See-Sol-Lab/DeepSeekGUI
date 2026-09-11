@@ -2,11 +2,11 @@
 
 [English](desktop-tools.md) | 中文
 
-DeepSeekGUI 把 Harness 运行时与 Windows 原生控制组合在一起，提供浏览器工作、终端访问、更新、诊断、反馈与常驻运行。
+DeepSeekGUI 将 Harness 与桌面控制组合，提供内置浏览器、终端、更新、诊断反馈和常驻运行。
 
 ## 内置浏览器
 
-DeepSeekGUI 浏览器插件为 agent 提供可见的 Microsoft Edge 窗口，用于需要真实渲染或交互的网页。它支持导航、页面 snapshot、截图、标签页、等待、点击、输入、滚动与键盘动作。
+在 DeepSeekGUI 中，助手使用应用内的浏览器面板检查需要真实渲染或交互的网页。支持导航、页面快照、截图、标签页、等待、点击、输入、滚动与键盘操作。
 
 浏览器遵循以下限制：
 
@@ -16,13 +16,13 @@ DeepSeekGUI 浏览器插件为 agent 提供可见的 Microsoft Edge 窗口，用
 - 提交表单、登录、发送消息与其他敏感动作需要批准。
 - V1 不持久化 Cookie。
 
-agent 打开浏览器后，Browser Panel 会出现。你可以从 DeepSeekGUI 菜单显示或隐藏面板，不会因此停止浏览器任务。
+助手打开网页时，浏览器面板自动展开，与会话并列。它与右侧文件 Sidebar 交替显示，同一时间只展示其中一个；隐藏面板不会停止浏览器任务。渲染器崩溃后，下次浏览器操作会重新创建面板。
 
-![DeepSeekGUI 会话使用内置浏览器检查公开网页](assets/browser-panel.png)
+![DeepSeekGUI 会话使用内置浏览器检查公开网页](assets/browser-1.1.1.png)
 
 ## DSH Terminal
 
-从 DeepSeekGUI 菜单或系统托盘打开 **DSH Terminal**。终端使用当前 Harness Home，并优先把当前 Profile 目录作为工作目录。
+从菜单或系统托盘打开 **DSH Terminal**。终端使用当前 Harness Home；从会话入口打开时优先跟随该会话目录，否则使用当前 Profile 目录，目录不可用时会说明所用位置。
 
 打包应用会向这个终端进程提供私有的 `dsh`、`node` 与 `pnpm` shim。它不会修改系统 PATH、注册表、PowerShell profile 或 shell 配置。
 
@@ -36,7 +36,7 @@ agent 打开浏览器后，Browser Panel 会出现。你可以从 DeepSeekGUI �
 
 从菜单或托盘使用**检查更新**。DeepSeekGUI 只比较 DeepSeekGUI 应用版本，不比较内嵌 DSH 版本。
 
-下载更新前需要确认。DeepSeekGUI 只接受配置 manifest 中的 HTTPS 产物，执行声明大小限制与 SHA-256 校验，在失败或取消后删除不完整下载，并在交给安装器前再次校验文件。
+手动下载会先确认；自动下载开启时可在后台下载。DeepSeekGUI 检查 HTTPS 产物、声明大小与 SHA256；Windows 安装始终由用户确认，交给安装器前再次校验。取消安装会保留已校验文件；Linux AppImage 在文件管理器中交给用户手动处理。
 
 更新面板还有一个**自动下载更新**开关，默认开启，与桌面偏好存在一起。开启时，DeepSeekGUI 对每个发现的新版本最多启动一次后台下载。关闭只影响将来的自动下载，不中断已经在跑的那一次；正在进行的下载随时可以显式取消。
 
@@ -61,7 +61,7 @@ DeepSeekGUI.exe --export-diagnostics
 
 ## 反馈
 
-反馈区域可以收集一份可编辑、已脱敏的诊断摘要，并准备 GitHub issue。复制、打开、导出或提交前，请检查文本。DeepSeekGUI 不会打包个人 GitHub Token。
+**设置 → BUG 诊断与反馈**提供可编辑的脱敏诊断摘要。点击发送可让助手辅助排查，并将回复整理成 GitHub issue；提交前可检查内容。对话消息旁的官方反馈入口面向 DeepSeek Harness，桌面产品问题请使用本区域。
 
 ## 桌面通知
 

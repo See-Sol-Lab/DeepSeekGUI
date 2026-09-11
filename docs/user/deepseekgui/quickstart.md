@@ -12,7 +12,7 @@ This tutorial takes a new Windows user from download to a working DeepSeek codin
 
 ## 1. Download DeepSeekGUI
 
-Download the Windows installer, `DeepSeekGUI-Setup-<version>.exe`, from the [latest release](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/latest). An experimental Linux AppImage is published beside each release.
+Download the Windows installer, `DeepSeekGUI-Setup-<version>.exe`, from the [latest release](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/latest). Linux AppImage is provided through a separate experimental release; see the repository homepage for the available download.
 
 DeepSeekGUI is currently distributed without a code signature, so Windows SmartScreen may show an unknown-publisher warning. Verify the installer against the `SHA256SUMS.txt` file from the same release before running it:
 
@@ -37,7 +37,7 @@ Closing the main window hides DeepSeekGUI in the system tray while Harness conti
 
 DeepSeekGUI stores the key through the Harness credential service in the application data directory. It does not put the key in the installer, command line, or diagnostics log.
 
-![DeepSeekGUI Models settings with a redacted API key and available DeepSeek models](assets/models-page.png)
+![DeepSeekGUI Models settings with a redacted API key and available DeepSeek models](assets/settings-1.1.1.png)
 
 See [Models and vision](models.md) for model selection, image input, and custom providers.
 
@@ -53,7 +53,7 @@ Create a new session and give the agent one concrete outcome, for example:
 
 Once you are comfortable with the result, ask for a bounded change. DeepSeekGUI streams the reply and keeps the session in the selected Harness Home so you can resume it later.
 
-A fresh installation shows a short first-run guide above the message box. It points at **Settings → Models**, then follows your first message, the first approval, and the Changes view; you can skip it at any point.
+A fresh installation guides you through choosing a workspace, configuring a model, and sending your first message, with prompts while waiting for a reply or approval. You can skip it; existing users with session data are not treated as new.
 
 ![A completed DeepSeekGUI coding task that creates and runs a JavaScript file](assets/workbench-overview.png)
 

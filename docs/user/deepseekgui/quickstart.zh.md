@@ -12,7 +12,7 @@
 
 ## 1. 下载 DeepSeekGUI
 
-从[最新发布页](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/latest)下载 Windows 安装包 `DeepSeekGUI-Setup-<版本号>.exe`。每个版本同时发布实验性的 Linux AppImage。
+从[最新发布页](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/latest)下载 Windows 安装包 `DeepSeekGUI-Setup-<版本号>.exe`。Linux AppImage 通过独立的实验性发布提供，当前可用链接见仓库首页。
 
 DeepSeekGUI 目前的发行包未附代码签名，Windows SmartScreen 可能显示未知发布者警告。运行安装包前，请先用同一发布页的 `SHA256SUMS.txt` 校验文件：
 
@@ -37,7 +37,7 @@ Get-FileHash .\DeepSeekGUI-Setup-<version>.exe -Algorithm SHA256
 
 DeepSeekGUI 通过 Harness 凭据服务把 key 保存在应用数据目录中，不会把 key 写入安装包、命令行或诊断日志。
 
-![DeepSeekGUI 模型设置页面，API key 已遮盖，并显示可用的 DeepSeek 模型](assets/models-page.png)
+![DeepSeekGUI 模型设置页面，API key 已遮盖，并显示可用的 DeepSeek 模型](assets/settings-1.1.1.png)
 
 模型选择、图片输入与自定义提供方见[模型与视觉](models.zh.md)。
 
@@ -53,7 +53,7 @@ DeepSeekGUI 通过 Harness 凭据服务把 key 保存在应用数据目录中，
 
 确认结果符合预期后，再要求 agent 完成边界明确的修改。DeepSeekGUI 会流式显示回复，并把会话保存在当前选择的 Harness Home 中，供你稍后恢复。
 
-全新安装会在输入框上方显示一条简短的首次使用引导。它先指向**设置 → 模型**，然后跟着你的第一句话、第一次审批和「改动」视图走；随时可以跳过。
+全新安装会引导选择工作区、配置模型和发送第一条消息，并在等待回复或审批时给出提示。随时可以跳过；已有会话数据的用户不会被当作新用户。
 
 ![DeepSeekGUI 完成创建并运行 JavaScript 文件的 coding 任务](assets/workbench-overview.png)
 

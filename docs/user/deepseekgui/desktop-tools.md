@@ -2,11 +2,11 @@
 
 English | [中文](desktop-tools.zh.md)
 
-DeepSeekGUI packages the Harness runtime with Windows-native controls for browser work, terminal access, updates, diagnostics, feedback, and resident operation.
+DeepSeekGUI combines Harness with desktop controls for an embedded browser, terminal access, updates, diagnostics, feedback, and resident operation.
 
 ## Built-in browser
 
-The DeepSeekGUI browser plugin gives the agent a visible Microsoft Edge window for pages that require real rendering or interaction. It supports navigation, page snapshots, screenshots, tabs, waiting, clicking, typing, scrolling, and keyboard actions.
+Inside DeepSeekGUI, the assistant uses the embedded browser panel for pages requiring rendering or interaction. It supports navigation, page snapshots, screenshots, tabs, waiting, clicking, typing, scrolling, and keyboard actions.
 
 The browser applies these limits:
 
@@ -16,13 +16,13 @@ The browser applies these limits:
 - Form submission, login, message sending, and other sensitive actions require approval.
 - Cookies are not persisted in V1.
 
-The Browser Panel appears after the agent opens the browser. Use the DeepSeekGUI menu to show or hide the panel without stopping the browser task.
+Agent navigation expands the browser beside the conversation. It alternates with the right file sidebar, so only one is visible at a time; hiding the panel does not stop browsing. After a renderer crash, the next browser operation recreates the panel.
 
-![A DeepSeekGUI session using the built-in browser to inspect a public webpage](assets/browser-panel.png)
+![A DeepSeekGUI session using the built-in browser to inspect a public webpage](assets/browser-1.1.1.png)
 
 ## DSH Terminal
 
-Open **DSH Terminal** from the DeepSeekGUI menu or system tray. The terminal uses the active Harness Home and prefers the active Profile directory as its working directory.
+Open **DSH Terminal** from the menu or tray. It uses the active Harness Home and prefers the current session directory when opened from a session; otherwise it uses the Profile directory and explains any unavailable-directory fallback.
 
 The packaged application supplies private `dsh`, `node`, and `pnpm` shims to that terminal process. It does not modify the system PATH, registry, PowerShell profile, or shell configuration.
 
@@ -36,7 +36,7 @@ The Harness section in Settings shows the active Home, Profile, status, Profile 
 
 Use **Check for Updates** from the menu or tray. DeepSeekGUI compares only the DeepSeekGUI application version, not the embedded DSH version.
 
-An update download requires confirmation. DeepSeekGUI accepts only HTTPS assets from the configured manifest, enforces the declared size, verifies SHA-256, removes partial downloads after failure or cancellation, and re-verifies the installer immediately before handoff.
+Manual download asks for confirmation; automatic download can run in the background. DeepSeekGUI checks HTTPS assets, declared size, and SHA256. Windows installation always requires confirmation and a final integrity check. Cancelling installation keeps the verified file; Linux AppImage handoff opens its location for manual handling.
 
 The update panel also has an **Auto-download updates** switch, on by default and stored with the desktop preferences. While it is on, DeepSeekGUI starts at most one background download per discovered version. Turning it off stops future automatic downloads without interrupting one already running, and a running download can always be cancelled explicitly.
 
@@ -61,7 +61,7 @@ The command starts no Harness, Profile, window, tray, or local server. It prints
 
 ## Feedback
 
-The Feedback section can collect an editable, redacted diagnostics summary and prepare a GitHub issue. Review the text before copying, opening, exporting, or submitting it. DeepSeekGUI does not package a personal GitHub token.
+**Settings → Bug Report & Diagnostics** provides an editable, redacted summary. Send it for assistant-aided triage and a GitHub issue draft, then review the content before submission. The official message-feedback control reports to DeepSeek Harness; use this section for desktop-product issues.
 
 ## Desktop notifications
 

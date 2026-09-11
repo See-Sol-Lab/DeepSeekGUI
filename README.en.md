@@ -22,7 +22,7 @@ English | [中文](README.md)
   <a href="https://github.com/See-Sol-Lab/DeepSeekGUI/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/See-Sol-Lab/DeepSeekGUI?style=flat-square&label=release" /></a>
   <a href="https://github.com/See-Sol-Lab/DeepSeekGUI/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/See-Sol-Lab/DeepSeekGUI/total?style=flat-square" /></a>
   <img alt="Windows 10 and 11 x64" src="https://img.shields.io/badge/Windows-10%20%7C%2011%20x64-0078D4?style=flat-square&logo=windows" />
-  <a href="https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.1.0-linux.1"><img alt="Linux x64 AppImage" src="https://img.shields.io/badge/Linux-x64%20AppImage-FCC624?style=flat-square&logo=linux&logoColor=black" /></a>
+  <a href="https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.1.1-linux.1"><img alt="Linux x64 AppImage" src="https://img.shields.io/badge/Linux-x64%20AppImage-FCC624?style=flat-square&logo=linux&logoColor=black" /></a>
   <a href="apps/deepseekgui/LICENSE"><img alt="DeepSeekGUI product layer: PolyForm Perimeter 1.0.1" src="https://img.shields.io/badge/DeepSeekGUI-PolyForm%20Perimeter%201.0.1-6f42c1?style=flat-square" /></a>
   <a href="LICENSE-MIT-UPSTREAM"><img alt="Upstream DeepSeek Harness: MIT" src="https://img.shields.io/badge/Upstream%20Harness-MIT-2ea44f?style=flat-square" /></a>
   <a href="https://doi.org/10.5281/zenodo.22205160"><img alt="DOI" src="https://zenodo.org/badge/DOI/10.5281/zenodo.22205160.svg" /></a>
@@ -56,9 +56,9 @@ DeepSeekGUI is a local AI workbench built on [DeepSeek Harness](https://github.c
 | Platform | Download | Requirements |
 | --- | --- | --- |
 | Windows | [Download installer](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.1.1/DeepSeekGUI-Setup-1.1.1.exe) | Windows 10/11, x64 |
-| Linux | [Download AppImage](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.1.0-linux.1/DeepSeekGUI-1.1.0-x86_64.AppImage) | x64, AppImage; experimental support |
+| Linux | [Download AppImage](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.1.1-linux.1/DeepSeekGUI-1.1.1-x86_64.AppImage) | x64, AppImage; experimental support |
 
-The Windows installer installs to your user account and bundles its runtime. Linux uses a separate AppImage distribution; download and verification details are on the [v1.1.0-linux.1](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.1.0-linux.1) release page.
+The Windows installer installs to your user account and bundles its runtime. Linux uses a separate AppImage distribution; download and verification details are on the [v1.1.1-linux.1](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.1.1-linux.1) release page.
 
 > **Windows installation:** The installer is not code-signed, so SmartScreen may report an unknown publisher. After checking the download source and SHA256, choose **“More info” → “Run anyway”** to continue.
 
@@ -81,23 +81,33 @@ See the [quick-start guide](docs/user/deepseekgui/quickstart.md) for a full walk
 
 ## Screenshots
 
+Git, file sidebar, model settings, browser, and archived-session screenshots show v1.1.1; the dark/light overviews and both memory screenshots are retained from v1.1.0.
+
 | Dark theme | Light theme |
 | --- | --- |
 | [![Dark Workbench theme](docs/user/deepseekgui/assets/workbench-dark-1.1.0.png)](docs/user/deepseekgui/assets/workbench-dark-1.1.0.png) | [![Light Workbench theme](docs/user/deepseekgui/assets/workbench-light-1.1.0.png)](docs/user/deepseekgui/assets/workbench-light-1.1.0.png) |
 
 *One local workbench, two themes. Click an image to view it at full size.*
 
-![Built-in browser beside the conversation](docs/user/deepseekgui/assets/browser-1.1.0.png)
+![Built-in browser beside the conversation](docs/user/deepseekgui/assets/browser-1.1.1.png)
 
 *Open a webpage beside the conversation and inspect the assistant's browsing actions and results, with both the conversation and page in view.*
 
-![Model configuration and desktop management](docs/user/deepseekgui/assets/settings-1.1.0.png)
+![Conversation beside the file sidebar](docs/user/deepseekgui/assets/file-sidebar-1.1.1.png)
+
+*Organize project memory in the conversation while browsing workspace files in the adjacent file tree.*
+
+![Model configuration and desktop management](docs/user/deepseekgui/assets/settings-1.1.1.png)
 
 *Configure models and access Harness desktop controls, local plugin management, diagnostics and feedback, and global memory from the same settings window.*
 
-![Git status and session commit history](docs/user/deepseekgui/assets/git-1.1.0.png)
+![Git status and session commit history](docs/user/deepseekgui/assets/git-1.1.1.png)
 
 *Inspect the current branch, remote configuration, recent commits, and Git operations recorded in this session.*
+
+![Archived-session management in Settings](docs/user/deepseekgui/assets/archived-sessions-1.1.1.png)
+
+*Manage archived conversations in Settings, restore and open them, or confirm deletion.*
 
 ![Project memory](docs/user/deepseekgui/assets/project-memory-1.1.0.png)
 
@@ -113,25 +123,28 @@ See the [quick-start guide](docs/user/deepseekgui/quickstart.md) for a full walk
 
 - **Changes view** — Inspect staged, modified, new, and conflicted files, open per-file diffs, copy paths, or reveal files in the file manager.
 - **Git view** — Inspect branches, remote sync status, recent commits, and commit, push, and PR results from loaded conversation history.
-- **Worktrees** — Inspect registered worktree branches and changes, including paths modified in multiple worktrees.
+- **Worktrees** — Integrated at the top of the Git view, with registered branches, change summaries, and overlapping paths to review for potential conflicts.
 - **Git / PR tools** — Request diffs, staging, unstaging, discarding unstaged changes to tracked files, commits, push previews, pushes, and PR creation through the conversation, with dedicated result cards.
 - **Local inspection** — Views read workspace state on demand without model requests. Workspace paths support click-to-reveal, and the built-in terminal can follow the current session directory.
 
 ### Memory and collaboration rules
 
-- **Global memory** — Edit cross-project preferences and collaboration instructions in settings; the assistant has read-only access.
+- **Global memory** — Edit cross-project preferences and collaboration instructions in settings; the assistant reads them. Saving checks the original content and active Home to prevent stale drafts from overwriting external edits.
 - **Project memory** — The assistant maintains project facts in `<folder name>.memory.md` in the workspace. The Memory view supports Markdown reading and requests to organize its contents.
 - **Rule templates** — Initialize a global `AGENTS.md` on the managed home's first launch and generate project templates on request, preserving existing files.
 - **Recorded context** — Read both memory layers when a session loads and record the content used with the Harness session context.
 
 ### Models and desktop tools
 
-- **Models and image input** — Configure DeepSeek or custom model providers and send screenshots and images to vision-capable models.
-- **Sessions and permissions** — Start and resume conversations in project folders, inspect tool execution, and control operations through Harness permission modes and approvals.
-- **Browser and terminal** — Inspect pages in a visible browser and use the current Harness environment through the built-in DSH Terminal.
+- **Models and attachments** — Supports DeepSeek V4.1 Flash, custom providers, general file uploads, and image attachments. Images and page screenshots require a vision-capable model.
+- **Sessions and permissions** — Start and resume project conversations, inspect tool execution, and control actions through Harness permissions and approvals. Reply text streams smoothly and is shown in full when stopped or completed.
+- **Archive and delete** — Restore or confirm deletion in Settings → Archived Sessions. Deletion waits for the current reply and tools, removes content and search indexes, and retains minimal deletion metadata; shared attachment files remain.
+- **Browser and terminal** — Pages open beside the conversation inside the app; agent navigation expands the browser panel, which alternates with the file sidebar. DSH Terminal uses the active Harness environment and can follow the session directory.
+- **File previews** — The right sidebar supports tabs, split views, fullscreen, and Markdown, code, HTML, PDF, and image previews for files delivered by the assistant.
 - **Desktop notifications** — Receive pending approval and question notices, plus background-job completion or failure notices; click to open the corresponding conversation.
 - **Profiles and plugins** — Switch Harness Homes and Profiles, manage compatible plugins, and inspect configuration and runtime status.
-- **Desktop integration** — Chinese and English interfaces, system tray, update checks, and local diagnostics.
+- **Updates and data migration** — Downloads and SHA256 checks can run automatically; installation requires confirmation, and automatic download can be disabled. Move managed data after copying and verification, then confirm cleanup of the old copy.
+- **Onboarding and diagnostics** — First-run guidance covers model setup and the first conversation. Includes Chinese and English interfaces, a system tray, local diagnostics export, and assistant-aided bug triage.
 
 See the [v1.1.1 release notes](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.1.1) for the complete version changes.
 
@@ -139,17 +152,18 @@ See the [v1.1.1 release notes](https://github.com/See-Sol-Lab/DeepSeekGUI/releas
 
 | Guide | |
 | --- | --- |
-| [Quick start](docs/user/deepseekgui/quickstart.md) | First session walkthrough |
-| [Models and vision](docs/user/deepseekgui/models.md) | API keys, model setup, image input |
-| [Workspaces and sessions](docs/user/deepseekgui/workspaces-sessions.md) | Working with folders and sessions |
-| [Workbench views and Git tools](docs/user/deepseekgui/workbench.md) | Changes, Git, worktrees, Git / PR tools |
+| [Quick start](docs/user/deepseekgui/quickstart.md) | First-run guide, model setup, first conversation |
+| [Models and vision](docs/user/deepseekgui/models.md) | API keys, V4.1 Flash, custom models, image input |
+| [Workspaces and sessions](docs/user/deepseekgui/workspaces-sessions.md) | Workspaces, attachments, archiving, restoring, deleting |
+| [Workbench views and Git tools](docs/user/deepseekgui/workbench.md) | Changes, Git and worktrees, commits and PRs |
 | [Memory](docs/user/deepseekgui/memory.md) | Global memory, project memory, rules templates |
 | [Profiles and plugins](docs/user/deepseekgui/profiles-plugins.md) | Harness profiles and plugin management |
 | [Permissions](docs/user/deepseekgui/permissions.md) | Sandbox, approvals, and access levels |
-| [Desktop tools](docs/user/deepseekgui/desktop-tools.md) | Browser, terminal, updates, diagnostics |
-| [Data and troubleshooting](docs/user/deepseekgui/data-troubleshooting.md) | Data locations, privacy, common issues |
+| [Desktop tools](docs/user/deepseekgui/desktop-tools.md) | Built-in browser, terminal, automatic updates, diagnostics |
+| [Data and troubleshooting](docs/user/deepseekgui/data-troubleshooting.md) | Data migration, retained data, privacy, troubleshooting |
 
 The docs also include upstream Harness tutorials and plugin-authoring reference.
+
 [Product roadmap for the in-house Workbench](https://github.com/See-Sol-Lab/DeepSeekGUI/issues)
 
 ## Data and privacy

@@ -26,15 +26,19 @@ For a first pass, ask the agent to inspect and report before editing. Once the s
 
 DeepSeekGUI stores sessions through Harness in the active Harness Home. Reopen a previous session from the session list to continue with its recorded conversation and events.
 
-Changing the active Profile or Harness Home changes which session store the interface reads. Returning to the original Home and Profile makes its sessions available again; DeepSeekGUI does not copy sessions between Homes.
+Sessions are stored in the Harness Home in use. Switching Homes reads history from the selected directory; returning to the original Home restores access to its sessions. Switching Profiles does not copy sessions into another Home.
 
 ## Archive and restore a session
 
-Archiving a session hides it from its workspace group without deleting its log or its place. Archived sessions appear under **Archived** at the end of the session list; **Restore and open** puts the session back in its group and opens it.
+Archiving hides a session from its workspace list while retaining its log. Open **Settings → Archived Sessions** and choose **Restore and open** to return it to its group; deletion requires two-step confirmation.
+
+Deletion waits for the current reply and tools, removes messages, attachment references, and search indexes, and retains the ID, title, deletion time, and workspace access metadata. Exact ID or matching-title queries can return a deleted record; shared attachment files remain available to other sessions.
+
+![Archived-session management (v1.1.1)](assets/archived-sessions-1.1.1.png)
 
 ## Attach files and images
 
-Attach an image when the selected model supports image input. For project files, tell the agent which path to inspect rather than pasting large files into the conversation.
+Upload general files with a message; image attachments require a model that supports image input. For files already in the project, you can give the assistant a path instead of pasting their full contents.
 
 Attachments become model input only through Harness. DeepSeekGUI does not keep a second attachment database.
 

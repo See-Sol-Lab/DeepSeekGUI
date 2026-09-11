@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/user/deepseekgui/quickstart.md
-quickstart.md: b15aed0fe90582141f64f6e5541c7490cf5ad0c0
-quickstart.zh.md: cca6405b094b801316c0c19e4a882dc8adecc5e6
+quickstart.md: 990aa6316a176016311a1f71a61bcd2f1d1ebe42
+quickstart.zh.md: 65e518ba6cbd70bd739ddfdef47a9edabd065506

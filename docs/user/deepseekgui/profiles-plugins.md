@@ -33,7 +33,7 @@ An installed dependency is not automatically an active plugin. Check the effecti
 
 ## Install, update, or remove a plugin
 
-1. Open **Settings → Harness → Plugin Manager**.
+1. Open **Settings → Plugins (Local)**.
 2. Confirm the target Home, full path, Profile, action, and package specification.
 3. Run the operation and review its streamed output.
 4. Let DeepSeekGUI perform the post-check.

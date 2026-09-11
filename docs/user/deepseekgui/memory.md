@@ -6,7 +6,7 @@ DeepSeekGUI keeps collaboration context in two layers. Global memory records you
 
 ## Global memory
 
-Global memory lives in the Managed Harness Home and applies to every project.
+Global memory lives in `memory.md` under the active Harness Home and is shared by its projects. Saved changes apply to newly loaded sessions; saving checks the Home and original content to avoid overwriting external edits.
 
 - Edit it in **Settings → Global memory**. The assistant reads this file and follows it; you decide its content.
 - Use it for durable preferences: language, coding conventions, review requirements, and collaboration rules you want in every session.
@@ -19,7 +19,7 @@ Project memory lives inside the selected workspace as `<folder-name>.memory.md`,
 
 - The assistant maintains it during sessions: background, confirmed decisions, and working agreements for that project.
 - Open the **Memory** view in a session to read it as rendered Markdown. The view shows the file in a fixed-height reading window.
-- Use **Ask the assistant to tidy** when the file grows unwieldy. Project memory holds up to 20,000 characters; the tidy action condenses older content while keeping confirmed facts.
+- Use **Ask the assistant to tidy** when the file grows unwieldy. The reading panel shows up to 20,000 characters and reports truncation; this is a display limit, not a file-size limit.
 - The file is ordinary Markdown in your project. You can edit it, review it in version control, and see exactly what the assistant recorded.
 
 ![The project memory view in a session](assets/project-memory-1.1.0.png)

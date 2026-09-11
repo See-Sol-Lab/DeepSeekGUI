@@ -10,7 +10,7 @@ DeepSeekGUI keeps its application state and Managed Harness Home under the Windo
 | --- | --- | --- |
 | Managed Harness Home | `%APPDATA%\DeepSeekGUI\dsh` | Credentials, settings, sessions, Profiles, and plugins managed by Harness. You can move it from **Data location**; see below. |
 | Launcher selection | `%APPDATA%\DeepSeekGUI\launcher-state.json` | Active Home and Profile, last known good selection, and redacted boot failure. |
-| Desktop preferences | `%APPDATA%\DeepSeekGUI\desktop-ui-state.json` | Window bounds, theme, and local UI acknowledgements. |
+| Desktop preferences | `%APPDATA%\DeepSeekGUI\desktop-ui-state.json` | Window bounds, update preferences, and local UI acknowledgements; Harness settings store the theme. |
 | Service logs | `%APPDATA%\DeepSeekGUI\dsh-service.log` | Redacted and rotated; current file plus bounded history. |
 | Diagnostics exports | `%APPDATA%\DeepSeekGUI\diagnostics` | Local bundles created only when you request an export. |
 | Update cache | `%APPDATA%\DeepSeekGUI\updates` | At most one verified installer record and its file. |
@@ -21,7 +21,7 @@ Windows resolves the real application-data directory through its Known Folder AP
 
 ## Move the Managed Harness Home
 
-Choose **Data location…** from the menu to see the current data folder and move it. Pick a destination folder: DeepSeekGUI copies every item, verifies each file by size and SHA-256, points the launcher at the new folder, and asks you to restart. The restart checks the new location item by item, and only after that check passes does DeepSeekGUI offer to delete the old copy. Until then the old files stay exactly as they were; a failed check keeps them and stops.
+Choose **Data location…** from the menu to see the current data folder and move it. Pick a destination folder: DeepSeekGUI copies every item, verifies each file by size and SHA-256, points the launcher at the new folder, and restarts Harness. The restart checks the new location item by item, and only after that check passes does DeepSeekGUI offer to delete the old copy. Until then the old files stay exactly as they were; a failed check keeps them and stops.
 
 This path moves the Managed Harness Home only. It never moves the program installation — the installer, shortcuts, uninstall entry, and updater own that — nor an Existing Home you selected, your project folders, or the other files under `%APPDATA%\DeepSeekGUI`.
 
@@ -74,7 +74,7 @@ Read the operation output and the recovery state before retrying. Do not edit pr
 
 ## The browser does not open
 
-The built-in browser uses the installed Microsoft Edge runtime and launches lazily on the first browser tool call. Confirm Edge is available and that the target is a public `http` or `https` address. Local, private, reserved, credential-bearing, and unsupported URLs are intentionally blocked.
+DeepSeekGUI starts its embedded browser panel on the first browser operation. Confirm that Harness is running and the target is a public HTTP or HTTPS address; local, private-network, and unsupported URLs are refused. Screenshot analysis also requires image input in the current model.
 
 ## Check for Updates reports no update
 
