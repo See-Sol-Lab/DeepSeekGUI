@@ -93,11 +93,11 @@ Git、文件栏、模型设置、浏览器及归档页面截图来自 v1.1.1；�
 
 ![会话与右侧文件栏](docs/user/deepseekgui/assets/file-sidebar-1.1.1.png)
 
-*对话与项目文件树并列，在会话中整理项目记忆，同时浏览工作区文件。*
+*更新后兼容官方右侧文件栏，可与助手同时浏览工作区文件。*
 
 ![模型配置与桌面管理](docs/user/deepseekgui/assets/settings-1.1.1.png)
 
-*在统一设置中配置模型，并访问 Harness 桌面控制、本地插件管理、诊断反馈与全局记忆。*
+*在统一设置中配置模型，支持最新v4.1并做好视觉提示词注入，设置面板内置自研插件与功能调试。*
 
 ![Git 状态与会话提交记录](docs/user/deepseekgui/assets/git-1.1.1.png)
 
@@ -109,11 +109,11 @@ Git、文件栏、模型设置、浏览器及归档页面截图来自 v1.1.1；�
 
 ![项目记忆](docs/user/deepseekgui/assets/project-memory-1.1.0.png)
 
-*在项目中保留背景、已确认的决定和协作约定，以 Markdown 阅读，也可让助手整理。*
+*以 Markdown 阅读、可修改、也可让助手整理的项目级记忆*
 
 ![全局记忆](docs/user/deepseekgui/assets/global-memory-1.1.0.png)
 
-*跨项目的个人偏好由用户编辑和保存，助手读取；项目事实在单独的项目记忆中管理。*
+*跨项目的个人偏好与全局记忆由用户编辑保存，助手读取；可同时编辑AGENTS.md*
 
 ## 工作台功能
 
