@@ -42,7 +42,7 @@ DeepSeek Harness 的 Git capability Service Definition（`ctx.git`，B4-P2 Git R
 - `ctx.git.commit(cwd, message, expectedTree)`（B4-P5）——`git commit -F -`，message 经 stdin 投递：受控 commit。按顺序检查、拒绝时不写任何东西：未解决冲突（`GitCommitRefusedError('conflict')`）、空 index（`GitCommitRefusedError('empty-index')`）、作者身份缺失（`GitCommitRefusedError('identity')`）、staged tree 漂移——index tree 必须等于用户审查的 `expectedTree`（`GitStagedTreeDriftError`；调用方重新展示 staged diff 并再次确认）。hook 拒绝或其他 git 失败以 `GitCommandFailedError` 携带原始 stderr 呈现。成功时返回 `{ sha, treeMatchesExpected }`：提交后再次把 HEAD 的 tree 与 `expectedTree` 比对，把漂移检查与提交之间的毫秒级窗口「大声报出」（`treeMatchesExpected: false`），而不是静默放行。
 - `ctx.git.remotes(cwd)`（B4-P6）——`git remote -v`：每个已配置 remote 的 fetch/push URL。
 - `ctx.git.pushPreview(cwd, remote, localBranch?, remoteBranch?)` 返回准确的源提交和生效推送 URL。省略分支时使用当前检出分支及其同名目标。本地有目标对象时，候选提交按目标与源比较；否则返回全部源历史，不代表准确 ahead 数量。远端不可达时 remoteRefExists 为 undefined，未配置远端时抛出 GitNoSuchRemoteError。
-- `ctx.git.push(cwd, remote, localBranch, remoteBranch, expected?)` 向一个生效推送 URL 的完整分支引用发送解析后的提交，引用名称拒绝 force/delete 语法。传入已批准的 `{ sourceOid, pushUrl }` 会在写入前拒绝漂移。推送成功后同时推进该目标的远端跟踪引用，让 status 保持真实。GitPushRefusedError 对远端拒绝分类，不修改 upstream 配置，也不重试。
+- `ctx.git.push(cwd, remote, localBranch, remoteBranch, expected?)` 向一个生效推送 URL 的完整分支引用发送解析后的提交，引用名称拒绝 force/delete 语法。传入已批准的 `{ sourceOid, destinationToken }` 会在写入前拒绝漂移。推送成功后同时推进该目标的远端跟踪引用，让 status 保持真实。GitPushRefusedError 对远端拒绝分类，不修改 upstream 配置，也不重试。
 
 <a id="failure-classification"></a>
 

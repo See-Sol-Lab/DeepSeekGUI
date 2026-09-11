@@ -26,7 +26,7 @@ kind: "package-reference"
 
 - 服务生命周期内解析一次 `git`，并验证一次版本（`git --version`，porcelain v2 底线 2.11）；后续查询信任结果。
 - 每个查询先探测 `repoIdentity`，使非仓库目录在任何命令运行前就以 `GitNotARepositoryError` 失败。
-- 每条命令带 30 秒超时、5 秒终止宽限、4 MiB 收集输出上限与有界 stderr 捕获。截断的列表以 `GitDiffTooLargeError` 整体拒绝，绝不返回部分结果。
+- 每条本地命令带 30 秒超时、5 秒终止宽限、4 MiB 收集输出上限与有界 stderr 捕获；`ls-remote` 为 60 秒、`push` 为 10 分钟，因为它们要等网络。被超时杀掉的命令没有退出码，按「已终止」报告，绝不报成拒绝。截断的列表以 `GitDiffTooLargeError` 整体拒绝，绝不返回部分结果。
 - 版本探测在 harness cwd 运行；每个查询在调用方的工作目录运行。
 - `worktreeAdd(cwd, path, branch)` 与 `worktreeRemove(cwd, path)`（B4-P3）——`git worktree add -q -b <branch> <path>` 与 `git worktree remove <path>`，供托管 worktree 的 task 生命周期消费。绝不传 `--force`；重复分支与脏工作树由 git 自己拒绝。
 - Index/revert 操作（B4-P4）：`applyIndexPatch(cwd, patch, reverse)` 经 subprocess stdin 把 patch 喂给 `git apply --cached [--reverse] -`；`stageFile(cwd, path)` 执行 `git add -- <path>`（含 rename 两侧）；`unstageFile(cwd, path)` 反向应用它自己生成的 staged diff（`git diff --cached --binary`，含 rename 两侧），使 index 回退向 HEAD 而工作树不受影响；`revertFile(cwd, path)` 执行 `git checkout -- <path>`，并以 `GitRevertRefusedError` 预先拒绝未跟踪与冲突路径。每次写入在语义需要处重新验证权威 status（rename 对、revert 前置条件）。
@@ -70,3 +70,5 @@ kind: "package-reference"
 本包由 DeepSeekGUI 自有，上游没有对应物。自 B5-P4 起它的唯一消费方是 coding-tools 插件——由该插件注册调用本 seam 的 DSH 工具，已退役的 Task capability 不再夹在中间。
 
 </details>
+
+文件操作按字面匹配路径。还原可以比较已批准补丁，推送验证精确目标的不可读证明。公开的远端 URL 和命令错误会隐藏凭据；超时保持失败状态。

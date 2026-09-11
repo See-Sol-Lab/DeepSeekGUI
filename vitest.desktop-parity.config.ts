@@ -11,7 +11,7 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   plugins: [tsconfigPaths({ projects: ['./tsconfig.base.json'] })],
   test: {
-    include: ['apps/desktop/tests-e2e/**/*.e2e.ts'],
+    include: ['apps/deepseekgui/tests-e2e/**/*.e2e.ts'],
     testTimeout: 180_000,
     hookTimeout: 180_000,
     fileParallelism: false,

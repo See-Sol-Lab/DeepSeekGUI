@@ -34,7 +34,7 @@ export function tarballFiles(tarball: string): string[] {
   // directory travels as the working directory instead, which the OS resolves
   // without a code-page round trip.
   return capture('tar', ['-tzf', basename(tarball)], { cwd: dirname(tarball) })
-    .split('\n').filter(line => line !== '')
+    .split(/\r?\n/u).filter(line => line !== '')
 }
 
 /**

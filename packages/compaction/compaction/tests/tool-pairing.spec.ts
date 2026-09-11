@@ -31,6 +31,7 @@ function closedToolStep(): Session {
     source: { kind: 'user' },
   }), SURFACE)
   session.append('assistant/message', {
+    stream: [],
     turn: 1,
     step: 1,
     message: createMessage({
@@ -66,6 +67,7 @@ describe('tool-pairing boundaries', () => {
 
     const open = Session.create(SessionId('open-tool-step'))
     open.append('assistant/message', {
+      stream: [],
       turn: 1,
       step: 1,
       message: createMessage({
@@ -83,6 +85,7 @@ describe('tool-pairing boundaries', () => {
   it('requires every result from a multiple-call assistant message', () => {
     const session = Session.create(SessionId('multiple-calls'))
     session.append('assistant/message', {
+      stream: [],
       turn: 1,
       step: 1,
       message: createMessage({
@@ -121,6 +124,7 @@ describe('tool-pairing boundaries', () => {
   it('keeps neutral nodes inside an open pair unbalanced and free nodes balanced', () => {
     const midStep = Session.create(SessionId('neutral-mid-step'))
     midStep.append('assistant/message', {
+      stream: [],
       turn: 1,
       step: 1,
       message: createMessage({
@@ -168,7 +172,7 @@ describe('tool-pairing surface identity', () => {
       content: [{ type: 'text', text: 'checkpoint' }],
       source: { kind: 'plugin', plugin: 'compact' },
     }), {
-      surfaceOp: { op: 'replace', start: nodes[0]!, end: nodes.at(-1)! },
+      surfaceOp: { op: 'replace', startSeq: nodes[0]!, endSeq: nodes.at(-1)! },
       sourceEventSeqs: [...nodes],
     })
 
@@ -213,6 +217,7 @@ describe('tool-pairing cache refresh', () => {
       {
         type: 'assistant/message', seq: SessionSeq(1), time: 1,
         data: {
+          stream: [],
           turn: 1,
           step: 1,
           message: createMessage({
@@ -282,6 +287,7 @@ describe('tool-pairing cache refresh', () => {
       {
         type: 'assistant/message', seq: SessionSeq(5), time: 5,
         data: {
+          stream: [],
           turn: 2,
           step: 1,
           message: createMessage({
@@ -317,7 +323,7 @@ describe('tool-pairing cache refresh', () => {
       data: createUserMessage({
         content: [{ type: 'text', text: 'replacement' }], source: { kind: 'user' },
       }),
-      surfaceOp: { op: 'replace', start: SessionSeq(0), end: SessionSeq(6) },
+      surfaceOp: { op: 'replace', startSeq: SessionSeq(0), endSeq: SessionSeq(6) },
     })
     nodes.splice(0, nodes.length, SessionSeq(7))
     generation += 1

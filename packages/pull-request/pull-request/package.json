@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-pull-request",
   "description": "Pull request capability Service Definition (ctx.pullRequest): create pull requests through an existing provider login, never touching a token",
-  "version": "0.1.2-rc.1",
+  "version": "0.1.5-rc.2",
   "publishConfig": {
     "access": "public"
   },

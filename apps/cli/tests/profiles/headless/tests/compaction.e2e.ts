@@ -33,7 +33,7 @@ describe.skipIf(!process.env.DEEPSEEK_API_KEY)('compaction: a long session compa
 
     // Reasoning tokens require a larger generation cap than the retained checkpoint.
     ctx = await codingHarness(workdir, {
-      persona: SYSTEM_PROMPT,
+      personaPrefix: SYSTEM_PROMPT,
       modelContextWindow: 2000,
       compact: {
         thresholdRatio: 0.5,
@@ -45,7 +45,7 @@ describe.skipIf(!process.env.DEEPSEEK_API_KEY)('compaction: a long session compa
       },
       persistenceRoot: join(workdir, '.sessions'),
     })
-    const agent = ctx.agentLoop.create(SessionId('e2e-compaction'), { provider: 'deepseek-official', model: 'deepseek-v4-flash' })
+    const agent = await ctx.agentLoop.create(SessionId('e2e-compaction'), { provider: 'deepseek-official', model: 'deepseek-v4-flash' })
 
     agent.followup(createUserMessage({
       content: [{

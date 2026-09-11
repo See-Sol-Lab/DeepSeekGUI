@@ -5,7 +5,7 @@
  * `release/pack.ts`, compute the shipped Web profile's runtime closure, npm
  * install exactly the closure tarballs (relative `file:` specs, external
  * registry dependencies pinned by the committed
- * `apps/desktop/runtime.package-lock.json`), copy the resulting node_modules
+ * `apps/deepseekgui/runtime.package-lock.json`), copy the resulting node_modules
  * into the staging area, run electron-builder `--dir`, sanitize and scan the
  * distribution before the NSIS installer wraps it, then scan the whole
  * prepared release set. The produced folder runs without Node.js, pnpm, or
@@ -14,7 +14,7 @@
  *
  * Entry points: `pnpm run build:desktop-dist` is the only official entry —
  * it rebuilds every input from the current source (`build:lib:host`,
- * `build:web`, `build:desktop`) before running this script, so the produced
+ * `build:web`, `build:deepseekgui`) before running this script, so the produced
  * distribution always reflects the checkout as it is now. This script itself
  * is wired as the internal `build:desktop-dist:assemble` step; invoking it
  * directly skips the rebuild and can package stale artifacts. The committed
@@ -36,13 +36,13 @@ import { capture } from './release/process.ts'
 import { packedIdentity, tarballFiles } from './release/tarball.ts'
 // 皮肤 overlay 的文件名与运行时读取端共用同一个常量：两侧一旦不一致，
 // --patch 会指向一个不存在的文件，而官方对此是启动即失败。
-import { BROWSER_PATCH_FILENAME, PICKER_PATCH_FILENAME, SETTINGS_PATCH_FILENAME, THEME_PATCH_FILENAME, WORKBENCH_PATCH_FILENAME } from '../apps/desktop/src/dsh-service.ts'
+import { BROWSER_PATCH_FILENAME, PICKER_PATCH_FILENAME, SETTINGS_PATCH_FILENAME, THEME_PATCH_FILENAME, WORKBENCH_PATCH_FILENAME } from '../apps/deepseekgui/src/dsh-service.ts'
 import { computeRuntimeClosure, parsePluginNames } from './runtime-closure.ts'
 import { directoryBytes, prunePlatforms } from './platform-prune.ts'
 import { sanitizeAndVerify } from './leak-scan.ts'
 import { requireCleanTree } from './require-clean-tree.ts'
 import { portableLockfileIssues, relativeTarballSpec } from './runtime-lock.ts'
-import { readDevSourceCommit, SOURCE_COMMIT_FILENAME } from '../apps/desktop/src/version-info.ts'
+import { readDevSourceCommit, SOURCE_COMMIT_FILENAME } from '../apps/deepseekgui/src/version-info.ts'
 
 /** Repository root: this script always runs from the checkout root. */
 const ROOT = process.cwd()
@@ -71,7 +71,7 @@ const UNPACKED_EXE = join(UNPACKED, IS_WINDOWS ? 'DeepSeekGUI.exe' : 'deepseekgu
 /** Staging consumer for the npm install; inside dist so tarball specs stay relative and portable. */
 const STAGING = join(DIST_ROOT, 'npm-staging')
 /** The committed runtime lockfile pinning every external registry dependency. */
-const COMMITTED_LOCK = join(ROOT, 'apps', 'desktop', 'runtime.package-lock.json')
+const COMMITTED_LOCK = join(ROOT, 'apps', 'deepseekgui', 'runtime.package-lock.json')
 /** Electron executable consumed by electron-builder's configured electronDist. */
 const ELECTRON_EXE = join(ROOT, 'node_modules', 'electron', 'dist', IS_WINDOWS ? 'electron.exe' : 'electron')
 
@@ -82,8 +82,8 @@ const ELECTRON_EXE = join(ROOT, 'node_modules', 'electron', 'dist', IS_WINDOWS ?
  */
 function pnpmModule(): string {
   const execpath = process.env.npm_execpath
-  if (execpath !== undefined && basename(execpath) === 'pnpm.mjs') return execpath
-  return 'pnpm'
+  if (execpath !== undefined && /^pnpm\.(?:cjs|mjs|js)$/u.test(basename(execpath))) return execpath
+  throw new Error('build-desktop-dist: run this script through pnpm so its CLI entry is available')
 }
 
 /** Run a command with inherited streams, failing loud on a non-zero exit. */
@@ -164,16 +164,16 @@ function requirePrerequisites(): void {
   // only when a checkout lacks one (generation output is stable for a given
   // source favicon and toolchain, but regenerating on every build would churn
   // the committed binaries).
-  const appIcon = join(ROOT, 'apps', 'desktop', 'build', 'icon.ico')
-  const trayIcon = join(ROOT, 'apps', 'desktop', 'src', 'chrome', 'tray.ico')
-  const trayPng = join(ROOT, 'apps', 'desktop', 'src', 'chrome', 'tray.png')
+  const appIcon = join(ROOT, 'apps', 'deepseekgui', 'build', 'icon.ico')
+  const trayIcon = join(ROOT, 'apps', 'deepseekgui', 'src', 'chrome', 'tray.ico')
+  const trayPng = join(ROOT, 'apps', 'deepseekgui', 'src', 'chrome', 'tray.png')
   if (!existsSync(appIcon) || !existsSync(trayIcon) || !existsSync(trayPng)) {
     runPnpm(['run', 'generate:desktop-icon'])
   }
   const required: [string, string][] = [
     ['Web UI dist', join(ROOT, 'apps', 'web', 'dist', 'index.html')],
     ['dsh CLI built bin', join(ROOT, 'apps', 'cli', 'lib', 'bin.js')],
-    ['desktop shell build', join(ROOT, 'apps', 'desktop', 'lib', 'main.js')],
+    ['desktop shell build', join(ROOT, 'apps', 'deepseekgui', 'lib', 'main.js')],
     ['app icon', appIcon],
     // P7-I：托盘图标是多尺寸 .ico 运行时资产（16/20/24/32），缺失时
     // 打包必须失败——托盘是常驻应用"回来的门"，与 app icon 同一层门禁。
@@ -185,7 +185,7 @@ function requirePrerequisites(): void {
   if (missing.length === 0) return
   throw new Error(
     'build-desktop-dist: missing ' + missing.join(', ')
-    + '; run `pnpm run build:lib:host`, `pnpm run build:web`, `pnpm run build:desktop`,'
+    + '; run `pnpm run build:lib:host`, `pnpm run build:web`, `pnpm run build:deepseekgui`,'
     + ' and `pnpm run generate:desktop-icon` first',
   )
 }
@@ -224,37 +224,57 @@ function requireUnlockedOutput(): void {
 }
 
 /**
- * Strip the recorded integrity of every locally packed tarball from a seeded
- * lockfile.
+ * Drop every locally packed tarball's entry from a seeded lockfile.
  *
  * The lockfile exists to pin external registry dependencies, and for those the
- * integrity is exactly the point. Our own families are different: they are
- * repacked from source on every run under an unchanged version, so their
- * content hash moves while their version does not. npm honours the recorded
- * integrity, finds a cache entry matching the OLD hash, and installs that —
- * quietly shipping the previous build of our own code. Every existing gate
- * passes, because the declared version and the installed version really do
- * agree; only the bytes are stale.
- *
- * Dropping integrity for `file:` specs alone keeps registry pinning intact and
- * forces our tarballs to be read from disk as they are now.
+ * recorded version and integrity are exactly the point. Our own families are
+ * different: they are repacked from source on every run, so their content hash
+ * moves without the version, and after a merge to a new upstream release the
+ * version moves too. An entry left behind pins the previous build: with only
+ * the integrity stripped (the earlier shape of this function) npm still
+ * resolved the entry's old version against the peer ranges the new tarballs
+ * declare and refused the install outright (ERESOLVE, first packaging after
+ * 0.1.2 → 0.1.5); with the integrity kept it quietly installed the previous
+ * build from cache. Removing the entries makes npm read every `file:` spec
+ * from disk as it is now, while every registry entry stays pinned.
  * @param lockPath - the seeded lockfile inside the staging directory.
  */
-function dropLocalTarballIntegrity(lockPath: string): void {
-  const lock = JSON.parse(readFileSync(lockPath, 'utf8')) as {
+/**
+ * The lockfile text with the integrity of every locally packed tarball removed,
+ * in npm's own serialization (two-space indent, trailing newline) so that a
+ * stable dependency set round-trips byte-identical.
+ * @param lockText - the lockfile npm wrote after the staging install.
+ * @returns The text to commit.
+ */
+function withoutLocalTarballIntegrity(lockText: string): string {
+  const lock = JSON.parse(lockText) as {
     packages?: Record<string, { resolved?: string; integrity?: string }>
   }
-  let dropped = 0
-  for (const entry of Object.values(lock.packages ?? {})) {
-    if (entry.resolved?.startsWith('file:') === true && entry.integrity !== undefined) {
-      delete entry.integrity
-      dropped += 1
-    }
+  lock.packages = Object.fromEntries(
+    Object.entries(lock.packages ?? {}).map(([key, entry]) => {
+      if (entry.resolved?.startsWith('file:') !== true) return [key, entry]
+      const { integrity: _dropped, ...rest } = entry
+      return [key, rest]
+    }),
+  )
+  return `${JSON.stringify(lock, null, 2)}
+`
+}
+
+function dropLocalTarballEntries(lockPath: string): void {
+  const lock = JSON.parse(readFileSync(lockPath, 'utf8')) as {
+    packages?: Record<string, { resolved?: string }>
   }
+  const packages = lock.packages ?? {}
+  const kept = Object.fromEntries(
+    Object.entries(packages).filter(([, entry]) => entry.resolved?.startsWith('file:') !== true),
+  )
+  const dropped = Object.keys(packages).length - Object.keys(kept).length
   if (dropped > 0) {
+    lock.packages = kept
     writeFileSync(lockPath, `${JSON.stringify(lock, null, 2)}
 `)
-    console.log(`build-desktop-dist: cleared stale integrity for ${String(dropped)} locally packed tarball(s)`)
+    console.log(`build-desktop-dist: dropped ${String(dropped)} locally packed tarball entr${dropped === 1 ? 'y' : 'ies'} from the seeded lockfile`)
   }
 }
 
@@ -284,8 +304,16 @@ function packFamily(familyId: string, out: string): void {
  * tarballs is what lets the runtime closure resolve them from relative
  * `file:` specs instead of npm asking the public registry for a private
  * package (a 404 at install time).
+ *
+ * The workbench inspector is ours too, only it carries the `@deepseek-ai`
+ * scope. Up to 0.1.2 it rode along as a dsh-family member; the 0.1.5 release
+ * families skip `private: true` manifests, so it must be packed here or the
+ * runtime closure reports it absent (first packaging after the merge did).
  */
-const PRODUCT_PACKAGES = [join('apps', 'desktop', 'coding-tools-plugin')] as const
+const PRODUCT_PACKAGES = [
+  join('apps', 'deepseekgui', 'coding-tools-plugin'),
+  join('packages', 'api', 'workbench-inspector'),
+] as const
 
 /** Pack the product packages into `out` beside the family tarballs. */
 function packProductPackages(out: string): void {
@@ -394,7 +422,7 @@ function profileRoots(): string[] {
 
 /** One DeepSeekGUI plugin shipped into the runtime's node_modules as real files. */
 interface PluginShipment {
-  /** Directory under apps/desktop. */
+  /** Directory under apps/deepseekgui. */
   dir: string
   /** Package name under @see-sol-lab (also its module-fallback link name). */
   pkg: string
@@ -476,7 +504,7 @@ const PLUGIN_SHIPMENTS: readonly PluginShipment[] = [
       // app-boot read it from here. Ship the package without it and that
       // profile dies at boot with ENOENT before any UI exists (2026-08-24,
       // caught on the developer's machine after a B3-10 install).
-      cpSync(join(ROOT, 'apps', 'desktop', 'browser-plugin', 'cordis.patch.yml'), join(target, 'cordis.patch.yml'))
+      cpSync(join(ROOT, 'apps', 'deepseekgui', 'browser-plugin', 'cordis.patch.yml'), join(target, 'cordis.patch.yml'))
     },
   },
   // The Workbench product plugin (B3-P1); `assets/` carries the memory
@@ -493,7 +521,7 @@ const PLUGIN_SHIPMENTS: readonly PluginShipment[] = [
  * @param ship - the plugin to ship.
  */
 function shipPlugin(runtimeDir: string, ship: PluginShipment): void {
-  const source = join(ROOT, 'apps', 'desktop', ship.dir)
+  const source = join(ROOT, 'apps', 'deepseekgui', ship.dir)
   const entry = join(source, ship.entry)
   if (!existsSync(entry)) {
     throw new Error(`build-desktop-dist: ${ship.pkg} entry ${entry} is missing — run the desktop build first`)
@@ -530,11 +558,12 @@ function assembleRuntime(): void {
   try {
     const manifests = tarballManifests([PACK_DHS, PACK_VENDOR])
     const roots = [...profileRoots(), ...vendoredPackageNames(PACK_VENDOR)]
-    // The Landlock launcher is a workspace member but ships through its own
-    // three-package release family (native/README.md), published to the npm
-    // registry with platform prebuilds as optionalDependencies; the staging
-    // install resolves it from the registry, not from these tarballs.
-    const registryExternal = new Set(['@deepseek-ai/node-addon-landlock-run'])
+    // The system addon (Landlock launcher + flock; `node-addon-landlock-run`
+    // up to 0.1.2) is a workspace member but ships through its own native
+    // release family (native/README.md), published to the npm registry with
+    // platform prebuilds as optionalDependencies; the staging install resolves
+    // it from the registry, not from these tarballs.
+    const registryExternal = new Set(['@deepseek-ai/node-addon-system'])
     const { included, excluded } = computeRuntimeClosure(manifests, roots, registryExternal)
     console.log(`build-desktop-dist: runtime closure ${included.length} included, ${excluded.length} excluded of ${manifests.size} tarballs`)
     console.log(`build-desktop-dist: closure roots (${roots.length}): ${roots.join(', ')}`)
@@ -567,7 +596,7 @@ function assembleRuntime(): void {
     // written back below, so external drift is visible as a git diff.
     if (existsSync(COMMITTED_LOCK)) {
       cpSync(COMMITTED_LOCK, join(STAGING, 'package-lock.json'))
-      dropLocalTarballIntegrity(join(STAGING, 'package-lock.json'))
+      dropLocalTarballEntries(join(STAGING, 'package-lock.json'))
     }
     // No --omit=optional: koffi (Windows ACL sandbox) and the Landlock
     // platform packages ship prebuilt binaries as optionalDependencies, and
@@ -578,8 +607,14 @@ function assembleRuntime(): void {
     if (lockIssues.length > 0) {
       throw new Error(`build-desktop-dist: staging lockfile is not machine-portable: ${lockIssues.join('; ')}`)
     }
-    if (!existsSync(COMMITTED_LOCK) || readFileSync(COMMITTED_LOCK, 'utf8') !== lockText) {
-      writeFileSync(COMMITTED_LOCK, lockText)
+    // What gets committed carries no integrity for our own tarballs: every
+    // repack changes their content hash, so keeping it made the committed lock
+    // differ on every build — the tree went dirty mid-build and every package
+    // was stamped `+dirty` for a diff nobody would review. The seeding step
+    // discards those entries anyway; only the registry pins are the lock's job.
+    const committedText = withoutLocalTarballIntegrity(lockText)
+    if (!existsSync(COMMITTED_LOCK) || readFileSync(COMMITTED_LOCK, 'utf8') !== committedText) {
+      writeFileSync(COMMITTED_LOCK, committedText)
       console.log(`build-desktop-dist: runtime lockfile updated at ${COMMITTED_LOCK} — review and commit it`)
     } else {
       console.log('build-desktop-dist: runtime lockfile unchanged (external dependency set is pinned)')
@@ -640,10 +675,10 @@ function summarize(): void {
     ? name.endsWith('.exe') && name.includes('Setup')
     : name.endsWith('.AppImage'))
   // 交付身份：installer 文件名必须携带 DeepSeekGUI app version（唯一手写源头
-  // 是 apps/desktop/package.json）。文件名与产品版本不一致立即失败。
+  // 是 apps/deepseekgui/package.json）。文件名与产品版本不一致立即失败。
   let appVersion: unknown
   try {
-    appVersion = (JSON.parse(readFileSync(join(ROOT, 'apps', 'desktop', 'package.json'), 'utf8')) as { version?: unknown }).version
+    appVersion = (JSON.parse(readFileSync(join(ROOT, 'apps', 'deepseekgui', 'package.json'), 'utf8')) as { version?: unknown }).version
   } catch (error) {
     throw new Error(`build-desktop-dist: cannot read DeepSeekGUI app manifest: ${String(error instanceof Error ? error.message : error)}`)
   }
@@ -677,7 +712,7 @@ const MIN_INSTALL_BUDGET = 60
 
 /** The installer's own ceiling on `$INSTDIR`, declared in `installer.nsh`. */
 function installerGateLength(): number {
-  const nsh = join(ROOT, 'apps', 'desktop', 'build', 'installer.nsh')
+  const nsh = join(ROOT, 'apps', 'deepseekgui', 'build', 'installer.nsh')
   const declaration = /!define\s+DEEPSEEKGUI_MAX_INSTDIR_LEN\s+(\d+)/.exec(readFileSync(nsh, 'utf8'))
   if (declaration === null) {
     throw new Error(`build-desktop-dist: ${nsh} no longer declares DEEPSEEKGUI_MAX_INSTDIR_LEN; the installer would stop refusing over-long install directories`)
@@ -727,7 +762,7 @@ function requirePathLengthHeadroom(unpackedDir: string): void {
     throw new Error(
       `build-desktop-dist: installer.nsh admits install directories up to ${String(gate)} characters, but this`
       + ` payload only leaves ${String(budget)}. Lower DEEPSEEKGUI_MAX_INSTDIR_LEN in`
-      + ' apps/desktop/build/installer.nsh to match, or the installer will accept a directory it cannot install into.',
+      + ' apps/deepseekgui/build/installer.nsh to match, or the installer will accept a directory it cannot install into.',
     )
   }
   if (budget < MIN_INSTALL_BUDGET) {
@@ -883,7 +918,7 @@ if (import.meta.main) {
       : {},
   }
   runNode([join(ROOT, 'node_modules', 'electron-builder', 'out', 'cli', 'cli.js'),
-    '--dir', '--config', join(ROOT, 'apps', 'desktop', 'electron-builder.yml')], ROOT, {
+    '--dir', '--config', join(ROOT, 'apps', 'deepseekgui', 'electron-builder.yml')], ROOT, {
     env: builderEnv,
   })
   // The DSH runtime lands in resources/dsh, where the main process launches it
@@ -908,7 +943,7 @@ if (import.meta.main) {
   writeFileSync(join(UNPACKED, 'resources', SOURCE_COMMIT_FILENAME), `${sourceCommit}\n`, 'utf8')
   console.log(`build-desktop-dist: source/commit identifier ${sourceCommit} written to resources/${SOURCE_COMMIT_FILENAME}`)
   // （终端 shims 在运行时由 main 生成到 userData/deepseekgui-bin——转发当前
-  // exact executable，见 apps/desktop/src/terminal-service.ts。）
+  // exact executable，见 apps/deepseekgui/src/terminal-service.ts。）
   // Sanitize and verify BEFORE building the installer: any finding fails the
   // build here, so the NSIS package can only ever wrap a sanitized payload.
   // The path-length gate encodes MAX_PATH and the NSIS $INSTDIR ceiling —
@@ -965,7 +1000,7 @@ if (import.meta.main) {
   runNode([join(ROOT, 'node_modules', 'electron-builder', 'out', 'cli', 'cli.js'),
     '--prepackaged', UNPACKED,
     ...IS_WINDOWS ? ['--win', 'nsis'] : ['--linux', 'appimage', '--publish', 'never'],
-    '--config', join(ROOT, 'apps', 'desktop', 'electron-builder.yml')],
+    '--config', join(ROOT, 'apps', 'deepseekgui', 'electron-builder.yml')],
   ROOT, { env: builderEnv })
   console.log(`build-desktop-dist: ${IS_WINDOWS ? 'NSIS installer' : 'AppImage'} built from sanitized ${UNPACKED}`)
   // electron-builder's debug dump records the full NSIS command line —

@@ -61,10 +61,10 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Desktop unit tests
-        run: pnpm exec vitest run apps/desktop/tests
+        run: pnpm exec vitest run apps/deepseekgui/tests
 
-      # Repository-level typecheck. `build:desktop` below compiles
-      # apps/desktop/tsconfig.json, whose `include` is `src` alone — it is
+      # Repository-level typecheck. `build:deepseekgui` below compiles
+      # apps/deepseekgui/tsconfig.json, whose `include` is `src` alone — it is
       # structurally unable to see type errors in tests/ or tests-e2e/.
       # P7 shipped two such errors: unit tests passed, the desktop build
       # passed, and the drift only surfaced when the packaged build ran on
@@ -73,10 +73,10 @@ jobs:
         run: pnpm run typecheck
 
       - name: Desktop build (emits lib/ for packaging)
-        run: pnpm run build:desktop
+        run: pnpm run build:deepseekgui
 
       - name: Desktop lint
-        run: pnpm exec tsx scripts/run-oxlint.ts apps/desktop scripts/build-desktop-dist.ts
+        run: pnpm exec tsx scripts/run-oxlint.ts apps/deepseekgui scripts/build-desktop-dist.ts
 
       - name: Desktop docs pairing gates
         run: |

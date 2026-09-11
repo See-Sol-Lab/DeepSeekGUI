@@ -38,7 +38,9 @@ Use **Check for Updates** from the menu or tray. DeepSeekGUI compares only the D
 
 An update download requires confirmation. DeepSeekGUI accepts only HTTPS assets from the configured manifest, enforces the declared size, verifies SHA-256, removes partial downloads after failure or cancellation, and re-verifies the installer immediately before handoff.
 
-When the public update channel has no published manifest yet, a manual check reports that no update is currently available. The installed version remains usable.
+The update panel also has an **Auto-download updates** switch, on by default and stored with the desktop preferences. While it is on, DeepSeekGUI starts at most one background download per discovered version. Turning it off stops future automatic downloads without interrupting one already running, and a running download can always be cancelled explicitly.
+
+When the installed version is already the newest published one, a manual check reports that no update is available. The installed version remains usable.
 
 ## Diagnostics Center
 

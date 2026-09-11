@@ -1,8 +1,8 @@
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { describe, expect, it, vi } from 'vitest'
+import { afterAll, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import SystemPrompt, { renderPrompt } from '@deepseek-ai/dsh-system-prompt'
 import {
@@ -13,7 +13,16 @@ import {
 
 const NAME = 'dsh-test-bin'
 
-const tmp = (): string => mkdtempSync(join(tmpdir(), 'dsh-app-boot-'))
+const tempRoots: string[] = []
+afterAll(() => {
+  for (const root of tempRoots.splice(0)) rmSync(root, { recursive: true, force: true })
+})
+
+const tmp = (): string => {
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-app-boot-'))
+  tempRoots.push(dir)
+  return dir
+}
 
 describe('resolveConfigPath', () => {
   it('resolves relative to the given cwd outside replay mode', () => {
@@ -145,6 +154,83 @@ describe('loadLayeredEnv', () => {
       expect(process.env[NAMES[1]]).toBeUndefined()
     } finally {
       clear()
+      vi.unstubAllEnvs()
+    }
+  })
+
+  const PROXY = ['HTTP_PROXY', 'http_proxy', 'HTTPS_PROXY', 'https_proxy', 'NO_PROXY', 'no_proxy'] as const
+  function clearProxy(): void {
+    for (const name of PROXY) Reflect.deleteProperty(process.env, name)
+  }
+
+  it('accepts the proxy names from the Harness-home .env, below an exported one', () => {
+    const home = tmp()
+    const project = tmp()
+    // Both casings, because a shell profile writes either and the rejection matches both. Each
+    // spelling gets its own name here: Windows folds `https_proxy` and `HTTPS_PROXY` into one
+    // variable, so which spelling a value lands under is the platform's to decide — that the file
+    // supplies it, and that the launching shell outranks the file, is not.
+    writeFileSync(join(home, '.env'), 'HTTP_PROXY=http://from-home:8080\nno_proxy=example.com\nHTTPS_PROXY=http://from-home:8443\n')
+    clear(); clearProxy()
+    vi.stubEnv('DSH_HOME', home)
+    vi.stubEnv('HTTPS_PROXY', 'http://exported:8080')
+    try {
+      const snapshot = loadLayeredEnv(NAME, project, vi.fn())
+      expect(snapshot.get('HTTP_PROXY')).toEqual({ value: 'http://from-home:8080', source: 'user-env', path: join(home, '.env') })
+      expect(snapshot.get('no_proxy')).toEqual({ value: 'example.com', source: 'user-env', path: join(home, '.env') })
+      // The launching shell still outranks the file for the same variable.
+      expect(snapshot.get('HTTPS_PROXY')).toEqual({ value: 'http://exported:8080', source: 'process' })
+      expect(process.env.HTTP_PROXY).toBe('http://from-home:8080')
+      expect(process.env.HTTPS_PROXY).toBe('http://exported:8080')
+    } finally {
+      clear(); clearProxy()
+      vi.unstubAllEnvs()
+    }
+  })
+
+  it('still refuses every other bootstrap name in the Harness-home .env', () => {
+    const home = tmp()
+    const project = tmp()
+    // A CA path sits in the same network group as the proxy names and changes what is trusted,
+    // not where traffic goes; the exemption must not widen to it.
+    writeFileSync(join(home, '.env'), 'SSL_CERT_FILE=/tmp/ca.pem\n')
+    clear()
+    vi.stubEnv('DSH_HOME', home)
+    try {
+      expect(() => loadLayeredEnv(NAME, project, vi.fn())).toThrow(/only the launching environment may set/)
+    } finally {
+      clear()
+      vi.unstubAllEnvs()
+    }
+  })
+
+  it('names the Harness-home file as the way out when a project .env sets a proxy', () => {
+    const home = tmp()
+    const project = tmp()
+    writeFileSync(join(project, '.env'), 'HTTP_PROXY=http://attacker.example\n')
+    clear(); clearProxy()
+    vi.stubEnv('DSH_HOME', home)
+    try {
+      expect(() => loadLayeredEnv(NAME, project, vi.fn()))
+        .toThrow(`export HTTP_PROXY, or put it in ${join(home, '.env')}, which does not travel with a repository`)
+      expect(process.env.HTTP_PROXY).toBeUndefined()
+    } finally {
+      clear(); clearProxy()
+      vi.unstubAllEnvs()
+    }
+  })
+
+  it('treats the invoking directory as the Harness home when they are the same directory', () => {
+    const home = tmp()
+    writeFileSync(join(home, '.env'), 'HTTP_PROXY=http://from-home:8080\n')
+    clear(); clearProxy()
+    vi.stubEnv('DSH_HOME', home)
+    try {
+      // Launched from inside the home itself, its one file is read as the project layer; the
+      // exemption follows the directory, not the layer name.
+      expect(loadLayeredEnv(NAME, home, vi.fn()).get('HTTP_PROXY')?.value).toBe('http://from-home:8080')
+    } finally {
+      clear(); clearProxy()
       vi.unstubAllEnvs()
     }
   })
@@ -808,10 +894,13 @@ describe('addHarnessSourceSection', () => {
   const SOURCE_ROOT = `${sep}opt${sep}harness-src`
   const EXPECTED = `The DeepSeek Harness implementation checkout is at ${SOURCE_ROOT}. The checkout location and current working directory are separate values and may differ; never infer the working directory from this path. Use pwd to determine the current working directory. Use this checkout only to inspect or extend DSH itself.`
 
-  it('distinguishes the source path from the current workdir between identity and persona', async () => {
+  it('distinguishes the source path from the current workdir after reusable instructions', async () => {
     const ctx = new Context()
     try {
-      await ctx.plugin(SystemPrompt, { persona: 'You are a coding agent.' })
+      await ctx.plugin(SystemPrompt, { personaPrefix: 'You are a coding agent.' })
+      ctx.systemPrompt.section({
+        name: 'tools:sdk', order: ctx.systemPrompt.getSectionOrder('TOOLS_SDK'), text: 'Reusable tool SDK.',
+      })
       const dispose = addHarnessSourceSection(ctx, SOURCE_ROOT)
       expect(dispose).toBeTypeOf('function')
       const systemPrompt = ctx.get('systemPrompt')!
@@ -824,8 +913,10 @@ describe('addHarnessSourceSection', () => {
       const personaAt = rendered.indexOf('You are a coding agent.')
       expect(identityAt).toBeGreaterThanOrEqual(0)
       expect(personaAt).toBeGreaterThanOrEqual(0)
-      expect(identityAt).toBeLessThan(sourceAt)
-      expect(sourceAt).toBeLessThan(personaAt)
+      const sdkAt = rendered.indexOf('Reusable tool SDK.')
+      expect(personaAt).toBeGreaterThan(identityAt)
+      expect(sdkAt).toBeGreaterThan(personaAt)
+      expect(sdkAt).toBeLessThan(sourceAt)
     } finally {
       await ctx.fiber.dispose()
     }

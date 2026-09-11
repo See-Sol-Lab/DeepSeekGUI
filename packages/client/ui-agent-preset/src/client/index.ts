@@ -148,7 +148,7 @@ export function apply(ctx: ClientContext): void {
         // The introduce cue makes the chip announce the pick the user never
         // made on this screen — the stage happened back in settings.
         seat.stage('cordis', true)
-        scope.uiWorkspace.startSession()
+        void scope.uiWorkspace.startSession()
       }
       const chip = scope.slots.register({
         name: 'conversation.hero.agentPreset',

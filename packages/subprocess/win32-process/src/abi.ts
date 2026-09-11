@@ -6,8 +6,24 @@ export const STARTF_USESTDHANDLES = 0x00000100
 export const HANDLE_FLAG_INHERIT = 0x1
 /** Infinite WaitForSingleObject timeout. */
 export const INFINITE = 0xFFFFFFFF
+/** WaitForSingleObject returned because a zero-time probe is not signalled. */
+export const WAIT_TIMEOUT = 258
 /** CreateProcess flag that prevents user code from running before resume. */
 export const CREATE_SUSPENDED = 0x4
+/** CreateProcess flag selecting a UTF-16 environment block. */
+export const CREATE_UNICODE_ENVIRONMENT = 0x400
+/**
+ * CreateProcess flag: a console child runs without a console window (what
+ * Node's `windowsHide` sets). The Job runner is `DeepSeekGUI.exe` running as
+ * Node inside the desktop — a GUI-subsystem executable with no console of its
+ * own — so every console-subsystem target it launched without this flag
+ * (git, pwsh, taskkill) got a fresh, visible console window: the black flashes
+ * users saw while the assistant worked, and the flood of windows behind the
+ * Git view hang (2026-09-11 manual test #16 / #3). Current-token spawns only:
+ * a restricted-token child dies under CREATE_NO_WINDOW, which is why the ACL
+ * runner anchors a hidden console instead.
+ */
+export const CREATE_NO_WINDOW = 0x0800_0000
 /** GetStdHandle selector for standard input. */
 export const STD_INPUT_HANDLE = -10
 /** GetStdHandle selector for standard output. */
@@ -26,8 +42,14 @@ export const ERROR_BROKEN_PIPE = 109
 export const ERROR_NO_DATA = 232
 /** Job limit that terminates every member when the final Job handle closes. */
 export const JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000
+/** QueryInformationJobObject class for basic accounting and active-process count. */
+export const JobObjectBasicAccountingInformation = 1
 /** SetInformationJobObject class for JOBOBJECT_EXTENDED_LIMIT_INFORMATION. */
 export const JobObjectExtendedLimitInformation = 9
+/** x64 JOBOBJECT_BASIC_ACCOUNTING_INFORMATION byte size. */
+export const JOBOBJECT_BASIC_ACCOUNTING_SIZE = 48
+/** Byte offset of ActiveProcesses in JOBOBJECT_BASIC_ACCOUNTING_INFORMATION. */
+export const JOBOBJECT_BASIC_ACCOUNTING_ACTIVE_PROCESSES_OFFSET = 40
 /** x64 JOBOBJECT_EXTENDED_LIMIT_INFORMATION byte size. */
 export const JOBOBJECT_EXTENDED_LIMIT_SIZE = 144
 /** Byte offset of BasicLimitInformation.LimitFlags in the extended Job record. */

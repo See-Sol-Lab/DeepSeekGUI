@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-session-projection-cache` 将每个已注册投影单元的状态检查点（`ctx.sessionProjectionCache`）存为 `session_projcache` 存储域 `per-record` 布局下的逐会话版本化文档。随附 JSON 后端将每条记录存于 `<root>/session_projcache/sessions/<id>.json`，缓存绝不读取会话持久化层。存储行是折叠捷径，绝不是权威：它可能陈旧——`seq` 精确说明陈旧到哪——但绝不会错。三个必写点（会话创建、`turn/end` 与会话释放）加上可配置的条数与间隔节流让缓存保持新鲜。当列表视图需要同步缓存值，或冷投影折叠应跳过已检查点化的前缀时，选择本包。
+本包保存持久的逐会话投影检查点，让历史列表、统计信息与 goal 快照无需加载每个会话日志即可读取缓存值。冷投影折叠可从已检查点化的前缀之后继续，从而减少重启后的工作量。会话日志始终是权威：崩溃可能使检查点陈旧，但不会使其领先于已提交事件；不兼容记录会被忽略或备份。当重启的会话需要频繁读取投影时选择本包；当投影只服务实时会话，或额外存储写入与无限增长的检查点保留成本超过节省的工作量时跳过本包。
 
 ## 目录
 
@@ -58,13 +58,13 @@ kind: "package-reference"
 
 ### 读取缓存值
 
-`cachedSnapshot(meta, inheritedEventCount)` 以零 I/O 从存储域的内存表同步提供客户端值。它只接受身份匹配的记录以及版本和 schema 均匹配的 key，再按所服务行的最低水位返回 `{ asOfSeq, values }` 切面。未 seeded 的列表知道切点为零；仅 header 的 seeded 列表不知道数字切点，必须跳过该快速路径，直到权威正文读取提供它。`coldSnapshot(meta, inheritedEventCount, events)` 接受精确切点与完整有序日志，在折叠时跳过已检查点化的前缀，并在自身不读取持久化层的情况下刷新记录。
+`cachedSnapshot(meta, inheritedEventCount)` 以零 I/O 从存储域的内存表同步提供客户端值。它只接受身份匹配的记录以及版本和 schema 均匹配的 key，再按所服务行的最低水位返回 `{ asOfSeq, values }` 切面。`cachedPredecessorTitle(meta, inheritedEventCount)` 是更窄的列表专用例外：生命周期匹配且已通过结构准入的 predecessor record 只能公开与当前版本兼容的 `title` row。该 title 是 durable prefix 中可能过时的事实，而不是 fold seed；它携带 sentinel `asOfSeq: -1`，因为改变事件数量的 Session 迁移会使 predecessor row 的数字序号失效。其他 predecessor row 仍不可用。未 seeded 的列表知道切点为零；仅 header 的 seeded 列表不知道数字切点，因此两条快速路径都要跳过，直到权威正文读取提供它。`coldSnapshot(meta, inheritedEventCount, events)` 接受精确切点与完整有序日志，在折叠时跳过已检查点化的前缀，并在自身不读取持久化层的情况下刷新记录。
 
 ### 缓存保证什么
 
-日志领先，缓存跟随：实时检查点先把会话的缓冲事件持久化，然后才保存缓存记录。因此崩溃可能让缓存落后于日志，但绝不会让缓存领先。读取和写入共享存储域内一致的内存状态；逐单元写入链只在持久化成功后修改内存。每个带版本戳的记录必须匹配实时单元 schema 与完整生命周期身份（`createdAt`、`cwd`、`isSeeded` 和 `inheritedEventCount`），因此在一个 fork 切点下初始化的行不能播种另一个切点。JSON 后端把每条记录存于仅所有者可访问的 `<root>/session_projcache/sessions/<id>.json` 目录树中。
+日志领先，缓存跟随：实时检查点先把会话的缓冲事件持久化，然后才保存缓存记录。因此崩溃可能让缓存落后于日志，但绝不会让缓存领先。读取和写入共享存储域内一致的内存状态；逐单元写入链只在持久化成功后修改内存。每个带版本戳的记录必须匹配实时单元 schema 与完整生命周期身份（`formatVersion`、`createdAt`、`cwd`、`isSeeded` 和 `inheritedEventCount`），因此从另一会话格式代或 fork 切点折叠出的行不能播种调用方。JSON 后端把每条记录存于仅所有者可访问的 `<root>/session_projcache/sessions/<id>.json` 目录树中。
 
-升级绝不拖垮启动或列表：版本戳落在 spec `compatibleVersions` 集合内的记录保持可读（缺失的 lineage 字段解码为 unseeded lineage——对非 fork 会话精确无误，seeded 调用方则通不过身份比对、回落冷折叠），而仍然通不过 schema 校验的存量记录会按域的 `invalidRecords: 'backup-and-skip'` 策略移出为 `<id>.json.bak.<时间戳>`、连同原因写入日志，并由下一次检查点重建。
+升级绝不拖垮启动，也不会暴露未经证明的折叠结果。版本戳落在 spec `compatibleVersions` 集合内的记录仍可被结构化读取并等待当前检查点重写，但缺失或更旧的 `formatVersion` 绝不匹配当前 Session，因此不能作为 hydrate seed。生命周期匹配的 predecessor title 只能通过上述列表 hint 读取，因为 title 文本在相邻 Session format edge 之间保持不变，并且该 row 仍须通过当前 projection `stateVersion` 与 schema。格式匹配后，缺失的 lineage 字段解码为 unseeded lineage——对非 fork 会话精确无误，seeded 调用方则通不过身份比对、回落冷折叠。仍然通不过 schema 校验的存量记录会按域的 `invalidRecords: 'backup-and-skip'` 策略移出为 `<id>.json.bak.<时间戳>`、连同原因写入日志，并由下一次检查点重建。
 
 -----
 
@@ -139,3 +139,5 @@ kind: "package-reference"
 无。
 
 </details>
+
+会话删除会清除对应检查点，并阻止延迟写入重新发布它。

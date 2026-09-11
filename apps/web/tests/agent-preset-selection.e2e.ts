@@ -9,17 +9,17 @@
 //
 // Zero model calls: no replay fixture mounts, so a stray stream fails loud.
 import { fileURLToPath } from 'node:url'
-import { mkdir, mkdtemp, realpath, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Browser, Page } from 'playwright'
 import { chromium } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it, onTestFailed } from 'vitest'
-import { MessageId } from '@deepseek-ai/dsh-llm'
 import {
-  SESSION_FORMAT_VERSION, SessionId as sessionId, SessionSeq, type SessionHeader, type SessionId,
+  SESSION_FORMAT_VERSION, SessionId as sessionId, type SessionEvent, type SessionHeader, type SessionId,
 } from '@deepseek-ai/dsh-session'
 import { snapshotSubagentDescriptor } from '@deepseek-ai/dsh-subagent'
+import { createSystemMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
 import {
   captureStableAria, compareOrRefreshGolden, launchWebScaffold, seedSession, watchConsole,
   webSnapshotMode, type WebScaffold,
@@ -82,7 +82,8 @@ async function seedWorkspaceSkill(workspaceCwd: string): Promise<void> {
 /**
  * A settled one-turn session with no model content: this lane asserts chrome
  * around a conversation, not a conversation, and a recorded turn would tie
- * the golden to a provider's wording for no gain.
+ * the golden to a provider's wording for no gain. Its empty system head
+ * belongs to the first step, before the user message.
  * @returns a tokenized session log ending on a closed turn.
  */
 function seedLog(): string {
@@ -90,15 +91,30 @@ function seedLog(): string {
   const at = (index: number, event: Record<string, unknown>): string =>
     JSON.stringify({ ...event, seq: index, time: time + index })
   return [
-    JSON.stringify({ type: 'session', version: 0, id: '{{sessionId}}', createdAt: time, cwd: '{{cwd}}/workspace' }),
+    JSON.stringify({
+      type: 'session', version: SESSION_FORMAT_VERSION, id: '{{sessionId}}',
+      createdAt: time, cwd: '{{cwd}}/workspace', isSeeded: false, delegationDepth: 0,
+    }),
     at(0, { type: 'turn/start', data: { turn: 1, trigger: { kind: 'message', source: { kind: 'user', rpcId: 'seed' } } } }),
-    at(1, {
-      type: 'user/message',
-      data: { content: [{ type: 'text', text: 'Seeded turn.' }], source: { kind: 'user', rpcId: 'seed' } },
+    at(1, { type: 'step/start', data: { turn: 1, step: 1 } }),
+    at(2, {
+      type: 'system/message',
+      data: { turn: 1, step: 1, message: createSystemMessage('', '@deepseek-ai/dsh-system-prompt') },
       surfaceOp: 'append',
     }),
-    at(2, { type: 'session/title', data: { title: 'Seeded turn', messageSeqs: [1], source: { kind: 'fallback' } } }),
-    at(3, { type: 'turn/end', data: { turn: 1, reason: { kind: 'completed' } } }),
+    at(3, {
+      type: 'user/message',
+      data: {
+        id: '00000000-0000-4000-9000-000000000001',
+        role: 'user',
+        content: [{ type: 'text', text: 'Seeded turn.' }],
+        source: { kind: 'user', rpcId: 'seed' },
+      },
+      surfaceOp: 'append',
+    }),
+    at(4, { type: 'session/title', data: { title: 'Seeded turn', messageSeqs: [3], source: { kind: 'fallback' } } }),
+    at(5, { type: 'step/end', data: { turn: 1, step: 1 } }),
+    at(6, { type: 'turn/end', data: { turn: 1, reason: { kind: 'completed' } } }),
   ].join('\n')
 }
 
@@ -114,37 +130,35 @@ async function seedSubagent(scaffold: WebScaffold, parentId: SessionId): Promise
   const header: SessionHeader = {
     version: SESSION_FORMAT_VERSION,
     id: childId,
+    isSeeded: false,
     createdAt,
     cwd: scaffold.workspaceCwd,
     parentSession: parentId,
-    isSeeded: false,
     origin: 'subagent',
     delegationDepth: 1,
     agentPreset: 'minimal',
   }
-  await scaffold.ctx.sessionPersistence.create(header)
-  await scaffold.ctx.sessionPersistence.append(childId, [
+  const handle = await scaffold.ctx.sessionPersistence.create(header)
+  await handle.append([
     {
       type: 'turn/start',
-      seq: SessionSeq(0),
+      seq: 0,
       time: createdAt,
-      data: { turn: 1 },
+      data: { turn: 1, trigger: { kind: 'message', source: { kind: 'user' } } },
     },
     {
       type: 'user/message',
-      seq: SessionSeq(1),
+      seq: 1,
       time: createdAt + 1,
-      data: {
-        id: MessageId(`legacy-message:${childId}:1`),
-        role: 'user',
+      data: createUserMessage({
         content: [{ type: 'text', text: 'Check the session-header action order.' }],
         source: { kind: 'user' },
-      },
+      }),
       surfaceOp: 'append',
     },
     {
       type: 'subagent/descriptor',
-      seq: SessionSeq(2),
+      seq: 2,
       time: createdAt + 2,
       data: snapshotSubagentDescriptor({
         mode: 'one-shot', provider: 'spawn', label: 'header order probe',
@@ -152,11 +166,12 @@ async function seedSubagent(scaffold: WebScaffold, parentId: SessionId): Promise
     },
     {
       type: 'turn/end',
-      seq: SessionSeq(3),
+      seq: 3,
       time: createdAt + 3,
       data: { turn: 1, reason: { kind: 'completed' } },
     },
-  ])
+  ] as SessionEvent[])
+  await handle.close()
 }
 
 /**
@@ -229,6 +244,7 @@ describe('web e2e: agent-preset selection', () => {
   afterAll(async () => {
     await browser?.close()
     await scaffold?.close()
+    await rm(presetRoot, { recursive: true, force: true })
   })
 
   it('offers the chip on the new-session screen, beside the workspace picker', async () => {
@@ -337,7 +353,7 @@ describe('web e2e: agent-preset selection', () => {
     expect(snapshot).toContain('Minimal mode')
     expect(snapshot).toContain('button "1 subagent"')
     expect(snapshot.indexOf('button "1 subagent"')).toBeLessThan(snapshot.indexOf('Minimal mode'))
-    expect(snapshot.indexOf('Minimal mode')).toBeLessThan(snapshot.indexOf('button "Session log"'))
+    expect(snapshot.indexOf('Minimal mode')).toBeLessThan(snapshot.indexOf('button "More actions"'))
     // Static chrome, not a control: the header can only report a composition
     // the host would refuse to change.
     expect(snapshot).not.toContain('button "Minimal mode"')

@@ -111,7 +111,7 @@ describe.skipIf(!gitAvailable)('Git push operations over real bare remotes (B4-P
     expect(preview.sourceOid).toBe(git(repo, ['rev-parse', 'selected']).trim())
     expect(preview.aheadCommits.some(line => line.includes('not selected'))).toBe(false)
     git(repo, ['branch', '-f', 'selected', 'main'])
-    await expect(gitCap.push(repo, 'origin', 'selected', 'release', { sourceOid: preview.sourceOid, pushUrl: pushBare }))
+    await expect(gitCap.push(repo, 'origin', 'selected', 'release', { sourceOid: preview.sourceOid, destinationToken: preview.destinationToken }))
       .rejects.toThrow('changed after approval')
     expect(git(pushBare, ['for-each-ref']).trim()).toBe('')
   })

@@ -6,7 +6,7 @@
  * their resolution is trivially reproducible; the floating part is the
  * external semver ranges. The build therefore keeps npm's lockfile enabled,
  * seeds the staging install with the committed
- * `apps/desktop/runtime.package-lock.json`, and writes the result back — npm
+ * `apps/deepseekgui/runtime.package-lock.json`, and writes the result back — npm
  * holds every external dependency at its locked version while ranges still
  * allow it, so two builds from the same commit install the same external set.
  * For the lockfile to be committable it must be machine-portable: local

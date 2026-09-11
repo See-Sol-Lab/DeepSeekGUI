@@ -1,14 +1,17 @@
-/** On-demand, read-only Workbench queries over the composed filesystem and Git providers. */
+/** Workbench queries and desktop-authorized Session deletion. */
 import type { Context } from '@deepseek-ai/cordis'
-import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import { verify } from 'node:crypto'
+import type {} from '@deepseek-ai/dsh-session-persistence'
+import type { SessionEvent, SessionId } from '@deepseek-ai/dsh-session/types'
 import type {} from '@deepseek-ai/dsh-session-query'
+import type {} from '@deepseek-ai/dsh-api-session-controller'
 import type {} from '@deepseek-ai/dsh-fs'
 import type { FsTarget } from '@deepseek-ai/dsh-fs'
 import type {} from '@deepseek-ai/dsh-git'
 import type { DiffResult, DiffScope } from '@deepseek-ai/dsh-git/types'
 import Schema from '@deepseek-ai/schemastery'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
-import { projectMemoryFileName, type WorkbenchFileText, type WorkbenchMemory, type WorkbenchOverview, type WorkbenchRepository, type WorkbenchWorktree } from './types.ts'
+import { projectMemoryFileName, type WorkbenchFileText, type WorkbenchLastReply, type WorkbenchMemory, type WorkbenchOverview, type WorkbenchRepository, type WorkbenchWorktree } from './types.ts'
 
 export type * from './types.ts'
 export { projectMemoryFileName } from './types.ts'
@@ -37,9 +40,9 @@ declare module '@deepseek-ai/cordis' {
   }
 }
 
-/** Read-only Remote namespace; no Session events, model requests, or writes. */
+/** Read-only workspace inspection plus desktop-authorized Session deletion. */
 export class WorkbenchInspector extends TypertRemoteService {
-  static inject = ['fs', 'git', 'typert', 'sessionQuery']
+  static inject = ['fs', 'git', 'typert', 'sessionQuery', 'sessionController']
   static Config: Schema<Config> = Schema.object({
     logLimit: Schema.natural().min(1).default(30),
     maxTextBytes: Schema.natural().min(1).default(512 * 1024),
@@ -51,12 +54,24 @@ export class WorkbenchInspector extends TypertRemoteService {
    */
   constructor(ctx: Context, private readonly config: Config) {
     super(ctx, 'workbenchInspector', { namespace: 'workbenchInspector' })
+    ctx.on('session/deletion-authorize', (sessionId, signature) => {
+      const publicKey = process.env.DEEPSEEKGUI_SESSION_DELETE_PUBLIC_KEY
+      const home = process.env.DSH_HOME
+      return publicKey !== undefined && home !== undefined
+        && verify(null, Buffer.from(`${home}\0${sessionId}`), publicKey, Buffer.from(signature, 'base64'))
+    })
   }
 
   private async cwd(sessionId: SessionId, signal: AbortSignal): Promise<string> {
     using observation = await this.ctx.sessionQuery.observeSession(sessionId, { signal, projectionMode: 'none' })
     const cwd = observation.header.cwd
     if (cwd === undefined) throw new Error('inspection requires a Session working directory')
+    // B6-3: a deleted workspace must read as "the folder is gone", never as
+    // a Git failure or a confusing downstream "not found" on some subpath.
+    const root = await this.ctx.fs.resolve(cwd, { signal })
+    if (await this.ctx.fs.stat(root, signal) === undefined) {
+      throw new Error(`workspace directory does not exist: ${cwd}`)
+    }
     return cwd
   }
 
@@ -145,6 +160,42 @@ export class WorkbenchInspector extends TypertRemoteService {
   }
 
   /**
+   * The newest assistant reply of a Session and whether its turn has ended.
+   * The desktop's feedback triage (#15) prompts a hidden session and polls
+   * this; reading the log through the query service keeps it off the
+   * streaming follow channel the desktop has no client for.
+   * @param sessionId - the session to read.
+   * @param signal - Request cancellation.
+   * @returns the reply text (text blocks joined) and its completeness.
+   */
+  @Remote
+  async lastReply(sessionId: SessionId, signal: AbortSignal): Promise<WorkbenchLastReply> {
+    signal.throwIfAborted()
+    using observation = await this.ctx.sessionQuery.observeSession(sessionId, { signal, projectionMode: 'none' })
+    const events = observation.events
+    const reply = events.findLast((event): event is SessionEvent<'assistant/message'> => event.type === 'assistant/message')
+    if (reply === undefined) return { text: null, complete: false }
+    const ended = events.findLast(event => event.type === 'turn/end')
+    const complete = ended !== undefined && ended.seq > reply.seq
+    const text = reply.data.message.content
+      .flatMap(block => (block.type === 'text' ? [block.text] : []))
+      .join('\n')
+      .trim()
+    return { text: text === '' ? null : text, complete }
+  }
+
+  /**
+   * Delegate authorized deletion to the Session owner, waiting for active work.
+   * @param sessionId - Session selected by the desktop user.
+   * @param signature - Desktop authorization bound to Home and Session ID.
+   * @returns Completion of content deletion and its client announcement.
+   */
+  @Remote
+  async deleteSession(sessionId: SessionId, signature: string): Promise<void> {
+    await this.ctx.sessionController.deleteSession(sessionId, signature)
+  }
+
+  /**
    * Repository-level facts for the Git and Worktree views in one read:
    * status, configured remotes, the newest commits, and every registered
    * work tree with its own changed paths. Nothing is written; a work tree
@@ -168,14 +219,18 @@ export class WorkbenchInspector extends TypertRemoteService {
     for (const tree of trees) {
       const current = samePath(tree.path, identity.root)
       let changedPaths: string[] = []
+      let statusError: string | undefined
       if (current) {
         changedPaths = status.entries.map(entry => entry.path)
       } else if (!tree.bare) {
-        const other = await this.ctx.git.status(tree.path).catch(() => undefined)
+        const other = await this.ctx.git.status(tree.path).catch((error: unknown) => {
+          statusError = error instanceof Error ? error.message : String(error)
+          return undefined
+        })
         changedPaths = other?.entries.map(entry => entry.path) ?? []
       }
       signal.throwIfAborted()
-      worktrees.push({ ...tree, current, changedPaths })
+      worktrees.push({ ...tree, current, changedPaths, ...(statusError === undefined ? {} : { statusError }) })
     }
     return { root: identity.root, status, remotes, commits, worktrees }
   }

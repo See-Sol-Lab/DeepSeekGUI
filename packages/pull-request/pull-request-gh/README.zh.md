@@ -71,3 +71,5 @@ DeepSeek Harness pull-request capability seam 的 GitHub CLI 实现（B4-P6）�
 本包由 DeepSeekGUI 自有，上游没有对应物。自 B5-P4 起它的唯一消费方是 coding-tools 插件——由该插件注册调用本 seam 的 DSH 工具，已退役的 Task capability 不再夹在中间。
 
 </details>
+
+PR 正文通过 stdin 传入；已有 PR 查询选择开放的 PR。子进程超时或输出截断会明确失败。

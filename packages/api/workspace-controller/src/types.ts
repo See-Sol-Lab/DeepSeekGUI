@@ -109,6 +109,16 @@ export interface WorkspaceArchiveValue {
   readonly archivedSessionIds: readonly SessionId[]
 }
 
+/** Session requested for restoration into its Workspace group. */
+export interface WorkspaceUnarchiveSessionRequest {
+  readonly sessionId: SessionId
+}
+
+/** Complete archived Session set after an unarchive mutation. */
+export interface WorkspaceUnarchiveValue {
+  readonly archivedSessionIds: readonly SessionId[]
+}
+
 /** Complete reconnect baseline for Workspace browser state. */
 export interface WorkspaceBaseline {
   readonly items: readonly WorkspaceView[]

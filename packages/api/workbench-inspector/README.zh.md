@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-无需模型请求即可浏览工作区目录、打开文本、检查当前 Git 状态与差异。DeepSeekGUI 维护此适配器，复用组合中的文件系统、Git 和 SessionQuery 提供方。读取有上限并响应取消，本包没有写接口或持久状态。
+无需模型请求即可检查工作区和 Git 事实。桌面专用的 `deleteSession` 端点把已授权删除交给 SessionController。
 
 ## 目录
 
@@ -22,14 +22,14 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-DeepSeekGUI 的 Web 组合以 Loader 条目挂载本插件。自定义组合需要 fs、git、sessionQuery 和 typert 提供方；本包本身不是可安装的 bundle。
+DeepSeekGUI 的 Web 组合以 Loader 条目挂载本插件。自定义组合需要 fs、git、sessionQuery、sessionController 和 typert 提供方；本包本身不是可安装的 bundle。
 
 | 字段 | 默认值 | 含义 |
 | --- | --- | --- |
 | logLimit | 30 | 总览返回的最新提交数量 |
 | maxTextBytes | 524288 | 文件文本或 diff 响应上限；超限明确失败，不静默截断 |
 
-WorkbenchFileText 包含 path 和有界的完整文本。WorkbenchMemory 描述项目记忆：Session cwd、文件名 `<文件夹名>.memory.md`（文件夹前缀把它与 DSH home 下的全局 memory.md 区分开）、文件文本（尚不存在时为 null），以及项目里是否有 AGENTS.md。WorkbenchRepository 包含 Git 根目录及提供方的 RepoStatus。WorkbenchOverview 携带根目录、RepoStatus、已配置的远端、最新提交（sha、subject、author、time），以及每个已注册的 worktree（WorkbenchWorktree：提供方的 WorktreeInfo 加 `current`——是否就是本 Session 的仓库根——与 `changedPaths`——该 worktree 自己的变更路径；干净、不可读或 bare 时为空）。文本查询区分 Session 工作区与其 Git 根目录，未跟踪文件因此使用正确的基准路径。刻意不提供目录浏览：看目录由桌面打开系统文件管理器。
+WorkbenchFileText 包含 path 和有界的完整文本。WorkbenchMemory 描述项目记忆：Session cwd、文件名 `<文件夹名>.memory.md`（文件夹前缀把它与 DSH home 下的全局 memory.md 区分开）、文件文本（尚不存在时为 null），以及项目里是否有 AGENTS.md。WorkbenchRepository 包含 Git 根目录及提供方的 RepoStatus。WorkbenchOverview 携带根目录、RepoStatus、已配置的远端、最新提交（sha、subject、author、time），以及每个已注册的 worktree（WorkbenchWorktree：提供方的 WorktreeInfo 加 `current`——是否就是本 Session 的仓库根——与 `changedPaths`——该 worktree 自己的变更路径；干净或 bare 时为空；不可读时另有 statusError）。WorkbenchLastReply 携带 Session 最新一条助手回复（文本块拼接；第一条回复之前为 null）以及其后是否已有 `turn/end`；桌面端的反馈排查向隐藏会话提问后轮询 `lastReply` 直到 `complete` 为 true，因此不必碰流式的 follow 通道。`deleteSession(sessionId, signature)` 将经桌面授权的删除交给会话拥有者及其持久层。文本查询区分 Session 工作区与其 Git 根目录，未跟踪文件因此使用正确的基准路径。刻意不提供目录浏览：官方右侧 Sidebar 自带文件树。
 
 <a id="understand-the-implementation"></a>
 ## 实现说明

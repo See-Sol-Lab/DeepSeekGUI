@@ -18,6 +18,9 @@ export default defineConfig(({ env }) => {
   return {
     // DeepSeekGUI B5-P1: the retained B4 host/apiproxy package retired in
     // B5-P1; the exclusion stays as a record of the migration input.
+    // Upstream 0.1.5 adds apps/desktop and apps/desktop-host to the non-client
+    // pass for its own Electron application. DeepSeekGUI keeps that source as a
+    // reference copy only and never builds it, so both faces share one list.
     workspace: ['vendor/*', 'packages/*/*', 'apps/cli'],
     entry: client ? '' : ['lib/types/{index,invariant,startup}.js'],
     outDir: 'lib',

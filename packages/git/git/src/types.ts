@@ -162,6 +162,8 @@ export interface RemoteInfo {
  * whether the remote ref exists. Facts only; nothing is written.
  */
 export interface PushPreview {
+  /** Opaque destination proof, bound to this provider instance; contains no reusable credential. */
+  destinationToken: string
   /** Exact local commit presented for approval. */
   sourceOid: string
   /** The remote that would receive the push. */
@@ -194,8 +196,8 @@ export interface PushPreview {
 export interface PushApproval {
   /** Commit shown before approval. */
   sourceOid: string
-  /** Effective push URL shown before approval. */
-  pushUrl: string
+  /** Destination proof returned with the approved preview. */
+  destinationToken: string
 }
 
 /** The result of one explicit push (B4-P6). */

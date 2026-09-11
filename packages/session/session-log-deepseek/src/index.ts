@@ -9,7 +9,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type {} from '@deepseek-ai/dsh-deepseek-llm-api-extensions'
-import { isSurfaceEvent, SessionLogOffset, SessionSeq } from '@deepseek-ai/dsh-session'
+import { KNOWN_SESSION_EVENT_TYPES, SessionLogOffset, SessionSeq } from '@deepseek-ai/dsh-session'
 import type {
   Session,
   SessionEvent,
@@ -17,12 +17,14 @@ import type {
   SessionLogOffset as SessionLogOffsetType,
   SessionSeq as SessionSeqType,
   SessionSeqCursor,
+  SurfaceOp,
 } from '@deepseek-ai/dsh-session'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import type {
   DeepSeekSessionLogExtension,
   DeepSeekSessionLogWireEvent,
   DeepSeekSessionLogWireHeader,
+  DeepSeekSessionLogWireSurfaceOp,
 } from './types.ts'
 
 export type * from './types.ts'
@@ -50,7 +52,7 @@ interface AcceptanceFold {
 
 const acceptanceFolds = new WeakMap<Session, AcceptanceFold>()
 
-/** Translate logical Session metadata back to the stable version-0 wire header. */
+/** Translate logical Session metadata to raw external request fields. */
 function wireHeader(session: Session): DeepSeekSessionLogWireHeader {
   const header = session.header
   return {
@@ -68,27 +70,47 @@ function wireHeader(session: Session): DeepSeekSessionLogWireHeader {
 
 /** Translate compile-time sequence brands to raw numeric request fields. */
 function wireEvent(event: SessionEvent): DeepSeekSessionLogWireEvent {
-  const surfaceEvent = isSurfaceEvent(event) ? event : undefined
-  const surfaceOp = surfaceEvent?.surfaceOp
-  return {
-    type: event.type,
+  const common = {
     seq: Number(event.seq),
     time: event.time,
     data: event.data as JsonValue,
     ...event.ignorable === undefined ? {} : { ignorable: event.ignorable },
-    ...surfaceEvent?.sourceEventSeqs === undefined
-      ? {}
-      : { sourceEventSeqs: surfaceEvent.sourceEventSeqs.map(Number) },
-    ...surfaceOp === undefined
-      ? {}
-      : surfaceOp === 'append'
-        ? { surfaceOp }
-        : { surfaceOp: { op: 'replace' as const, start: Number(surfaceOp.start), end: Number(surfaceOp.end) } },
+  }
+  switch (event.type) {
+    case 'system/message':
+    case 'user/message':
+    case 'tool/result':
+      return {
+        ...common,
+        type: event.type,
+        surfaceOp: wireSurfaceOp(event.surfaceOp),
+        ...event.sourceEventSeqs === undefined ? {} : { sourceEventSeqs: event.sourceEventSeqs.map(Number) },
+      }
+    case 'assistant/message':
+      return { ...common, type: event.type, surfaceOp: wireSurfaceOp(event.surfaceOp) }
+    default: {
+      // Restored unknown ignorable records are opaque, not current surface events.
+      if (!KNOWN_SESSION_EVENT_TYPES.has(event.type) && event.ignorable === true) {
+        const opaque = event as { surfaceOp?: JsonValue; sourceEventSeqs?: JsonValue }
+        return {
+          ...common, type: event.type, ignorable: true,
+          ...opaque.surfaceOp === undefined ? {} : { surfaceOp: opaque.surfaceOp },
+          ...opaque.sourceEventSeqs === undefined ? {} : { sourceEventSeqs: opaque.sourceEventSeqs },
+        }
+      }
+      return { ...common, type: event.type }
+    }
   }
 }
 
+function wireSurfaceOp(op: SurfaceOp): DeepSeekSessionLogWireSurfaceOp {
+  return op === 'append'
+    ? op
+    : { op: 'replace', startSeq: Number(op.startSeq), endSeq: Number(op.endSeq) }
+}
+
 /**
- * Highest confirmed sequence for this exact session identity.
+ * Highest confirmed sequence for this exact Session format generation.
  * @param session - canonical log whose matching acceptance events are folded.
  * @returns greatest accepted sequence, or `-1` before any accepted request.
  */
@@ -103,6 +125,13 @@ export function acceptedThrough(session: Session): SessionSeqCursor {
       throw new Error(`session-log-deepseek: missing event ${String(index)} below captured length ${String(length)}`)
     }
     if (event.type !== 'session-log-deepseek/delivery-accepted') continue
+    const acceptedFormatVersion = event.data.sessionFormatVersion ?? 0
+    if (!Number.isSafeInteger(acceptedFormatVersion)
+      || acceptedFormatVersion < 0
+      || Object.is(acceptedFormatVersion, -0)) {
+      throw new Error(`session-log-deepseek: malformed acceptance format version at seq ${event.seq}`)
+    }
+    if (acceptedFormatVersion !== session.header.version) continue
     let acceptedSeq: SessionSeqType
     try {
       acceptedSeq = SessionSeq(event.data.throughSeq)
@@ -141,6 +170,7 @@ export function apply(ctx: Context, config: Config): void {
       const suffix = session.snapshotEvents(SessionLogOffset(afterSeq + 1))
       const value: DeepSeekSessionLogExtension = {
         version: 1,
+        sessionFormatVersion: session.header.version,
         session: wireHeader(session),
         afterSeq: Number(afterSeq),
         throughSeq: Number(throughSeq),
@@ -149,7 +179,11 @@ export function apply(ctx: Context, config: Config): void {
       return {
         value,
         accept: () => {
-          session.append('session-log-deepseek/delivery-accepted', { sessionId: session.id, throughSeq })
+          session.append('session-log-deepseek/delivery-accepted', {
+            sessionId: session.id,
+            sessionFormatVersion: session.header.version,
+            throughSeq,
+          })
           // TODO: Add an immediate lightweight checkpoint if duplicate replay after a 2xx crash window becomes unacceptable.
         },
       }

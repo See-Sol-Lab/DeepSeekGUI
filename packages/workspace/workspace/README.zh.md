@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-workspace` 为宿主提供一组持久 workspace：命名用户目录，每个目录带有在其中运行的会话，并在重启之间保持稳定顺序。借助它，UI 可以显示项目侧边栏、把会话附加到正确的项目、把会话从分组中隐藏而不丢失它，以及移除项目——移除绝不会删除文件夹或会话历史，它们变成 Ungrouped。在需要持久项目分组的 GUI 或宿主组合中使用它；headless 与最小运行可以完全省略它。此包只面向宿主侧：模型、工具与 agent loop 永远不会看到它，因此不会增加任何 token、提示词或请求上下文。它需要会话存储与持久化后端一并挂载；设置只需几行组合配置。
+使用此包可以维护一个有序、持久的项目目录列表，以及在每个目录中运行的会话。宿主可以构建项目侧边栏、在不删除历史的情况下把会话从分组中隐藏，并在不删除文件夹、文件或会话的情况下移除项目。重新添加已移除的目录会创建一个全新项目，而目录无法校验的会话会保持 Ungrouped。需要持久项目分组的 GUI 或宿主工作流适合使用它；它对模型不可见，不增加提示词或请求上下文成本，但需要会话持久化与存储后端。
 
 ## 目录
 
@@ -50,7 +50,7 @@ kind: "package-reference"
 
 ### 创建与排序项目
 
-从任何存在的目录创建项目：给出路径和可选标题，项目即出现在列表中，新到旧排列。不存在的路径或文件而非目录会被拒绝，且不会有任何变化；为已有项目的目录再次创建会原样返回现有项目。你可以随时重命名项目，并把它移动到列表中的任意位置：
+从任何存在且完整限定的目录创建项目：`C:\` 等文件系统根目录和普通目录都有效。相对路径、`C:work` 等 Windows 盘符相对路径、不存在的路径和文件都会被拒绝，且不会创建项目；为已有项目的目录再次创建会原样返回现有项目。你可以随时重命名项目，并把它移动到列表中的任意位置：
 
 ```text
 // Host consumer code, after the composition above is loaded:
@@ -128,7 +128,7 @@ ctx.workspaceRegistry.list() // shows the project, newest first
 - [Workspace 子系统](../../../docs/subsystems/workspace.zh.md)——项目及其会话的功能约定，以及 workspace 服务的生成 API。
 - [Workspace 包映射](../README.zh.md)——本组唯一的包及其仓库位置。
 - [领域 KV 存储 Agent Note](../../../.agents/notes/proposed/architecture/2026-07-24-domain-kv-storage-and-workspace.zh.md)——为什么项目记录使用领域数据形式。
-- [Workspace UI 产品流 Agent Note](../../../.agents/notes/implemented/feature/2026-07-25-workspace-ui-product-flow.zh.md)——首次启动如何从会话历史构建项目，以及 GUI 如何排序。
+- [Workspace UI 产品流 Agent Note](../../../.agents/notes/archived/feature/2026-07-25-workspace-ui-product-flow.md)——首次启动如何从会话历史构建项目，以及 GUI 如何排序。
 - [删除 Workspace 注册记录决策](../../../.agents/notes/implemented/feature/2026-07-27-workspace-registration-deletion.zh.md)——为什么移除项目绝不会删除其文件夹或会话。
 
 -----
@@ -160,7 +160,7 @@ ctx.workspaceRegistry.list() // shows the project, newest first
 - **移除绝不删除数据**——移除项目会保留其文件夹、文件与会话历史；这些会话变成 Ungrouped，而会话删除与文件夹移除是彼此独立且尚未提供的功能（参见[决策记录](../../../.agents/notes/implemented/feature/2026-07-27-workspace-registration-deletion.zh.md)）。
 - **只有带记录目录的会话才能加入**——只有记录中带有可解析为项目路径的目录的会话才属于项目；没有目录的会话保持 Ungrouped，来自其他目录的会话无法移入。
 - **外部变更延迟可见**——如果另一进程删除或损坏目录，项目只能在下次刷新或重启后反映出来。
-- **归档是单向的**——被隐藏的会话保留其历史与位置，但目前没有取消归档操作；归档集合是持久的显示过滤器。
+- **归档可以撤销**——被隐藏的会话保留其历史与位置，`unarchiveSession` 会把它送回所属 Workspace 分组；归档集合是持久的显示过滤器，而不是单向操作。
 - **重新添加目录从空开始**——移除后再次添加同一目录会创建空会话列表的新项目；旧会话不会自动回来。
 
 <a id="dev-note"></a>
@@ -173,6 +173,6 @@ ctx.workspaceRegistry.list() // shows the project, newest first
 
 #### 开放：`create(path, title?)` 的 title 参数
 
-网关的按名称创建分支移除后，`title` 参数已无生产调用方；代码中的 TODO 提议把该参数与其 `@param` 子句一并移除（参见[笔记](../../../.agents/notes/implemented/simplification/2026-07-31-one-route-to-add-a-workspace.zh.md)）。
+网关的按名称创建分支移除后，`title` 参数已无生产调用方；代码中的 TODO 提议把该参数与其 `@param` 子句一并移除（参见[笔记](../../../.agents/notes/archived/simplification/2026-07-31-one-route-to-add-a-workspace.md)）。
 
 </details>

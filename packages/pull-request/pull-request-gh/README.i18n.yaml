@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/pull-request/pull-request-gh/README.md
-README.md: 873bd1978f8cfd7e54ea8916279247df702f5dbb
-README.zh.md: 43a8ad0b1bc8dbbf685ecdb14bf7c217eab4cc74
+README.md: 7dfe530e511aded82c331a64d9c3de9072b36268
+README.zh.md: 34b573c66fa23ce8304eec2181413dabd22e0b24

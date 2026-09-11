@@ -5,7 +5,7 @@
 
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import { AttachmentError } from '@deepseek-ai/dsh-attachment'
+import AttachmentStore, { AttachmentError } from '@deepseek-ai/dsh-attachment'
 import type { MessageId } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import SubagentRuntime, {
@@ -13,7 +13,7 @@ import SubagentRuntime, {
   type SubagentListEntry,
   type SubagentPromptRequestId,
 } from '@deepseek-ai/dsh-subagent'
-import { queueSubagentPrompt, type HostPromptQueue } from '@deepseek-ai/dsh-subagent/internal'
+import { deliverSubagentPrompt, type HostPromptDeliverer } from '@deepseek-ai/dsh-subagent/internal'
 
 const PARENT = SessionId('parent')
 const CHILD = SessionId('child')
@@ -36,19 +36,20 @@ async function bench(live?: Record<string, { status: 'running' | 'idle' }>) {
 
 /** Spy on the private human-Queue adapter without widening the public service. */
 function promptDelivery(subagents: SubagentRuntime) {
-  return vi.spyOn(subagents as unknown as HostPromptQueue, queueSubagentPrompt)
+  return vi.spyOn(subagents as unknown as HostPromptDeliverer, deliverSubagentPrompt)
 }
 
 function childRow(id: SessionId, activity: 'running' | 'inactive'): SubagentListEntry {
   return { kind: 'child', id, mode: 'continuable', label: 'worker', activity, hasChildren: false }
 }
 
-function promptRequest(clientTimeZone?: string) {
+function promptRequest(clientTimeZone?: string, delivery: 'queue' | 'steer' = 'queue') {
   return {
     requestId: REQUEST_ID,
     parentSessionId: PARENT,
     childSessionId: CHILD,
     mode: 'continuable' as const,
+    delivery,
     content: [{ type: 'text' as const, text: 'continue' }],
     ...clientTimeZone === undefined ? {} : { clientTimeZone },
   }
@@ -165,11 +166,20 @@ describe('subagent prompt Remote', () => {
     expect(delivery).not.toHaveBeenCalled()
   })
 
+  it('rejects an unknown delivery before admission', async () => {
+    const { subagents } = await bench({ [PARENT]: { status: 'idle' } })
+    const delivery = promptDelivery(subagents)
+
+    await expect(subagents.prompt({ ...promptRequest(), delivery: 'later' as 'queue' }, signal))
+      .rejects.toMatchObject({ code: 'gateway/bad-request' })
+    expect(delivery).not.toHaveBeenCalled()
+  })
+
   it('admits ordered image parts into durable references before delivery', async () => {
     const { ctx, subagents } = await bench({ [PARENT]: { status: 'idle' } })
     const saveImages = vi.fn(async (inputs: readonly { mediaType: string }[]) =>
       inputs.map((input, index) => ({ ...IMAGE_REF, attachmentId: `att-${index}`, mediaType: input.mediaType })))
-    ctx.provide('attachments', { saveImages } as never)
+    ctx.provide('attachments', Object.setPrototypeOf({ saveImages }, AttachmentStore.prototype) as never)
     const delivery = promptDelivery(subagents).mockResolvedValue('m-content' as MessageId)
     const content = [
       { type: 'text' as const, text: 'before' },
@@ -188,11 +198,11 @@ describe('subagent prompt Remote', () => {
 
   it('maps a refused image batch to subagent/attachment-invalid and delivers nothing', async () => {
     const { ctx, subagents } = await bench({ [PARENT]: { status: 'idle' } })
-    ctx.provide('attachments', {
+    ctx.provide('attachments', Object.setPrototypeOf({
       saveImages: async () => {
         throw new AttachmentError('Image batch exceeds the configured image-count limit.', 'TOO_MANY_IMAGES')
       },
-    } as never)
+    }, AttachmentStore.prototype) as never)
     const delivery = promptDelivery(subagents)
 
     await expect(subagents.prompt({
@@ -207,7 +217,7 @@ describe('subagent prompt Remote', () => {
   it('maps non-canonical base64 to subagent/attachment-invalid without touching the store', async () => {
     const { ctx, subagents } = await bench({ [PARENT]: { status: 'idle' } })
     const saveImages = vi.fn()
-    ctx.provide('attachments', { saveImages } as never)
+    ctx.provide('attachments', Object.setPrototypeOf({ saveImages }, AttachmentStore.prototype) as never)
     const delivery = promptDelivery(subagents)
 
     await expect(subagents.prompt({
@@ -254,7 +264,17 @@ describe('subagent prompt Remote', () => {
       [{ type: 'text', text: 'continue' }],
       { kind: 'user', rpcId: REQUEST_ID, clientTimeZone: 'Asia/Shanghai' },
       signal,
+      'queue',
     )
+  })
+
+  it('passes steer delivery through the same admission operation', async () => {
+    const { subagents } = await bench({ [PARENT]: { status: 'running' } })
+    const delivery = promptDelivery(subagents).mockResolvedValue('m-steer' as MessageId)
+
+    await expect(subagents.prompt(promptRequest(undefined, 'steer'), signal))
+      .resolves.toEqual({ messageId: 'm-steer' })
+    expect(delivery.mock.calls[0]?.[5]).toBe('steer')
   })
 
   it('omits the zone from the durable source when the browser reported none', async () => {

@@ -1,9 +1,9 @@
 /**
  * Settings shell root: the sidebar-foot trigger row plus the centered modal
  * panel (figma 501:29947, 1080x700) with the section nav rail. The shell is
- * a pure composition face — every piece of text (trigger label, panel title,
+ * a pure composition face — slot-owned text (trigger label, panel title,
  * close label, sections) arrives from registrants through slots; accessible
- * names resolve to that content (trigger: its own text; dialog:
+ * names resolve from localized content (trigger: shell locale; dialog:
  * aria-labelledby the title node; close: visually-hidden slot text). Modal
  * open state and the active section id are component-local viewing state;
  * the onboarding coordinator mounts exactly one ordered registrant while the
@@ -14,7 +14,8 @@ import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from
 import clsx from 'clsx'
 import {
   ConnectionIndicator,
-  IconAgentPresetOutline16, IconCloseOutline16, IconCodeOutline16, IconCordisPluginOutline14, IconDataOutline16,
+  IconAgentPresetOutline16, IconArchiveOutline20, IconCloseOutline16, IconCodeOutline16, IconCordisPluginOutline14,
+  IconDataOutline16,
   IconPersonalizationOutline16, IconSettingsOutline16, IconThinkOutline16, IconWarningOutline16,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ConnectionIndicatorState } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -34,6 +35,7 @@ function navIcon(id: string) {
   if (id === 'deepseekgui-plugins') return <IconCordisPluginOutline14 className={css.navIcon} size={16} />
   if (id === 'deepseekgui-feedback') return <IconWarningOutline16 className={css.navIcon} size={16} />
   if (id === 'deepseekgui-memory') return <IconThinkOutline16 className={css.navIcon} size={16} />
+  if (id === 'deepseekgui-archived') return <IconArchiveOutline20 className={css.navIcon} size={16} />
   return <IconSettingsOutline16 className={css.navIcon} size={16} />
 }
 
@@ -190,6 +192,7 @@ export function SettingsRoot(props: SettingsRootComponentProps) {
           ref={triggerButton}
           type="button"
           className={clsx(css.trigger, !wide && css.rail)}
+          aria-label={t('trigger')}
           aria-haspopup="dialog"
           aria-expanded={open}
           onClick={() => { setOpen(true) }}

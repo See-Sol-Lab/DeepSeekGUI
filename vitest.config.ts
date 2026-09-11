@@ -93,7 +93,15 @@ const windowsOnlyCoverageExclusions = process.platform !== 'win32'
 // never measures child processes. Its behavior is pinned end-to-end by
 // tests/runner.spec.ts, which spawns the real entry through tsx.
 const windowsRunnerCoverageExclusions = process.platform === 'win32'
-  ? ['packages/sandbox/sandbox-windows-acl/src/runner.ts']
+  ? [
+      'packages/sandbox/sandbox-windows-acl/src/runner.ts',
+      // The session write lock's POSIX face (fs-ext flock plus inode
+      // verification) executes only off-Windows: the Linux lanes hold its
+      // per-file 100%, while the Windows branch is unit-pinned by
+      // win32.spec's injected bindings and exercised natively by every
+      // Windows suite through the real backend.
+      'packages/session/session-persistence-jsonl/src/lease.ts',
+    ]
   : []
 
 // pwsh-local's run/start/lifecycle suites self-skip without a real pwsh
@@ -114,12 +122,12 @@ const testIncludes = [
   'packages/*/*/tests/**/*.spec.{ts,tsx}',
   'apps/*/tests/**/*.spec.ts',
   // Workbench 产品插件（apps 下非 workspace 包）自带的测试目录。
-  'apps/desktop/workbench-plugin/tests/**/*.spec.{ts,tsx}',
+  'apps/deepseekgui/workbench-plugin/tests/**/*.spec.{ts,tsx}',
   // DeepSeekGUI coding-tools 插件（B5-P4）自带的测试目录。
-  'apps/desktop/coding-tools-plugin/tests/**/*.spec.ts',
+  'apps/deepseekgui/coding-tools-plugin/tests/**/*.spec.ts',
   // Desktop 的原生插件证据链 e2e（keyless、无打包产物依赖）；真正的
   // packaged-exe parity 由 vitest.desktop-parity.config.ts 拥有。
-  'apps/desktop/tests/**/*.e2e.ts',
+  'apps/deepseekgui/tests/**/*.e2e.ts',
   'scripts/**/*.spec.ts',
 ]
 
@@ -157,10 +165,17 @@ const processBoundTests = [
 export default defineConfig({
   plugins: [pathsPlugin(), standardDecoratorPlugin()],
   test: {
-    setupFiles: ['./scripts/test-invariants.ts'],
+    setupFiles: ['./scripts/test-proxy-environment.ts', './scripts/test-invariants.ts'],
     // .tsx: client component specs (jsdom via per-file @vitest-environment pragma).
     include: testIncludes,
     exclude: platformUnsupportedTests,
+    // Suites that drive real subprocesses — system git, worker threads, PTY,
+    // proxy probes — exceed Vitest's 5s default on a developer workstation with
+    // realtime antivirus scanning, while the same cases pass with room to spare.
+    // The ceiling is raised rather than each suite carrying its own timeout, so
+    // a genuinely hung test still fails instead of running to the pool timeout.
+    testTimeout: 30_000,
+    hookTimeout: 30_000,
     // One coverage invocation aggregates both projects. Every suite forks for
     // Node stability; process-bound suites stay separate for inventory control.
     projects: [
@@ -173,7 +188,10 @@ export default defineConfig({
           // MaybeLocal in cjs_lexer::Parse) from worker threads on macOS,
           // Linux, and Windows. Forked workers avoid that shared thread path.
           pool: 'forks',
-          setupFiles: ['./scripts/test-invariants.ts'],
+          setupFiles: ['./scripts/test-proxy-environment.ts', './scripts/test-invariants.ts'],
+          // Projects do not inherit the root timeouts; both carry the ceiling.
+          testTimeout: 30_000,
+          hookTimeout: 30_000,
           include: testIncludes,
           exclude: [
             ...platformUnsupportedTests,
@@ -188,7 +206,10 @@ export default defineConfig({
           name: 'process-bound',
           execArgv: vitestExecArgv,
           pool: 'forks',
-          setupFiles: ['./scripts/test-invariants.ts'],
+          setupFiles: ['./scripts/test-proxy-environment.ts', './scripts/test-invariants.ts'],
+          // Projects do not inherit the root timeouts; both carry the ceiling.
+          testTimeout: 30_000,
+          hookTimeout: 30_000,
           include: processBoundTests,
           exclude: [
             ...platformUnsupportedTests,
@@ -228,8 +249,9 @@ export default defineConfig({
         'packages/client/ui-workspace/src/client/rows/WorkspaceBrowser.tsx',
         'packages/client/ui-renderer/src/client/*',
         // Session object internals retain the runtime GUI debt exemption; the
-        // new Controller entry, transport, Agent scope, and adapters stay gated.
-        'packages/api/session-controller/src/client/sessions/*',
+        // assistant-stream reconciler, Controller entry, transport, Agent scope,
+        // and adapters stay gated.
+        'packages/api/session-controller/src/client/sessions/!(assistant-stream).ts',
         'packages/api/session-controller/src/client/ordered-baseline.ts',
         'packages/api/session-controller/src/client/time-zone.ts',
         // Keep the browser conversation tree under its existing GUI debt
@@ -328,11 +350,9 @@ export default defineConfig({
         'packages/client/ui-settings-models/src/client/welcome-store.ts',
         'packages/extensions/*/src/**/*.ts',
         'packages/extensions/*/src/**/*.tsx',
-        // Typert generator: correctness is pinned by its fixture suites and
-        // the byte-for-byte catalog reproduction test; per-file coverage
-        // would put whole-workspace compiler analysis under v8
-        // instrumentation — the coverage lane's longest tail.
-        'packages/typert/generator/src/*.ts',
+        // Typert correctness is checked by its uninstrumented suites,
+        // including compiler fixtures and byte-for-byte catalog reproduction.
+        'packages/typert/*/src/**/*.{ts,tsx}',
         // Experimental webworker-runtime is outside the coverage requirement
         // by decision: its correctness signal is its uninstrumented suite and
         // the packer's end-to-end image spec.

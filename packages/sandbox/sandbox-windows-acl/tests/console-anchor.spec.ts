@@ -1,6 +1,6 @@
-/** Runner console anchoring: present → untouched; parent attach first; else allocate and hide. */
+/** Runner console anchoring: present → untouched; published pid, then parent attach; else allocate and hide. */
 import { describe, expect, it, vi } from 'vitest'
-import { ATTACH_PARENT_PROCESS, SW_HIDE, anchorConsole, type ConsoleAnchorApi } from '../src/console-anchor.ts'
+import { ATTACH_PARENT_PROCESS, CONSOLE_ANCHOR_PID_ENV, SW_HIDE, anchorConsole, consoleAnchorPid, type ConsoleAnchorApi } from '../src/console-anchor.ts'
 
 function api(over: Partial<ConsoleAnchorApi> = {}): ConsoleAnchorApi {
   return {
@@ -27,6 +27,18 @@ describe('anchorConsole', () => {
     expect(win32.allocConsole).not.toHaveBeenCalled()
   })
 
+  it('attaches to the published Harness pid first, and falls back to the parent when that pid has no console (#23)', () => {
+    const win32 = api({ attachConsole: vi.fn((pid: number) => (pid === 4242 ? 1 : 0)) })
+    expect(anchorConsole(win32, 4242)).toBe('attached')
+    expect(win32.attachConsole).toHaveBeenCalledTimes(1)
+    expect(win32.attachConsole).toHaveBeenCalledWith(4242)
+    const parentOnly = api({ attachConsole: vi.fn((pid: number) => (pid === ATTACH_PARENT_PROCESS ? 1 : 0)) })
+    expect(anchorConsole(parentOnly, 99)).toBe('attached')
+    expect(parentOnly.attachConsole).toHaveBeenNthCalledWith(1, 99)
+    expect(parentOnly.attachConsole).toHaveBeenNthCalledWith(2, ATTACH_PARENT_PROCESS)
+    expect(parentOnly.allocConsole).not.toHaveBeenCalled()
+  })
+
   it('allocates and hides when the parent has no console', () => {
     const handles = [null, 7 as never]
     const win32 = api({ getConsoleWindow: vi.fn(() => handles.shift() ?? null) })
@@ -37,5 +49,16 @@ describe('anchorConsole', () => {
   it('reports failure without throwing', () => {
     expect(anchorConsole(api({ allocConsole: vi.fn(() => 0) }))).toBe('failed')
     expect(anchorConsole(api({ getConsoleWindow: vi.fn(() => { throw new Error('boom') }) }))).toBe('failed')
+  })
+})
+
+describe('consoleAnchorPid', () => {
+  it('reads a positive integer pid and rejects everything else', () => {
+    expect(consoleAnchorPid({ [CONSOLE_ANCHOR_PID_ENV]: '4242' })).toBe(4242)
+    expect(consoleAnchorPid({})).toBeUndefined()
+    expect(consoleAnchorPid({ [CONSOLE_ANCHOR_PID_ENV]: '0' })).toBeUndefined()
+    expect(consoleAnchorPid({ [CONSOLE_ANCHOR_PID_ENV]: '-1' })).toBeUndefined()
+    expect(consoleAnchorPid({ [CONSOLE_ANCHOR_PID_ENV]: 'abc' })).toBeUndefined()
+    expect(consoleAnchorPid({ [CONSOLE_ANCHOR_PID_ENV]: '12345678901' })).toBeUndefined()
   })
 })

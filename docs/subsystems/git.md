@@ -46,7 +46,7 @@ Failures classify only by verifiable facts — never by guessing at stderr text:
 
 ## Consumers
 
-`PushApproval` carries `sourceOid` (the approved commit) and `pushUrl` (the effective destination). The caller captures both from `PushPreview` before approval and supplies them to `push`; source or URL drift refuses the write. Preview accepts explicit source and target branch names. Its candidate commits are an exact difference only when the destination commit is available locally; otherwise they are the full source history. Branch-name validation and qualified refs prevent force/delete refspec syntax.
+`PushApproval` carries `sourceOid` (the approved commit) and `destinationToken` (an opaque proof of the effective destination). The caller captures both from `PushPreview` before approval and supplies them to `push`; source or destination drift refuses the write. Displayed URLs hide credentials. Preview accepts explicit source and target branch names. Its candidate commits are an exact difference only when the destination commit is available locally; otherwise they are the full source history. Branch-name validation and qualified refs prevent force/delete refspec syntax.
 
 The DeepSeekGUI B4 `git.*` RPC domain over this seam retired with the upstream dsh 0.1.2 Remote migration (B5-P1); agent coding actions on the seam re-enter through the DeepSeekGUI coding tools (B5-P4) with results logged as session events, and GUI inspection reads official Remote projections. `worktreeAdd`/`worktreeRemove` remain the seam's only worktree writes, reserved for explicit user- or agent-chosen worktree actions.
 
@@ -213,9 +213,10 @@ abstract unstageFile(cwd: string, path: string): Promise<void>
  * lost before invoking this.
  * @param cwd - Working directory inside the repository.
  * @param path - Path relative to the repo root.
+ * @param expectedPatch - Optional approved unstaged patch; changed content refuses the revert.
  * @returns resolution after the work tree was restored.
  */
-abstract revertFile(cwd: string, path: string): Promise<void>
+abstract revertFile(cwd: string, path: string, expectedPatch?: string): Promise<void>
 
 /**
  * The configured commit author (`git var GIT_AUTHOR_IDENT`), or `undefined`

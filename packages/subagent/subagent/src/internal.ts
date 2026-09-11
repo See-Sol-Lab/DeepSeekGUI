@@ -9,6 +9,7 @@ import type { ContentBlock, MessageId, MessageSource } from '@deepseek-ai/dsh-ll
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
 import type SubagentRuntime from './index.ts'
+import type { SubagentDelivery } from './inbox.ts'
 
 /** Process-stable identity carried only by the standard adjacent-Agent messaging tool. */
 export const adjacentAgentSendMessageTool = Symbol.for('dsh.subagent.adjacentAgentSendMessageTool')
@@ -34,20 +35,21 @@ export function isAdjacentAgentSendMessageTool(definition: ToolDefinition | unde
 }
 
 /**
- * Process-stable symbol-keyed Queue delivery shared by the bundled runtime
+ * Process-stable symbol-keyed host delivery shared by the bundled runtime
  * entry and this unbundled internal subpath.
  * @internal
  */
-export const queueSubagentPrompt = Symbol.for('dsh.subagent.queuePrompt')
+export const deliverSubagentPrompt = Symbol.for('dsh.subagent.deliverPrompt')
 
-/** Runtime face required by the host-only Queue adapter. */
-export interface HostPromptQueue {
-  [queueSubagentPrompt](
+/** Runtime face required by the host-only prompt adapters. */
+export interface HostPromptDeliverer {
+  [deliverSubagentPrompt](
     parent: Agent,
     childId: SessionId,
     content: ContentBlock[],
     source: MessageSource,
     signal: AbortSignal,
+    delivery: SubagentDelivery,
   ): Promise<MessageId>
 }
 
@@ -69,11 +71,40 @@ export function queueHostSubagentPrompt(
   source: MessageSource,
   signal: AbortSignal,
 ): Promise<MessageId> {
-  return (runtime as unknown as HostPromptQueue)[queueSubagentPrompt](
+  return (runtime as unknown as HostPromptDeliverer)[deliverSubagentPrompt](
     parent,
     childId,
     content,
     source,
     signal,
+    'queue',
+  )
+}
+
+/**
+ * Steer one host-protocol message without exposing another Service operation.
+ * @param runtime - subagent runtime owning continuation residency.
+ * @param parent - exact live direct parent authorizing delivery.
+ * @param childId - durable direct-child session id.
+ * @param content - host-authored content to deliver.
+ * @param source - durable host-protocol provenance.
+ * @param signal - caller cancellation before inbox acceptance.
+ * @returns the accepted message's inbox id.
+ */
+export function steerHostSubagentPrompt(
+  runtime: SubagentRuntime,
+  parent: Agent,
+  childId: SessionId,
+  content: ContentBlock[],
+  source: MessageSource,
+  signal: AbortSignal,
+): Promise<MessageId> {
+  return (runtime as unknown as HostPromptDeliverer)[deliverSubagentPrompt](
+    parent,
+    childId,
+    content,
+    source,
+    signal,
+    'steer',
   )
 }

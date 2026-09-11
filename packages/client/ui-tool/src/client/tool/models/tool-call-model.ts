@@ -10,7 +10,7 @@
 // that produces the values).
 import type { ToolCallBlock, ToolResultNode } from '@deepseek-ai/dsh-client-ui-chat/client'
 import type { LocaleKeysOf } from '@deepseek-ai/dsh-client-ui-slots'
-import { abbreviateHomePath } from '@deepseek-ai/dsh-util-workspace-path'
+import { abbreviateHomePath, relativizeToCwd } from '@deepseek-ai/dsh-util-workspace-path'
 
 export type { ToolCallBlock } from '@deepseek-ai/dsh-client-ui-chat/client'
 
@@ -44,6 +44,11 @@ const TOOL_VARIANTS: Record<string, ToolRowVariant> = {
   // with its own title from TOOL_TITLE_KEYS, not the generic `others` row.
   pwsh: 'bash',
   read: 'read',
+  // read_image is a single-file read: the same browse icon and the same openable
+  // path summary (FILE_PATH_VARIANTS covers `read`), with its own title key below.
+  // Left unclassified it falls to `others`, which titles the row generically and
+  // derives no filePath — so the path the row advertises as openable never is.
+  read_image: 'read',
   web_fetch: 'read',
   web_search: 'search',
   grep: 'search',
@@ -70,6 +75,7 @@ const TOOL_TITLE_KEYS: Record<string, ToolTitleKey> = {
   cordis_stop: 'tool.title.stopCordis',
   cordis_undefine: 'tool.title.removeCordis',
   pwsh: 'tool.title.pwsh',
+  read_image: 'tool.title.readImage',
 }
 
 /**
@@ -153,18 +159,6 @@ const SUMMARY_KEYS: Record<ToolRowVariant, readonly string[]> = {
   others: [],
 }
 
-/**
- * Strip the workspace root from a workspace-rooted absolute path (display only).
- * @param text - the path to shorten.
- * @param cwd - session workspace root; absent or empty leaves the path unchanged.
- * @returns the path relative to the workspace root, or unchanged when it is not rooted there.
- */
-export function relativizeToCwd(text: string, cwd: string | undefined): string {
-  if (cwd === undefined || cwd === '') return text
-  const root = cwd.replace(/[/\\]+$/, '')
-  if (text.startsWith(`${root}/`) || text.startsWith(`${root}\\`)) return text.slice(root.length + 1)
-  return text
-}
 
 function deriveSummary(variant: ToolRowVariant, argsRaw: string): string {
   const parsed = parseArgs(argsRaw)

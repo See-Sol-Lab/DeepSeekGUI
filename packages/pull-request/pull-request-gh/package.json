@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-pull-request-gh",
   "description": "GitHub CLI implementation of the DeepSeek Harness pull-request capability seam: the user's logged-in gh, exact argv, never a token",
-  "version": "0.1.2-rc.1",
+  "version": "0.1.5-rc.2",
   "publishConfig": {
     "access": "public"
   },

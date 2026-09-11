@@ -14,6 +14,7 @@ import {
 } from '@deepseek-ai/dsh-session'
 import { foldSessionTitle } from '@deepseek-ai/dsh-session-title'
 import type { SessionTitleSnapshot } from '@deepseek-ai/dsh-session-title'
+import type { SessionDeletionRecord } from '@deepseek-ai/dsh-session-persistence'
 import type {
   SessionEventResultFilter,
   SessionEventSearchPage,
@@ -38,6 +39,7 @@ import type {
 } from './types.ts'
 import {
   SESSION_QUERY_DEFAULT_PERSISTED_INSPECT_CONCURRENCY,
+  SESSION_QUERY_DEFAULT_PREPARED_SESSION_CACHE_SIZE,
   SESSION_QUERY_READ_WINDOW_MAX,
   SessionQueryError,
   type Config,
@@ -62,9 +64,12 @@ export { SessionSearchCursor } from './cursor.ts'
 export type { Config, SessionQueryErrorCode } from './config.ts'
 export {
   SESSION_QUERY_DEFAULT_PERSISTED_INSPECT_CONCURRENCY,
+  SESSION_QUERY_DEFAULT_PREPARED_SESSION_CACHE_SIZE,
   SESSION_QUERY_READ_WINDOW_MAX,
   SessionQueryError,
 } from './config.ts'
+export { readColdSessionLog } from './cold-read.ts'
+export type { ColdSessionLog } from './cold-read.ts'
 export { extractSessionEventText } from './extraction.ts'
 export { buildSessionEventRecords, buildSessionEventSearchDocuments } from './documents.ts'
 export {
@@ -106,16 +111,25 @@ export abstract class SessionQueryEngine extends Service {
         'SESSION_QUERY_INVALID_CONFIG',
       )
     }
-    const persistedInspectConcurrency = config.persistedInspectConcurrency
+    const persistedReadConcurrency = config.persistedReadConcurrency
       ?? SESSION_QUERY_DEFAULT_PERSISTED_INSPECT_CONCURRENCY
-    if (!Number.isSafeInteger(persistedInspectConcurrency) || persistedInspectConcurrency < 1) {
+    if (!Number.isSafeInteger(persistedReadConcurrency) || persistedReadConcurrency < 1) {
       throw new SessionQueryError(
-        'session-query: persistedInspectConcurrency must be a positive safe integer',
+        'session-query: persistedReadConcurrency must be a positive safe integer',
         'SESSION_QUERY_INVALID_CONFIG',
       )
     }
-    this._corpus = new SessionCorpus(ctx, persistedInspectConcurrency)
-    this._observations = new SessionObservationReader(ctx)
+    const preparedSessionCacheSize = config.preparedSessionCacheSize
+      ?? SESSION_QUERY_DEFAULT_PREPARED_SESSION_CACHE_SIZE
+    if (!Number.isSafeInteger(preparedSessionCacheSize) || preparedSessionCacheSize < 1) {
+      throw new SessionQueryError(
+        'session-query: preparedSessionCacheSize must be a positive safe integer',
+        'SESSION_QUERY_INVALID_CONFIG',
+      )
+    }
+    this._corpus = new SessionCorpus(ctx, persistedReadConcurrency)
+    this._observations = new SessionObservationReader(ctx, preparedSessionCacheSize)
+    ctx.on('session/content-deleting', (id) => { this._observations.forget(id) })
   }
 
   /**
@@ -129,6 +143,32 @@ export abstract class SessionQueryEngine extends Service {
     options: SessionObservationOptions = {},
   ): Promise<SessionObservation> {
     return this._observations.read(sessionId, options)
+  }
+
+  /** Read exact deletion metadata; callers retain responsibility for workspace authorization.
+   * @param sessionId - Exact Session identity.
+   * @returns Its deletion record, if present.
+   */
+  async deletedSession(sessionId: SessionId): Promise<SessionDeletionRecord | undefined> {
+    return this.ctx.get('sessionPersistence')?.deletions?.get(sessionId)
+  }
+
+  /** Search deletion metadata by literal title or id inside one authorized workspace.
+   * @param cwd - Authorized workspace directory.
+   * @param query - Literal title or ID fragment.
+   * @param limit - Maximum number of returned records.
+   * @param signal - Optional cancellation.
+   * @returns Newest matching deletion records without message content.
+   */
+  async deletedSessions(cwd: string, query: string, limit: number, signal?: AbortSignal): Promise<readonly SessionDeletionRecord[]> {
+    signal?.throwIfAborted()
+    if (!Number.isSafeInteger(limit) || limit < 0) throw new Error('deleted session result limit must be non-negative')
+    const records = await this.ctx.get('sessionPersistence')?.deletions?.list() ?? []
+    signal?.throwIfAborted()
+    const needle = query.toLowerCase()
+    return records.filter(record => record.cwd === cwd
+      && (record.sessionId.toLowerCase().includes(needle) || record.title?.toLowerCase().includes(needle)))
+      .sort((left, right) => right.deletedAt - left.deletedAt).slice(0, limit)
   }
 
   /**

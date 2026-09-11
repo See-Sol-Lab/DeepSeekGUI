@@ -35,8 +35,10 @@ function fakeHandle(stdout: string, stderr: string, exitCode: number | null) {
 async function harness(script: string) {
   const ctx = new Context()
   const calls: string[][] = []
-  const spawn = (spec: { argv: readonly string[] }) => {
+  const stdins: unknown[] = []
+  const spawn = (spec: { argv: readonly string[]; stdio?: { stdin?: unknown } }) => {
     calls.push([...spec.argv])
+    stdins.push(spec.stdio?.stdin)
     const args = [...spec.argv]
     if (args[1] === 'auth') {
       if (script === 'logged-out') {
@@ -82,7 +84,7 @@ async function harness(script: string) {
     spawn,
   } as never)
   await ctx.plugin(GhPullRequestProvider)
-  return { provider: ctx.pullRequest as unknown as GhPullRequestProvider, calls }
+  return { provider: ctx.pullRequest as unknown as GhPullRequestProvider, calls, stdins }
 }
 
 describe('GitHub CLI pull-request provider (B4-P6)', () => {
@@ -111,7 +113,7 @@ describe('GitHub CLI pull-request provider (B4-P6)', () => {
   it('finds no existing PR when the head branch is clean', async () => {
     const { provider, calls } = await harness('create-ok')
     expect(await provider.existing('C:\\repo', 'feature')).toBeUndefined()
-    expect(calls[0]).toEqual(['C:\\fake\\gh.exe', 'pr', 'list', '--head', 'feature', '--state', 'all', '--json', 'number,url'])
+    expect(calls[0]).toEqual(['C:\\fake\\gh.exe', 'pr', 'list', '--head', 'feature', '--state', 'open', '--json', 'number,url'])
   })
 
   it('returns the existing PR as the duplicate-creation guard', async () => {
@@ -123,7 +125,7 @@ describe('GitHub CLI pull-request provider (B4-P6)', () => {
   })
 
   it('creates a draft PR with exact argv: title, body, base, head, draft flag', async () => {
-    const { provider, calls } = await harness('create-ok')
+    const { provider, calls, stdins } = await harness('create-ok')
     const created = await provider.create('C:\\repo', {
       title: 'feat: 中文 "quoted" title',
       body: 'line one\nline two',
@@ -133,16 +135,18 @@ describe('GitHub CLI pull-request provider (B4-P6)', () => {
     })
     expect(created).toEqual({ number: 7, url: 'https://github.com/o/r/pull/7' })
     // Nothing is shell-interpreted: the exact argv carries every field, the
-    // draft is a flag, and no credential ever appears.
-    const argv = calls.find(call => call[2] === 'create')
-    expect(argv).toEqual([
+    // draft is a flag, and no credential ever appears. The body goes over
+    // stdin (`--body-file -`) so a long description never hits argv limits.
+    const index = calls.findIndex(call => call[2] === 'create')
+    expect(calls[index]).toEqual([
       'C:\\fake\\gh.exe', 'pr', 'create',
       '--title', 'feat: 中文 "quoted" title',
-      '--body', 'line one\nline two',
+      '--body-file', '-',
       '--base', 'main',
       '--head', 'feature',
       '--draft',
     ])
+    expect(stdins[index]).toEqual({ data: 'line one\nline two' })
   })
 
   it('creates a non-draft PR without the draft flag', async () => {

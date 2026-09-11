@@ -33,13 +33,13 @@ pnpm install
 | 命令 | 作用 |
 | --- | --- |
 | `pnpm run build` | 构建全部产物 |
-| `pnpm run dev:desktop` | 启动桌面端开发模式 |
+| `pnpm run dev:deepseekgui` | 启动桌面端开发模式 |
 | `pnpm run build:desktop-dist` | 构建 Windows 发行版 |
 | `pnpm run typecheck` | 类型检查 |
 | `pnpm run lint` | 代码风格检查（`lint:fix` 可自动修复） |
 | `pnpm test` | 运行测试 |
 
-工程细节与打包验证见 [apps/desktop/README.zh.md](apps/desktop/README.zh.md)。
+工程细节与打包验证见 [apps/deepseekgui/README.zh.md](apps/deepseekgui/README.zh.md)。
 
 ## 仓库边界
 
@@ -47,7 +47,7 @@ pnpm install
 
 具体来说：
 
-- **DeepSeekGUI 自己的桌面代码在 `apps/desktop/`**，这里欢迎改进。
+- **DeepSeekGUI 自己的桌面代码在 `apps/deepseekgui/`**，这里欢迎改进。
 - **上游 Harness 部分**（`packages/`、`apps/cli`、`apps/web` 等）跟随官方更新，改动请提到 [上游仓库](https://github.com/deepseek-ai/deepseek-harness)。
 
 ## 提交 PR
@@ -59,7 +59,7 @@ pnpm install
 
 **提交前请确认**
 
-- [ ] 改动集中在 `apps/desktop/` 或其他 DeepSeekGUI 自有部分
+- [ ] 改动集中在 `apps/deepseekgui/` 或其他 DeepSeekGUI 自有部分
 - [ ] `pnpm run build` 通过
 - [ ] `pnpm run typecheck` 与 `pnpm run lint` 通过
 - [ ] 涉及界面或文档的改动已中英同步

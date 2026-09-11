@@ -9,6 +9,12 @@
   ],
   "references": [
     {
+      "path": "../../spill/spill-policy"
+    },
+    {
+      "path": "../../attachment/attachment"
+    },
+    {
       "path": "../../api/remotes/tsconfig.client.json"
     },
     {

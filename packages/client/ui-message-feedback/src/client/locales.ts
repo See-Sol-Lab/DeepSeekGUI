@@ -6,15 +6,25 @@ export const zh = {
   'action.likeActive': '取消标记',
   'action.dislike': '有问题的回答',
   'action.dislikeActive': '取消标记',
-  'note.open': '补充说明',
-  'note.dialog': '反馈',
-  'note.placeholder': '这条回答哪里好，或哪里有问题？（可选）',
-  'note.save': '保存',
-  'note.cancel': '取消',
-  'note.aria': '反馈说明',
+  'dialog.title': '提交反馈',
+  'dialog.categories': '反馈分类',
+  'dialog.detail': '反馈详情',
+  'dialog.hint': '填写详情以帮助我们改进体验，提交内容会包括当前对话的日志',
+  // DeepSeekGUI（2026-09-11 人工测试 #9）：这条通道直达 DeepSeek 官方，
+  // 与桌面壳的开发无关；不注明的话，用户会把 GUI 的问题往这里投。
+  'dialog.notice': '注意：该菜单为 DSH 官方反馈渠道，与 DeepSeekGUI 的功能开发无关。',
+  'category.task-result': '任务结果',
+  'category.instruction-following': '指令理解与遵循',
+  'category.product-interaction': '产品功能与交互',
+  'category.service-stability': '稳定性和速度',
+  'category.resource-cost': '资源使用与费用',
+  'category.security-privacy-permission': '安全隐私与权限',
+  'category.other': '其他',
+  'toast.recorded': '感谢你的反馈',
   'error.conflict': '这条反馈已在别处改动，已显示最新状态',
   'error.load': '反馈状态加载失败',
   'error.generic': '反馈保存失败',
+  'error.noteTooLarge': '描述太长，请缩短后再提交',
 } satisfies Record<string, string>
 
 /** The feedback namespace key union. */
@@ -22,7 +32,7 @@ export type MessageFeedbackKey = keyof typeof zh
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
-    /** The per-message feedback controls' copy. */
+    /** The feedback surface's copy: the message controls, the dialog, and the acknowledgement. */
     feedback: MessageFeedbackKey
   }
 }
@@ -33,13 +43,21 @@ export const en = {
   'action.likeActive': 'Remove rating',
   'action.dislike': 'Bad response',
   'action.dislikeActive': 'Remove rating',
-  'note.open': 'Add a note',
-  'note.dialog': 'Feedback',
-  'note.placeholder': 'What was good, or what went wrong? (optional)',
-  'note.save': 'Save',
-  'note.cancel': 'Cancel',
-  'note.aria': 'Feedback note',
+  'dialog.title': 'Submit feedback',
+  'dialog.categories': 'Feedback category',
+  'dialog.detail': 'Feedback details',
+  'dialog.hint': 'Add details to help us improve. Your submission will include the current conversation log.',
+  'dialog.notice': 'Note: this dialog is the official DSH feedback channel. It is unrelated to DeepSeekGUI development.',
+  'category.task-result': 'Task result',
+  'category.instruction-following': 'Instruction understanding and following',
+  'category.product-interaction': 'Product features and interaction',
+  'category.service-stability': 'Stability and speed',
+  'category.resource-cost': 'Resource usage and cost',
+  'category.security-privacy-permission': 'Security, privacy, and permissions',
+  'category.other': 'Other',
+  'toast.recorded': 'Thanks for your feedback',
   'error.conflict': 'This feedback changed elsewhere; the latest state is shown',
   'error.load': 'Could not load feedback',
   'error.generic': 'Could not save feedback',
+  'error.noteTooLarge': 'The description is too long; shorten it and submit again',
 } satisfies Record<MessageFeedbackKey, string>

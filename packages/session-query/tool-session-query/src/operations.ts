@@ -111,7 +111,18 @@ async function executeSessionSearch(
     collected.items.map(hit => hit.header.id),
     exec.signal,
   )
-  return presentation.formatSessionSearch(collected, titles, authorizedParents)
+  const currentResults = presentation.formatSessionSearch(collected, titles, authorizedParents)
+  // Deleted content cannot satisfy event/lineage filters; only a plain title/id search can match its metadata.
+  const plainQuery = Object.entries(args).every(([key, value]) => key === 'query' || value === undefined)
+  const deleted = plainQuery
+    ? await ctx.sessionQuery.deletedSessions(cwd, query, Math.max(0, maxResults - collected.items.length), exec.signal)
+    : []
+  if (deleted.length === 0) return currentResults
+  return currentResults + '\n\nDeletion records matching title or id (metadata only; deleted message text is not searchable):\n'
+    + deleted.map(record => JSON.stringify({ session_id: record.sessionId, title: record.title,
+      status: record.state === 'deleted' ? 'deleted' : 'deletion_incomplete',
+      deleted_at: record.state === 'deleted' ? new Date(record.deletedAt).toISOString() : null,
+      content_available: false })).join('\n')
 }
 
 async function executeEventSearch(

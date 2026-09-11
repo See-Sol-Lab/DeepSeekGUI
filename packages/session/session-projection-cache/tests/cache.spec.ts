@@ -17,12 +17,13 @@ import { dirname, join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import { z } from 'zod'
 import SessionStore, {
+  SESSION_FORMAT_VERSION,
   Session,
   SessionId,
   SessionLogOffset,
   SessionSeq,
 } from '@deepseek-ai/dsh-session'
-import type { SessionEvent } from '@deepseek-ai/dsh-session'
+import type { SessionEvent, SessionHeader } from '@deepseek-ai/dsh-session'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
 import Storage from '@deepseek-ai/dsh-storage'
@@ -39,6 +40,7 @@ import type { CheckpointRecord } from '../src/spec.ts'
 declare module '@deepseek-ai/dsh-session-projection/types' {
   interface SessionProjectionStateMap {
     'cache-test/marks': MarksState
+    'cache-test/secondary-marks': MarksState
     'cache-test/marks2': Map<string, string>
     'cache-test/count': number
     'cache-test/secret': string
@@ -46,6 +48,7 @@ declare module '@deepseek-ai/dsh-session-projection/types' {
   }
   interface SessionProjectionMap {
     'cache-test/marks': { marks: string[] }
+    'cache-test/secondary-marks': { marks: string[] }
     'cache-test/marks3': { marks: string[] }
   }
 }
@@ -93,13 +96,25 @@ const secretUnit = {
   stateVersion: 1,
 } satisfies ProjectionDefinition<'cache-test/secret', string>
 
+const secondaryMarksUnit = {
+  key: 'cache-test/secondary-marks',
+  stateSchema: z.object({ marks: z.array(z.string()) }).nullable(),
+  init: () => null,
+  apply: (state, event) => event.type === 'cache-test/mark' ? event.data : state,
+  wire: {
+    viewSchema: z.object({ marks: z.array(z.string()) }),
+    view: state => state ?? { marks: [] },
+  },
+  stateVersion: 1,
+} satisfies ProjectionDefinition<'cache-test/secondary-marks', MarksState>
+
 /** One session's record document on the per-record medium. */
 const recordPath = (root: string, id: Session['id']): string =>
   join(root, projectionCacheDomainSpec.name, 'sessions', `${String(id)}.json`)
 
 /** Header shape for cachedSnapshot calls. */
-const headerOf = (id: SessionId, createdAt = 0, cwd?: string) =>
-  ({ version: 0, id, createdAt, isSeeded: false, ...cwd === undefined ? {} : { cwd } })
+const headerOf = (id: SessionId, createdAt = 0, cwd?: string): SessionHeader =>
+  ({ version: SESSION_FORMAT_VERSION, id, createdAt, isSeeded: false, ...cwd === undefined ? {} : { cwd } })
 
 interface HarnessOptions {
   root?: string
@@ -154,6 +169,7 @@ async function seedRecord(
   id: string,
   rows: CheckpointRecord['rows'],
   identity: CheckpointRecord['identity'] = {
+    formatVersion: SESSION_FORMAT_VERSION,
     createdAt: 0,
     isSeeded: false,
     inheritedEventCount: SessionLogOffset(0),
@@ -223,7 +239,8 @@ describe('SessionProjectionCache write policy', () => {
     mark(session, ['1'])
     mark(session, ['2'])
     await vi.waitFor(async () => {
-      expect((await storedRows(root, session.id))?.['cache-test/marks']?.seq).toBe(-1) // still the creation cut
+      expect((await storedRows(root, session.id))?.['cache-test/marks'])
+        .toEqual({ ver: 1, seq: -1, val: null }) // still the creation cut
     }, { timeout: 5_000 })
     mark(session, ['3'])
     await vi.waitFor(async () => {
@@ -317,6 +334,35 @@ describe('SessionProjectionCache write policy', () => {
 })
 
 describe('SessionProjectionCache listing read', () => {
+  it('rejects a nonzero inherited cut for an unseeded header', async () => {
+    const { cache } = await harness()
+
+    expect(() => cache.cachedSnapshot(
+      headerOf(SessionId('invalid-unseeded-cut')),
+      SessionLogOffset(1),
+    )).toThrow('unseeded projection-cache identity inherited event count must be 0')
+  })
+
+  it('uses the lowest watermark across every served wire row', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-projcache-'))
+    roots.push(root)
+    await seedRecord(root, 'watermark-lower', {
+      'cache-test/marks': { ver: 1, seq: SessionSeq(4), val: { marks: ['primary'] } },
+      'cache-test/secondary-marks': { ver: 1, seq: SessionSeq(2), val: { marks: ['secondary'] } },
+    })
+    await seedRecord(root, 'watermark-higher', {
+      'cache-test/marks': { ver: 1, seq: SessionSeq(4), val: { marks: ['primary'] } },
+      'cache-test/secondary-marks': { ver: 1, seq: SessionSeq(6), val: { marks: ['secondary'] } },
+    })
+    const { ctx, cache } = await harness({ root })
+    ctx.sessionProjections.register(secondaryMarksUnit)
+
+    expect(cache.cachedSnapshot(headerOf(SessionId('watermark-lower')), SessionLogOffset(0))?.asOfSeq)
+      .toBe(2)
+    expect(cache.cachedSnapshot(headerOf(SessionId('watermark-higher')), SessionLogOffset(0))?.asOfSeq)
+      .toBe(4)
+  })
+
   it('refuses a checkpoint created for a different inherited cut', async () => {
     const root = await mkdtemp(join(tmpdir(), 'dsh-projcache-'))
     roots.push(root)
@@ -326,6 +372,7 @@ describe('SessionProjectionCache listing read', () => {
       id,
       { 'cache-test/marks': { ver: 1, seq: SessionSeq(1), val: { marks: ['seed'] } } },
       {
+        formatVersion: SESSION_FORMAT_VERSION,
         createdAt: 0,
         isSeeded: true,
         inheritedEventCount: SessionLogOffset(2),
@@ -351,6 +398,26 @@ describe('SessionProjectionCache listing read', () => {
 
     expect(cache.cachedSnapshot(headerOf(SessionId('before-first-event')), SessionLogOffset(0)))
       .toEqual({ asOfSeq: -1, values: { 'cache-test/marks': { marks: [] } } })
+  })
+
+  it('refuses a checkpoint folded from another Session format generation', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-projcache-'))
+    roots.push(root)
+    const id = SessionId('format-identity')
+    await seedRecord(
+      root,
+      id,
+      { 'cache-test/marks': { ver: 1, seq: SessionSeq(0), val: { marks: ['stale'] } } },
+      {
+        formatVersion: SESSION_FORMAT_VERSION + 1,
+        createdAt: 0,
+        isSeeded: false,
+        inheritedEventCount: SessionLogOffset(0),
+      },
+    )
+    const { cache } = await harness({ root })
+
+    expect(cache.cachedSnapshot(headerOf(id), SessionLogOffset(0))).toBeUndefined()
   })
 
   it('keeps host-only checkpoint state out of cached wire snapshots', async () => {
@@ -410,16 +477,22 @@ describe('SessionProjectionCache listing read', () => {
     expect(block?.asOfSeq).toBe(4)
   })
 
-  it('returns undefined when the stored record is version-mismatched', async () => {
+  it('returns undefined when the stored record version is not accepted', async () => {
     const root = await mkdtemp(join(tmpdir(), 'dsh-projcache-'))
     roots.push(root)
-    // A stale version-stamped document is discarded at open: absent record.
+    // Version 2 is neither current nor declared compatible, so the document
+    // is discarded at open and the record reads as absent.
     const path = recordPath(root, SessionId('all-stale'))
     await mkdir(dirname(path), { recursive: true })
     await writeFile(path, JSON.stringify({
-      version: projectionCacheDomainSpec.version + 1,
+      version: 2,
       record: {
-        identity: { createdAt: 0, isSeeded: false, inheritedEventCount: 0 },
+        identity: {
+          formatVersion: SESSION_FORMAT_VERSION,
+          createdAt: 0,
+          isSeeded: false,
+          inheritedEventCount: 0,
+        },
         rows: { 'cache-test/marks': { ver: 1, seq: 4, val: { marks: ['old'] } } },
       },
     }))
@@ -438,7 +511,7 @@ describe('SessionProjectionCache listing read', () => {
     await writeFile(path, JSON.stringify({
       version: 4,
       record: {
-        identity: { createdAt: 0 },
+        identity: { formatVersion: SESSION_FORMAT_VERSION, createdAt: 0 },
         rows: { 'cache-test/marks': { ver: 1, seq: 4, val: { marks: ['kept'] } } },
       },
     }))
@@ -450,6 +523,24 @@ describe('SessionProjectionCache listing read', () => {
     // Seeded caller: the lineage-less record cannot vouch for the cut — refused.
     expect(cache.cachedSnapshot({ ...headerOf(id), isSeeded: true }, SessionLogOffset(2)))
       .toBeUndefined()
+  })
+
+  it('refuses an accepted predecessor record without a Session format generation', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-projcache-'))
+    roots.push(root)
+    const id = SessionId('pre-format-identity')
+    const path = recordPath(root, id)
+    await mkdir(dirname(path), { recursive: true })
+    await writeFile(path, JSON.stringify({
+      version: 6,
+      record: {
+        identity: { createdAt: 0, isSeeded: false, inheritedEventCount: 0 },
+        rows: { 'cache-test/marks': { ver: 1, seq: 4, val: { marks: ['unbound'] } } },
+      },
+    }))
+    const { cache } = await harness({ root })
+
+    expect(cache.cachedSnapshot(headerOf(id), SessionLogOffset(0))).toBeUndefined()
   })
 
   it('returns undefined when every stored row is version-mismatched', async () => {
@@ -471,6 +562,7 @@ describe('SessionProjectionCache listing read', () => {
     await seedRecord(root, 'homed', {
       'cache-test/marks': { ver: 1, seq: SessionSeq(2), val: { marks: ['w'] } },
     }, {
+      formatVersion: SESSION_FORMAT_VERSION,
       createdAt: 0,
       cwd: '/work',
       isSeeded: false,
@@ -566,12 +658,21 @@ describe('SessionProjectionCache cold-read seeding', () => {
     await seedRecord(root, 'cold-snap', {
       'cache-test/count': { ver: 1, seq: SessionSeq(2), val: 3 },
     }, {
+      formatVersion: SESSION_FORMAT_VERSION,
       createdAt: 9,
       isSeeded: false,
       inheritedEventCount: SessionLogOffset(0),
     })
     const { cache, ctx } = await harness({ root })
     const apply = vi.fn((_state: number, _event: SessionEvent) => 1)
+    const whenWritten = (id: SessionId): Promise<void> => new Promise((resolve) => {
+      const dispose = ctx.on('domain/changed', (change) => {
+        if (change.domain !== projectionCacheDomainSpec.name
+          || change.table !== 'sessions' || change.key !== id || change.operation !== 'put') return
+        dispose()
+        resolve()
+      })
+    })
     ctx.sessionProjections.register({
       key: 'cache-test/count',
       stateSchema: z.number().int().nonnegative(),
@@ -583,6 +684,7 @@ describe('SessionProjectionCache cold-read seeding', () => {
     const events = Array.from({ length: 5 }, (_, seq) => ({
       type: 'cache-test/mark', seq: SessionSeq(seq), time: seq, data: { marks: [`m${seq}`] },
     })) as SessionEvent[]
+    const refreshed = whenWritten(meta.id)
     const snapshot = cache.coldSnapshot(meta, SessionLogOffset(0), events)
     // The full log was traversed, but the fold applied only seqs 3 and 4.
     expect(apply).toHaveBeenCalledTimes(2)
@@ -591,17 +693,16 @@ describe('SessionProjectionCache cold-read seeding', () => {
     // Host-only unit: folded but not served; the refreshed row is written
     // back (fail-soft, fire-and-forget) once the write lands.
     expect(Object.keys(snapshot.values)).not.toContain('cache-test/count')
-    await vi.waitFor(async () => {
-      expect((await storedRows(root, meta.id))?.['cache-test/count']?.seq).toBe(4)
-    })
+    await refreshed
+    expect((await storedRows(root, meta.id))?.['cache-test/count']?.seq).toBe(4)
     // No cached row yet: the first cold read folds from init over the full
     // log and creates the cache row (the `?? {}` seed path).
     const fresh = headerOf(SessionId('cold-fresh'), 10)
+    const created = whenWritten(fresh.id)
     cache.coldSnapshot(fresh, SessionLogOffset(0), events)
     expect(apply).toHaveBeenCalledTimes(7) // 2 tail + 5 full
-    await vi.waitFor(async () => {
-      expect((await storedRows(root, fresh.id))?.['cache-test/count']?.seq).toBe(4)
-    })
+    await created
+    expect((await storedRows(root, fresh.id))?.['cache-test/count']?.seq).toBe(4)
   })
 
   it('coldSnapshot write-back is fail-soft: a failed durable write logs and never throws', async () => {

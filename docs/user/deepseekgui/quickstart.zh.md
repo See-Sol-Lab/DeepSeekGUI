@@ -53,6 +53,8 @@ DeepSeekGUI 通过 Harness 凭据服务把 key 保存在应用数据目录中，
 
 确认结果符合预期后，再要求 agent 完成边界明确的修改。DeepSeekGUI 会流式显示回复，并把会话保存在当前选择的 Harness Home 中，供你稍后恢复。
 
+全新安装会在输入框上方显示一条简短的首次使用引导。它先指向**设置 → 模型**，然后跟着你的第一句话、第一次审批和「改动」视图走；随时可以跳过。
+
 ![DeepSeekGUI 完成创建并运行 JavaScript 文件的 coding 任务](assets/workbench-overview.png)
 
 ## 6. 检查批准请求与改动

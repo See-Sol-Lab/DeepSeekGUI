@@ -20,6 +20,7 @@ import type {} from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 // Type-only: pulls the SlotRegistry service merge (ctx.slots).
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
+import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 // Type-only: pulls the Session root standard-hook merge.
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type { WorkspaceBrowserInjected, WorkspacePickerInjected } from './contract/slots.ts'
@@ -27,6 +28,7 @@ import { UiWorkspaceService } from './navigation.ts'
 import { createWorkspaceViewStore } from './stores.ts'
 import { WorkspaceBrowser } from './rows/WorkspaceBrowser.tsx'
 import { WorkspacePicker } from './WorkspacePicker.tsx'
+import { ArchivedSessionsSection, type ArchivedSessionsSectionInjected } from './ArchivedSessionsSection.tsx'
 import { en, zh, type WorkspaceKey } from './locales.ts'
 
 export type { UiWorkspace } from './navigation.ts'
@@ -60,7 +62,7 @@ const NS = 'workspace'
  * declaration through `slots.inject()` instead of assuming order.
  */
 export const inject = [
-  'slots', 'sessions', 'workspaces', 'locale', 'remote', 'remote.directoryPicker',
+  'slots', 'sessions', 'workspaces', 'locale', 'remote', 'remote.directoryPicker', 'layout',
 ]
 
 /**
@@ -95,11 +97,14 @@ export function apply(ctx: Context): void {
     subscribe: listener => ctx.on('connection/reset', listener),
   }
   const pickerFlowSource = flowSource('conversation.hero.workspace.directoryFlow')
+  const openSession: WorkspaceBrowserInjected['open'] = (sessionId) => {
+    uiWorkspace.openSession(sessionId)
+  }
   const browserInjected = (): WorkspaceBrowserInjected => ({
     // Explicit group actions keep their target; unscoped New Session inherits
     // the current Session Workspace before the recent-Workspace fallback.
-    startSession: (workspaceId) => { uiWorkspace.startSession(workspaceId) },
-    open: (sessionId) => { sessions.open(sessionId) },
+    startSession: workspaceId => uiWorkspace.startSession(workspaceId),
+    open: openSession,
     searchSessions,
     searchResultLimit: sessions.searchResultLimit,
     renameSession: async (sessionId, title) => {
@@ -111,8 +116,7 @@ export function apply(ctx: Context): void {
       if (!result.ok) throw new Error(result.error.message)
     },
     forkSession: (sessionId) => {
-      sessions.fork({ sessionId, increaseTitle: true })
-        .then((childId) => { sessions.open(childId) })
+      uiWorkspace.forkSession(sessionId)
         .catch(() => {
           // Fork or child-rename failure keeps the current selection.
         })
@@ -153,5 +157,22 @@ export function apply(ctx: Context): void {
       locale: NS,
     },
     WorkspacePicker,
+  ))
+  // B6-P11: the archive lives in Settings, not pinned under the sidebar tree —
+  // a rarely-used inventory should not sit in everyone's field of view. Restore
+  // is the same host write the sidebar used, so there is one restore path.
+  ctx.slots.inject('settings.section', () => ctx.slots.register(
+    {
+      name: 'settings.section',
+      id: 'deepseekgui-archived',
+      order: 30,
+      label: () => ctx.locale.bind(NS)('settings.archived.nav'),
+      locale: NS,
+      inject: (): ArchivedSessionsSectionInjected => ({
+        restore: async (sessionId) => { await uiWorkspace.unarchiveSession(sessionId) },
+        open: (sessionId) => { sessions.open(sessionId) },
+      }),
+    },
+    ArchivedSessionsSection,
   ))
 }

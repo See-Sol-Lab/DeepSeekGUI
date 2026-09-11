@@ -10,7 +10,7 @@
 
 ## 决策
 
-**更新服务——一个 provider、五个组件、只比较 DeepSeekGUI version。** 比较对象只能是 DeepSeekGUI app version（绝不用 embedded DSH version 驱动更新决策）。provider 读取 HTTPS feed manifest，经严格解析（`update-service.ts`：stable `latestVersion`、release notes、资产逐项 HTTPS-only URL + 64 位 hex SHA-256 + 正数 size + 安全文件名——未知字段与目录成分一律拒绝，绝不猜测）。feed 配置在 `userData/deepseekgui-update-feed.json`（`feedUrl`，仅 HTTPS）；缺失/损坏/非 HTTPS = 未配置。Manual Check 对未配置/已是最新/失败都给出明确结果（未配置时显示「当前未配置公开更新通道」）；background check（延迟 8 秒、不阻塞启动）对未配置与网络错误静默，只有 strictly newer stable 才提示——面板状态 + 每版本一次托盘气泡（`isNewerStable`：prerelease 永不提示；semver 比较自包含、零依赖）。下载前必须明确确认，经注入式 HTTP 客户端流式下载（字节上限 + AbortSignal 取消），任何失败清理 partial，SHA-256 验证通过前绝不执行；只抓取配置 manifest 声明的 HTTPS URL（绝不 file://、绝不用户任意路径）。installer handoff 弹「退出 DeepSeekGUI 并开始安装更新？」——先 spawn 已验证 installer（settleSpawn 确认成功），再 orderly 停止 Harness、销毁视图/托盘并退出；spawn 失败保持应用可用、绝不删除当前安装。已验证 installer 采用 single-slot 策略（最多一份；同版本同 digest 复用）。SmartScreen 在 UI 与文档明示；不做假签名验证。
+**更新服务——一个 provider、五个组件、只比较 DeepSeekGUI version。** 比较对象只能是 DeepSeekGUI app version（绝不用 embedded DSH version 驱动更新决策）。provider 读取 HTTPS feed manifest，经严格解析（`update-service.ts`：stable `latestVersion`、release notes、资产逐项 HTTPS-only URL + 64 位 hex SHA-256 + 正数 size + 安全文件名——未知字段与目录成分一律拒绝，绝不猜测）。feed 配置在 `userData/deepseekgui-update-feed.json`（`feedUrl`，仅 HTTPS）：没有该文件时用内置公开通道（`DEFAULT_UPDATE_FEED_URL`，已发布的 GitHub Releases manifest），而损坏/非 HTTPS/带凭据的文件明确未配置，绝不悄悄换成另一个来源。Manual Check 对未配置/已是最新/失败都给出明确结果（未配置时显示「当前未配置公开更新通道」）；background check（延迟 8 秒、不阻塞启动）对未配置与网络错误静默，只有 strictly newer stable 才提示——面板状态 + 每版本一次托盘气泡（`isNewerStable`：prerelease 永不提示；semver 比较自包含、零依赖）。下载前必须明确确认，经注入式 HTTP 客户端流式下载（字节上限 + AbortSignal 取消），任何失败清理 partial，SHA-256 验证通过前绝不执行；只抓取已解析 manifest 声明的 HTTPS URL（绝不 file://、绝不用户任意路径）。installer handoff 弹「退出 DeepSeekGUI 并开始安装更新？」——先 spawn 已验证 installer（settleSpawn 确认成功），再 orderly 停止 Harness、销毁视图/托盘并退出；spawn 失败保持应用可用、绝不删除当前安装。已验证 installer 采用 single-slot 策略（最多一份；同版本同 digest 复用）。SmartScreen 在 UI 与文档明示；不做假签名验证。
 
 **诊断中心——allowlist 事实、只生成本地 bundle。** chrome 面板显示受控来源组装的 build info（版本四元组、Home kind 不含路径、active Profile、Harness 状态、日志位置、更新通道）+ 打开日志文件夹 / 复制构建信息（main 剪贴板）/ 导出诊断包。bundle 是 `userData/diagnostics/` 下的本地目录（绝不上传）：`bundle-manifest.json` 逐文件列出归一化来源与大小，日志副本再过一遍脱敏，credential/`.env`/session 正文结构性排除（文件名 allowlist：仅 `.log[.N]`、`.txt`、manifest）。用户路径导出前归一化为 `<USER_HOME>`。导出失败绝不删除原日志。
 
@@ -20,7 +20,7 @@
 
 ## 备选方案
 
-- **repo 私有期间用 GitHub Releases 当 feed**：拒绝——未认证 feed 会 404，认证要么打包 token 要么向用户索取，施工单两者都禁止。稳定 provider contract + 配置文件意味着公开后只换配置。
+- **repo 私有期间用 GitHub Releases 当 feed**：当时拒绝——未认证 feed 会 404，认证要么打包 token 要么向用户索取，施工单两者都禁止。稳定 provider contract 加配置文件意味着公开后只需翻转内置默认值，`DEFAULT_UPDATE_FEED_URL` 现在就是这么做的。
 - **electron-updater 等通用更新框架**：拒绝——其 provider 语义（github/generic）与私有 repo 策略对不上，且 handoff 必须走 DeepSeekGUI 自己的 orderly shutdown；自包含 manifest provider 比适配一个框架更小。
 - **ZIP 格式诊断包**：v1 拒绝——普通目录 + manifest 已达成"只本地、可列清单、已脱敏"，无需引入归档依赖；将来加 zip 不破坏契约。
 - **日志守护进程/数据库**：拒绝——施工单明确不要日志数据库或后台服务；打开时轮转就是全部机制。
@@ -29,6 +29,7 @@
 ## 后果
 
 - 托盘与 chrome 都有真实 Check for Updates 入口；更新面板状态（idle/checking/available/downloading/verified/error）来自 main 的单一 `updateView`，托盘的新版本标签读同一模型。
+- 内置公开通道就是已发布的 GitHub Releases manifest，所以对着公开 Release 开箱即可检查更新；`userData/deepseekgui-update-feed.json` 可以覆盖它。
 - 未配置 feed 在所有出口都诚实：Manual 明示、background 静默、绝不索取凭据。
 - 诊断包按构造可安全分享（allowlist + 脱敏 + 归一化）；发行门禁在资产/notices 缺失、session log 出厂、任何 digest 不匹配时失败。
 - 日志证据跨重启保留且占用有界。
@@ -48,7 +49,6 @@
 ## 暂缓
 
 - installer 的 Authenticode 验证：等有代码签名证书；本阶段只文档化 SmartScreen 限制，不伪造签名检查。
-- 公开 feed 的发布（See-Sol-Lab stable manifest 或公开 GitHub Releases）与切换配置的入口：依赖仓库可见性，不是代码改动。
 - 多资产 feed（按平台）：v1 安装第一个资产；manifest schema 已是资产数组，将来按平台选择无需换格式。
 - 诊断包 zip 格式与 feed URL 的 UI 编辑（配置入口暂为配置文件）。
 
@@ -56,5 +56,5 @@
 
 - 核心测试用本地 mock/fake HTTP（`streamDownload` 的注入面）与 fixture manifest——不访问公网、不碰 GitHub Releases、无凭据。
 - 更新 handoff 对话框是主进程 `dialog.showMessageBox`；打包验收驱动安装路径时沿用 P1 的人工 UI 审查模式（installer spawn 本身不进 e2e）。
-- feed 的真实 `https.get` 只在 dev 且配置了 feed 时发生；parser/downloader/verifier 逻辑全部用 fake 单测覆盖。
+- feed 的真实 `https.get` 只在 dev 且 feed 能解析（内置默认或配置的覆盖）时发生；parser/downloader/verifier 逻辑全部用 fake 单测覆盖。
 - `verify-desktop-dist.ps1` 注释保持纯 ASCII（PowerShell 5.1 的 ANSI 解码坑已记入房主日志）。

@@ -6,7 +6,7 @@ import AgentRegistry, { agentEvents } from '@deepseek-ai/dsh-agent'
 import type { Agent, AgentHandle, CreateAgentOptions } from '@deepseek-ai/dsh-agent'
 import { createUserMessage, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import type { LlmCallConfig } from '@deepseek-ai/dsh-llm'
-import SessionStore, { SessionLogOffset, SessionSeq } from '@deepseek-ai/dsh-session'
+import SessionStore, { SESSION_FORMAT_VERSION, SessionLogOffset, SessionSeq } from '@deepseek-ai/dsh-session'
 import type { Session, SessionEvent, SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import type { Workspace } from '@deepseek-ai/dsh-workspace'
@@ -23,7 +23,7 @@ function request<P>(payload: P): P {
 async function composed(workspaces: readonly Workspace[] = []): Promise<Context> {
   const ctx = new Context()
   await ctx.plugin(SessionStore)
-  await ctx.plugin(SystemPrompt, { persona: '' })
+  await ctx.plugin(SystemPrompt, { personaPrefix: '' })
   await ctx.plugin(AgentRegistry)
   installSessionReadTestServices(ctx)
   ctx.provide('workspaceRegistry', { list: () => workspaces } as never)
@@ -37,9 +37,9 @@ async function composed(workspaces: readonly Workspace[] = []): Promise<Context>
           : { inheritedEventCount: options.inheritedEventCount },
       })
       const agent = {} as Agent
-      const agentCtx = ownerCtx.extend({ agent })
+      const agentCtx = ownerCtx
       Object.assign(agent, { id: session.id, session, status: 'idle', ctx: agentCtx })
-      await options.setup?.(agentCtx)
+      await options.setup?.(agentCtx, agent)
       ctx.agents.register(agent)
       return { agent, dispose: () => Promise.resolve() }
     },
@@ -151,7 +151,7 @@ describe('sessions.fork', () => {
     const sourceId = sid('session-cold-subagent')
     const parentId = sid('session-cold-parent')
     const header: SessionHeader = {
-      version: 0,
+      version: SESSION_FORMAT_VERSION,
       id: sourceId,
       createdAt: 1,
       cwd: '/proj',

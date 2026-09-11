@@ -8,11 +8,11 @@ Upstream DeepSeek Harness code and upstream-derived material remain under DeepSe
 
 ## DeepSeekGUI product layer
 
-The original DeepSeekGUI desktop/product layer under [`apps/desktop/`](apps/desktop/) is licensed by See-Sol-Lab under the **PolyForm Perimeter License 1.0.1**. The full license text is in [`apps/desktop/LICENSE`](apps/desktop/LICENSE).
+The original DeepSeekGUI desktop/product layer under [`apps/deepseekgui/`](apps/deepseekgui/) is licensed by See-Sol-Lab under the **PolyForm Perimeter License 1.0.1**. The full license text is in [`apps/deepseekgui/LICENSE`](apps/deepseekgui/LICENSE).
 
-Unless a file states otherwise, this scope includes DeepSeekGUI-authored source code, documentation, and original assets inside `apps/desktop/`. Third-party material keeps its own license.
+Unless a file states otherwise, this scope includes DeepSeekGUI-authored source code, documentation, and original assets inside `apps/deepseekgui/`. Third-party material keeps its own license.
 
-Future See-Sol-Lab-owned components outside `apps/desktop/` are covered by the PolyForm Perimeter License only when they explicitly say so by referring to this file, `apps/desktop/LICENSE`, or the PolyForm Perimeter License 1.0.1 by name and URL.
+Future See-Sol-Lab-owned components outside `apps/deepseekgui/` are covered by the PolyForm Perimeter License only when they explicitly say so by referring to this file, `apps/deepseekgui/LICENSE`, or the PolyForm Perimeter License 1.0.1 by name and URL.
 
 ## Permitted use and competition boundary
 

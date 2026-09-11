@@ -1992,21 +1992,13 @@ describe('trace and exact read rendering', () => {
       { surfaceOp: 'append' },
     )
     session.append(
-      'assistant/message',
+      'user/message',
+      createUserMessage({
+        content: [{ type: 'text', text: 'replacement' }],
+        source: { kind: 'plugin', plugin: 'test' },
+      }),
       {
-        turn: 1,
-        step: 1,
-        message: createMessage({
-          role: 'assistant',
-          content: [{ type: 'text', text: 'replacement' }],
-          source: {
-            kind: 'model',
-            ...{ provider: 'test', model: 'test' },
-          },
-        }),
-      },
-      {
-        surfaceOp: { op: 'replace', start: SessionSeq(0), end: SessionSeq(0) },
+        surfaceOp: { op: 'replace', startSeq: SessionSeq(0), endSeq: SessionSeq(0) },
         sourceEventSeqs: [SessionSeq(0)],
       },
     )
@@ -2030,6 +2022,7 @@ describe('trace and exact read rendering', () => {
     session.append(
       'assistant/message',
       {
+        stream: [],
         turn: 1,
         step: 1,
         message: createMessage({

@@ -55,20 +55,24 @@ export default class GhPullRequestProvider extends PullRequestCapability {
   private async run(
     cwd: string,
     args: readonly string[],
+    stdin?: string,
   ): Promise<{ stdout: string; stderr: string; exitCode: number | null }> {
     const gh = await this.ctx.subprocess.resolveExecutable('gh')
+    const signal = AbortSignal.timeout(GH_TIMEOUT_MS)
     const handle = this.ctx.subprocess.spawn({
       argv: [gh, ...args],
       cwd,
       stdio: {
-        stdin: 'ignore',
+        stdin: stdin === undefined ? 'ignore' : { data: stdin },
         stdout: { maxBytes: GH_OUTPUT_MAX_BYTES },
         stderr: { maxBytes: 64 * 1024 },
       },
       graceMs: GH_GRACE_MS,
-      signal: AbortSignal.timeout(GH_TIMEOUT_MS),
+      signal,
     })
     const outcome = await handle.done
+    if (signal.aborted) throw new PullRequestFailedError('The GitHub command timed out; verify the remote state before retrying.', 'other')
+    if (handle.collected.stdout?.readFrom(0).lossy) throw new PullRequestFailedError('GitHub output was truncated; verify the remote state before retrying.', 'other')
     return {
       stdout: handle.collected.stdout?.readFrom(0).text ?? '',
       stderr: handle.collected.stderr?.readFrom(0).text ?? '',
@@ -77,7 +81,7 @@ export default class GhPullRequestProvider extends PullRequestCapability {
   }
 
   async availability(cwd: string): Promise<PullRequestAvailability> {
-    let output: { stdout: string; exitCode: number | null }
+    let output: { stdout: string; stderr: string; exitCode: number | null }
     try {
       output = await this.run(cwd, ['auth', 'status'])
     } catch (error) {
@@ -92,7 +96,7 @@ export default class GhPullRequestProvider extends PullRequestCapability {
     }
     // `gh auth status` prints, per host: `Logged in to <host> account <account>`.
     // Only the host and account are read — never a token.
-    const match = /Logged in to (\S+) account (\S+)/u.exec(output.stdout)
+    const match = /Logged in to (\S+) account (\S+)/u.exec(`${output.stdout}\n${output.stderr}`)
     if (match === null) {
       return { available: true, auth: { host: '(unknown)', account: '(unknown)' } }
     }
@@ -100,7 +104,7 @@ export default class GhPullRequestProvider extends PullRequestCapability {
   }
 
   async existing(cwd: string, head: string): Promise<ExistingPullRequest | undefined> {
-    const output = await this.run(cwd, ['pr', 'list', '--head', head, '--state', 'all', '--json', 'number,url'])
+    const output = await this.run(cwd, ['pr', 'list', '--head', head, '--state', 'open', '--json', 'number,url'])
     if (output.exitCode !== 0) {
       throw new PullRequestFailedError(output.stderr, 'other')
     }
@@ -132,14 +136,14 @@ export default class GhPullRequestProvider extends PullRequestCapability {
     const args = [
       'pr', 'create',
       '--title', opts.title,
-      '--body', opts.body,
+      '--body-file', '-',
       '--base', opts.base,
       '--head', opts.head,
       ...opts.draft ? ['--draft'] : [],
     ]
     let output: { stdout: string; stderr: string; exitCode: number | null }
     try {
-      output = await this.run(cwd, args)
+      output = await this.run(cwd, args, opts.body)
     } catch (error) {
       if (error instanceof Error && /was not found on PATH|is not an executable file/u.test(error.message)) {
         throw new PullRequestUnavailableError('missing-gh')

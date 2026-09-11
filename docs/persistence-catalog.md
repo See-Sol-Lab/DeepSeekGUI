@@ -5,9 +5,9 @@
 
 Every event type that can appear in a session's durable event log: the complete persisted `SessionEvent` envelope and each member of the merge-extensible `SessionEventMap` — the owning vocabulary in `@deepseek-ai/dsh-session` plus every plugin declaration merge into `@deepseek-ai/dsh-session/types` in this repo — with source JSDoc, full payload declaration, surface badge, and declaration site. It complements [session.md](subsystems/session.md) (surface ordering and the `deriveMessages()` projection), [persistence.md](subsystems/persistence.md) (how the log is made durable), and the generated region of [session.md](subsystems/session.md#cordis-surface) (the live bus wiring — a log event is NOT a cordis event; it reaches listeners via the single `session/event` emit).
 
-This file is GENERATED from source (`scripts/gen-persistence-catalog.ts`) and verified fresh by `pnpm run verify-persistence-catalog` (part of `doc-sync`) — do not edit it by hand. Declaration blocks retain the source declaration and nested property JSDoc, removing only the indentation imposed by a containing interface/module, and use a `ts persistence-catalog` fence (skipped by doc-typecheck because declarations reference types from their owning modules). Type names in a payload link to the page that documents them. See [the persistence-log-catalog Agent Note](../.agents/notes/archived/process/2026-07-04-persistence-log-catalog.md).
+This file is GENERATED from source (`scripts/gen-persistence-catalog.ts`) and verified fresh by `pnpm run verify-persistence-catalog` (part of `doc-sync`) — do not edit it by hand. Declaration blocks retain the source declaration and nested property JSDoc, removing only the indentation imposed by a containing interface/module, and use a `ts persistence-catalog` fence (skipped by doc-typecheck because declarations reference types from their owning modules). Type names in a payload link to the page that documents them. The archived [persistence-log-catalog record](../.agents/notes/archived/process/2026-07-04-persistence-log-catalog.md) documents the original catalog decision.
 
-The envelope declarations below compose each event's `type`, monotonic `seq`, epoch-ms `time`, `data`, the optional `ignorable` unknown-type skip marker, and the conditional `surfaceOp`/`sourceEventSeqs` fields. **surface** marks a `SurfaceEventType` member: it produces an LLM message and declares how it joins the surface list. **log-only** marks everything else: a durable, replayable record with no derived-history contribution. Every payload is JSON-serializable (enforced at `Session.append`), and the whole format is pinned at `SESSION_FORMAT_VERSION = 0` — pre-release, no compatibility implied ([the version stance](subsystems/persistence.md)). Scope: the packages in this repo; a downstream plugin can merge further event types, which are outside this catalog by construction.
+The envelope declarations below compose each event's `type`, monotonic `seq`, epoch-ms `time`, `data`, the optional `ignorable` unknown-type skip marker, and the conditional `surfaceOp`/`sourceEventSeqs` fields. **surface** marks a `SurfaceEventType` member: it produces an LLM message and declares how it joins the surface list. **log-only** marks everything else: a durable, replayable record with no derived-history contribution. Every payload is JSON-serializable (enforced at `Session.append`). Current writers stamp `SESSION_FORMAT_VERSION`; supported historical artifacts reach this current vocabulary through the build-static adjacent migration catalog ([the version lifecycle](subsystems/persistence.md)). Scope: the packages in this repo; a downstream plugin can merge further current-version event types, which are outside this catalog by construction and require an explicit disposition at a later format edge.
 
 ## Event envelope
 
@@ -18,9 +18,11 @@ export type SessionEventType = keyof SessionEventMap
 /**
  * The subset of {@link SessionEventType} values whose events produce LLM
  * messages and are eligible to appear on the ordered surface. Only these
- * event types may carry {@link SurfaceOp} and {@link SessionEvent.sourceEventSeqs}.
+ * event types may carry {@link SurfaceOp}; system, user, and tool events may also cite
+ * earlier sources through {@link SessionEvent.sourceEventSeqs}.
  */
 export type SurfaceEventType =
+  | 'system/message'
   | 'user/message'
   | 'assistant/message'
   | 'tool/result'
@@ -31,16 +33,16 @@ export type SurfaceEventType =
  *
  * - `'append'`: added to the tail — normal path for user/assistant/tool
  *   messages.
- * - `{ op: 'replace', start, end }`: replaces surface nodes from `start`
- *   (inclusive) through `end` (inclusive) with this node. Both must exist as
- *   surface nodes in the current surface. `start === end` replaces a single
+ * - `{ op: 'replace', startSeq, endSeq }`: replaces surface nodes from `startSeq`
+ *   (inclusive) through `endSeq` (inclusive) with this node. Both must exist as
+ *   surface nodes in the current surface. `startSeq === endSeq` replaces a single
  *   node. The node's {@link SessionEvent.sourceEventSeqs} must include every
  *   shadowed surface node. Used by compaction; any surface-replacing producer
  *   may use it.
  */
 export type SurfaceOp =
   | 'append'
-  | { op: 'replace'; start: SessionSeq; end: SessionSeq }
+  | { op: 'replace'; startSeq: SessionSeq; endSeq: SessionSeq }
 
 /**
  * One immutable entry in the session log.
@@ -49,9 +51,9 @@ export type SurfaceOp =
  * unions), so `switch (event.type)` narrows `event.data` without casts.
  *
  * The {@link sourceEventSeqs} and {@link surfaceOp} fields are conditional:
- * they only exist on {@link SurfaceEventType} variants (`user/message`,
+ * they only exist on {@link SurfaceEventType} variants (`system/message`, `user/message`,
  * `assistant/message`, `tool/result`).
- * Non-surface events (boundary markers, chunks, usage, errors) never carry
+ * Non-surface events (boundary markers, attempts, errors) never carry
  * surface metadata — the compiler enforces this at `Session.append()`
  * call sites.
  */
@@ -74,23 +76,14 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
      * inconvenience) rather than silently resuming a gutted session.
      */
     ignorable?: true
-  } & (K extends SurfaceEventType ? {
-    /**
-     * Seq numbers of earlier events that this event cites as sources
-     * (e.g. the `assistant/chunk` seqs that built an `assistant/message`,
-     * or the surface nodes shadowed by a compaction replace node). An
-     * `assistant/message` may carry a present empty array for a known empty
-     * provider stream; when the field is absent, the event does not record which
-     * earlier events produced the message.
-     */
-    sourceEventSeqs?: SessionSeq[]
-    /** How this event entered the surface; absent for non-surface events. */
-    surfaceOp?: SurfaceOp
-  } : object)
+  } & (K extends SurfaceEventType ? SurfaceIntent<K> : {
+    surfaceOp?: never
+    sourceEventSeqs?: never
+  })
 }[T]
 ```
 
-Sources: [`packages/core/session/src/types.ts:366`](../packages/core/session/src/types.ts) · [`packages/core/session/src/types.ts:373`](../packages/core/session/src/types.ts) · [`packages/core/session/src/types.ts:402`](../packages/core/session/src/types.ts) · [`packages/core/session/src/types.ts:434`](../packages/core/session/src/types.ts)
+Sources: [`packages/core/session/src/types.ts:404`](../packages/core/session/src/types.ts) · [`packages/core/session/src/types.ts:412`](../packages/core/session/src/types.ts) · [`packages/core/session/src/types.ts:434`](../packages/core/session/src/types.ts) · [`packages/core/session/src/types.ts:465`](../packages/core/session/src/types.ts)
 
 ## Events
 
@@ -103,8 +96,8 @@ Sources: [`packages/core/session/src/types.ts:366`](../packages/core/session/src
 ```ts persistence-catalog
 /**
  * One normalized mutation of an agent's durable pending-message lists.
- * Live dispatch precedes projection mutation, so synchronous observers may
- * read the pre-splice inbox to recover the removed messages.
+ * The session-projection registry applies the committed event before
+ * `Session.append()` returns; Inbox live notifications follow that commit.
  */
 'agent/inbox/spliced': {
   target: InboxTarget
@@ -115,7 +108,7 @@ Sources: [`packages/core/session/src/types.ts:366`](../packages/core/session/src
 }
 ```
 
-Source: [`packages/core/agent/src/types.ts:58`](../packages/core/agent/src/types.ts)
+Source: [`packages/core/agent/src/types.ts:87`](../packages/core/agent/src/types.ts)
 
 ### `agent-preset/*`
 
@@ -204,18 +197,20 @@ Source: [`packages/interaction/user-approval/src/index.ts:33`](../packages/inter
 
 ### `assistant/*`
 
-<a id="assistantchunk--log-only"></a>
+<a id="assistantattempt--log-only"></a>
 
-#### `assistant/chunk` — log-only
+#### `assistant/attempt` — log-only
 
 ```ts persistence-catalog
-/** Raw stream chunk — token-level replay fidelity. */
-'assistant/chunk': { turn: number; step: number; chunk: StreamChunk }
+/**
+ * One model attempt that committed no surface message. The embedded stream
+ * preserves a failed, retried, cancelled, or stream-error attempt that
+ * reached settlement without fabricating model-visible history.
+ */
+'assistant/attempt': { turn: number; step: number; stream: AssistantStreamRecord[] }
 ```
 
-Types: [StreamChunk](subsystems/llm-streaming.md)
-
-Source: [`packages/core/session/src/types.ts:289`](../packages/core/session/src/types.ts)
+Source: [`packages/core/session/src/types.ts:335`](../packages/core/session/src/types.ts)
 
 <a id="assistantmessage--surface"></a>
 
@@ -232,12 +227,20 @@ Source: [`packages/core/session/src/types.ts:289`](../packages/core/session/src/
  * marker distinguishes that prefix without re-deriving interruption from turn
  * boundaries. An aborted turn with no such event streamed no visible content.
  */
-'assistant/message': { turn: number; step: number; message: AssistantMessage; usage?: TokenUsage; interrupted?: true }
+'assistant/message': {
+  turn: number
+  step: number
+  message: AssistantMessage
+  /** Exact timed model stream, compacted without joining delta boundaries. */
+  stream: AssistantStreamRecord[]
+  usage?: TokenUsage
+  interrupted?: true
+}
 ```
 
 Types: [TokenUsage](subsystems/llm-streaming.md)
 
-Source: [`packages/core/session/src/types.ts:300`](../packages/core/session/src/types.ts)
+Source: [`packages/core/session/src/types.ts:321`](../packages/core/session/src/types.ts)
 
 ### `command/*`
 
@@ -260,7 +263,7 @@ Source: [`packages/core/session/src/types.ts:300`](../packages/core/session/src/
 }
 ```
 
-Source: [`packages/interaction/commands/src/types.ts:104`](../packages/interaction/commands/src/types.ts)
+Source: [`packages/interaction/commands/src/types.ts:110`](../packages/interaction/commands/src/types.ts)
 
 <a id="commandrun--log-only"></a>
 
@@ -280,7 +283,7 @@ Source: [`packages/interaction/commands/src/types.ts:104`](../packages/interacti
 'command/run': { commandId: CommandId; name: string; args?: string; source: CommandSource }
 ```
 
-Source: [`packages/interaction/commands/src/types.ts:97`](../packages/interaction/commands/src/types.ts)
+Source: [`packages/interaction/commands/src/types.ts:103`](../packages/interaction/commands/src/types.ts)
 
 ### `compaction/*`
 
@@ -393,7 +396,44 @@ Types: [ContentBlock](subsystems/core.md) · [TokenUsage](subsystems/llm-streami
 
 Source: [`packages/compaction/compaction/src/types.ts:34`](../packages/compaction/compaction/src/types.ts)
 
+### `deliverables/*`
+
+<a id="deliverablespresented--log-only"></a>
+
+#### `deliverables/presented` — log-only
+
+```ts persistence-catalog
+/** Declared filesystem files from a successful final present result, including nested calls. */
+'deliverables/presented': { turn: number; callId: ToolCallId; files: PresentedFile[] }
+```
+
+Types: [ToolCallId](subsystems/core.md)
+
+Source: [`packages/fs/tool-present/src/types.ts:15`](../packages/fs/tool-present/src/types.ts)
+
 ### `feedback/*`
+
+<a id="feedbackmessage-delete--log-only"></a>
+
+#### `feedback/message-delete` — log-only
+
+```ts persistence-catalog
+/** Log-only deletion; earlier ratings and notes remain in the log. */
+'feedback/message-delete': MessageFeedbackDelete
+```
+
+Source: [`packages/feedback/message-feedback/src/types.ts:58`](../packages/feedback/message-feedback/src/types.ts)
+
+<a id="feedbackmessage-put--log-only"></a>
+
+#### `feedback/message-put` — log-only
+
+```ts persistence-catalog
+/** Log-only human feedback; never enters model history. */
+'feedback/message-put': MessageFeedbackPut
+```
+
+Source: [`packages/feedback/message-feedback/src/types.ts:56`](../packages/feedback/message-feedback/src/types.ts)
 
 <a id="feedbackrecord--log-only"></a>
 
@@ -404,10 +444,10 @@ Source: [`packages/compaction/compaction/src/types.ts:34`](../packages/compactio
  * One recorded human remark about this session. Log-only and independent
  * of its trigger; it never enters model context or derived history.
  */
-'feedback/record': { text: string }
+'feedback/record': FeedbackRecord
 ```
 
-Source: [`packages/feedback/command-feedback/src/index.ts:62`](../packages/feedback/command-feedback/src/index.ts)
+Source: [`packages/feedback/command-feedback/src/types.ts:40`](../packages/feedback/command-feedback/src/types.ts)
 
 ### `goal/*`
 
@@ -512,7 +552,7 @@ Source: [`packages/llm/llm-retry/src/types.ts:11`](../packages/llm/llm-retry/src
 'model/selection': ModelSelection
 ```
 
-Source: [`packages/api/session-controller/src/types.ts:41`](../packages/api/session-controller/src/types.ts)
+Source: [`packages/api/session-controller/src/types.ts:40`](../packages/api/session-controller/src/types.ts)
 
 ### `permission/*`
 
@@ -557,13 +597,15 @@ Source: [`packages/plan/plan-mode/src/index.ts:46`](../packages/plan/plan-mode/s
 
 ```ts persistence-catalog
 /**
- * Route metadata for the next request, logged only when the route or capacity
- * changes. It does not participate in request reconstruction or header equality.
+ * Route metadata for the next request, logged only when the route, capacity,
+ * or system prompt update mode changes. It does not participate in request
+ * reconstruction or header equality. Prompt admission uses the bound prepared
+ * call's capability, not this snapshot from an earlier request.
  */
 'request/context': RequestContext
 ```
 
-Source: [`packages/core/session/src/types.ts:339`](../packages/core/session/src/types.ts)
+Source: [`packages/core/session/src/types.ts:377`](../packages/core/session/src/types.ts)
 
 <a id="requestheader--log-only"></a>
 
@@ -582,7 +624,7 @@ Source: [`packages/core/session/src/types.ts:339`](../packages/core/session/src/
 }
 ```
 
-Source: [`packages/core/session/src/types.ts:329`](../packages/core/session/src/types.ts)
+Source: [`packages/core/session/src/types.ts:365`](../packages/core/session/src/types.ts)
 
 ### `sandbox/*`
 
@@ -636,12 +678,12 @@ Source: [`packages/schedule/schedule/src/types.ts:219`](../packages/schedule/sch
  * Marks the end of a constructor seed. Events before it have smaller seq
  * values and came from the seed (resume, fork, or replay); this lifecycle
  * produced none of them. This log-only event is the durable projection of
- * {@link Session.firstLiveSeq}. Its payload is empty — position and `time`
- * carry the meaning.
+ * {@link Session.firstLiveSeq}.
  *
- * Locate the LAST one in stored history. A seed already ending in one is not
- * re-marked, so reopening an untouched session does not grow its log per
- * pickup and the event need not be at the current `firstLiveSeq`.
+ * A fresh fork child owns one `{ inherited: true }` marker at its exact
+ * inherited-prefix cut, even when that prefix ends in an ancestor marker.
+ * The last tagged marker is the current Session's cut; untagged markers keep
+ * ordinary restore and replay lifecycle boundaries.
  *
  * `Session`'s constructor is the only legitimate writer. The invariant
  * companion deliberately constrains nothing here, so a plugin appending one
@@ -654,10 +696,10 @@ Source: [`packages/schedule/schedule/src/types.ts:219`](../packages/schedule/sch
  * writers — a concurrently live session holds its own boundary elsewhere,
  * so tolerating concurrent writers needs a signal beyond the log.
  */
-'session/end-seed': Record<string, never>
+'session/end-seed': { inherited?: true }
 ```
 
-Source: [`packages/core/session/src/types.ts:362`](../packages/core/session/src/types.ts)
+Source: [`packages/core/session/src/types.ts:400`](../packages/core/session/src/types.ts)
 
 <a id="sessiontitle--log-only"></a>
 
@@ -699,12 +741,14 @@ Source: [`packages/session/session-title-llm/src/index.ts:45`](../packages/sessi
 'session-log-deepseek/delivery-accepted': {
   /** Session identity the accepted delivery carried; inherited fork markers retain the parent's id. */
   sessionId: import('@deepseek-ai/dsh-session/types').SessionId
+  /** Accepted Session format generation; absence identifies version 0. */
+  sessionFormatVersion?: number
   /** Last canonical event included in the accepted request. */
   throughSeq: import('@deepseek-ai/dsh-session/types').SessionSeq
 }
 ```
 
-Source: [`packages/session/session-log-deepseek/src/types.ts:57`](../packages/session/session-log-deepseek/src/types.ts)
+Source: [`packages/session/session-log-deepseek/src/types.ts:81`](../packages/session/session-log-deepseek/src/types.ts)
 
 ### `step/*`
 
@@ -717,7 +761,7 @@ Source: [`packages/session/session-log-deepseek/src/types.ts:57`](../packages/se
 'step/end': { turn: number; step: number }
 ```
 
-Source: [`packages/core/session/src/types.ts:279`](../packages/core/session/src/types.ts)
+Source: [`packages/core/session/src/types.ts:289`](../packages/core/session/src/types.ts)
 
 <a id="stepstart--log-only"></a>
 
@@ -728,9 +772,23 @@ Source: [`packages/core/session/src/types.ts:279`](../packages/core/session/src/
 'step/start': { turn: number; step: number }
 ```
 
-Source: [`packages/core/session/src/types.ts:277`](../packages/core/session/src/types.ts)
+Source: [`packages/core/session/src/types.ts:287`](../packages/core/session/src/types.ts)
 
 ### `subagent/*`
+
+<a id="subagentcatalog--log-only"></a>
+
+#### `subagent/catalog` — log-only
+
+```ts persistence-catalog
+/**
+ * A direct child's complete discovery fact.
+ * @param data - versioned parent-owned catalog entry.
+ */
+'subagent/catalog': SubagentCatalogEvent
+```
+
+Source: [`packages/subagent/subagent/src/catalog.ts:40`](../packages/subagent/subagent/src/catalog.ts)
 
 <a id="subagentdescriptor--log-only"></a>
 
@@ -768,6 +826,30 @@ Source: [`packages/subagent/subagent/src/descriptor.ts:38`](../packages/subagent
 
 Source: [`packages/subagent/tool-subagent/src/model-selection-state.ts:17`](../packages/subagent/tool-subagent/src/model-selection-state.ts)
 
+### `system/*`
+
+<a id="systemmessage--surface"></a>
+
+#### `system/message` — surface
+
+```ts persistence-catalog
+/**
+ * The rendered system prompt on the model-visible surface. The loop appends
+ * the first one as surface node 0 before the step's first `user/message`.
+ * A prepared in-history route can append nonempty changes in a continuing
+ * series. An incapable route or new series normalizes text to the first system
+ * node. Normalization empties nonempty later nodes, then rewrites the head if
+ * needed, through logged per-node replacements. An empty rendering always
+ * clears all active system nodes, leaving no older instructions model-visible.
+ * Empty later nodes are dormant and project to no message; an empty head with
+ * no active later node records "no system prompt". Restored nonempty text follows
+ * the same route and series rule; empty nodes never restore older text.
+ */
+'system/message': { turn: number; step: number; message: SystemMessage }
+```
+
+Source: [`packages/core/session/src/types.ts:310`](../packages/core/session/src/types.ts)
+
 ### `team/*`
 
 <a id="teammember--log-only"></a>
@@ -776,12 +858,12 @@ Source: [`packages/subagent/tool-subagent/src/model-selection-state.ts:17`](../p
 
 ```ts persistence-catalog
 /** Whole teammate lifecycle value, stored only in the Team Lead Session. */
-'team/member': { version: 1; teamId: TeamId; member: TeamMemberSnapshot }
+'team/member': { version: 2; teamId: TeamId; member: TeamMemberSnapshot }
 ```
 
 Types: [TeamId](subsystems/agent-team.md) · [TeamMemberSnapshot](subsystems/agent-team.md)
 
-Source: [`packages/experimental/agent-team/src/types.ts:223`](../packages/experimental/agent-team/src/types.ts)
+Source: [`packages/experimental/agent-team/src/types.ts:221`](../packages/experimental/agent-team/src/types.ts)
 
 <a id="teammessagedelivered--log-only"></a>
 
@@ -790,7 +872,7 @@ Source: [`packages/experimental/agent-team/src/types.ts:223`](../packages/experi
 ```ts persistence-catalog
 /** Durable acknowledgement that the target Session recorded the message. */
 'team/message/delivered': {
-  version: 1
+  version: 2
   teamId: TeamId
   messageId: TeamMessageId
   targetId: SessionId
@@ -799,7 +881,7 @@ Source: [`packages/experimental/agent-team/src/types.ts:223`](../packages/experi
 
 Types: [TeamId](subsystems/agent-team.md) · [TeamMessageId](subsystems/agent-team.md)
 
-Source: [`packages/experimental/agent-team/src/types.ts:229`](../packages/experimental/agent-team/src/types.ts)
+Source: [`packages/experimental/agent-team/src/types.ts:227`](../packages/experimental/agent-team/src/types.ts)
 
 <a id="teammessagequeued--log-only"></a>
 
@@ -807,12 +889,12 @@ Source: [`packages/experimental/agent-team/src/types.ts:229`](../packages/experi
 
 ```ts persistence-catalog
 /** Durable mailbox enqueue, stored before delivery is attempted. */
-'team/message/queued': { version: 1; teamId: TeamId; message: TeamMessageSnapshot }
+'team/message/queued': { version: 2; teamId: TeamId; message: TeamMessageSnapshot }
 ```
 
 Types: [TeamId](subsystems/agent-team.md) · [TeamMessageSnapshot](subsystems/agent-team.md)
 
-Source: [`packages/experimental/agent-team/src/types.ts:227`](../packages/experimental/agent-team/src/types.ts)
+Source: [`packages/experimental/agent-team/src/types.ts:225`](../packages/experimental/agent-team/src/types.ts)
 
 <a id="teamtask--log-only"></a>
 
@@ -820,12 +902,12 @@ Source: [`packages/experimental/agent-team/src/types.ts:227`](../packages/experi
 
 ```ts persistence-catalog
 /** Whole shared-task value, stored only in the Team Lead Session. */
-'team/task': { version: 1; teamId: TeamId; task: TeamTaskSnapshot }
+'team/task': { version: 2; teamId: TeamId; task: TeamTaskSnapshot }
 ```
 
 Types: [TeamId](subsystems/agent-team.md) · [TeamTaskSnapshot](subsystems/agent-team.md)
 
-Source: [`packages/experimental/agent-team/src/types.ts:225`](../packages/experimental/agent-team/src/types.ts)
+Source: [`packages/experimental/agent-team/src/types.ts:223`](../packages/experimental/agent-team/src/types.ts)
 
 ### `todo/*`
 
@@ -859,16 +941,16 @@ Source: [`packages/todo/tool-todo/src/types.ts:31`](../packages/todo/tool-todo/s
 
 Types: [ToolCallId](subsystems/core.md)
 
-Source: [`packages/core/session/src/types.ts:306`](../packages/core/session/src/types.ts)
+Source: [`packages/core/session/src/types.ts:341`](../packages/core/session/src/types.ts)
 
-<a id="toolcode-dispatch--log-only"></a>
+<a id="toolptc-dispatch--log-only"></a>
 
-#### `tool/code-dispatch` — log-only
+#### `tool/ptc-dispatch` — log-only
 
 ```ts persistence-catalog
 /**
  * One bridged sub-dispatch SETTLING: the pairing ids (matching the
- * `tool/code-dispatch-start` with the same `subCallId`), the tool `name`
+ * `tool/ptc-dispatch-start` with the same `subCallId`), the tool `name`
  * with the same JSON-normalized `arguments`, and the sub-call's complete
  * model-facing outcome in `tool/result`'s own vocabulary
  * (`content` + `isError`), so UIs render a sub-call through the exact
@@ -881,30 +963,30 @@ Source: [`packages/core/session/src/types.ts:306`](../packages/core/session/src/
  * before returning), so its execution-enclosure relation holds by
  * construction.
  */
-'tool/code-dispatch': PtcDispatchEventData
+'tool/ptc-dispatch': PtcDispatchEventData
 ```
 
 Source: [`packages/core/tools/src/types.ts:56`](../packages/core/tools/src/types.ts)
 
-<a id="toolcode-dispatch-start--log-only"></a>
+<a id="toolptc-dispatch-start--log-only"></a>
 
-#### `tool/code-dispatch-start` — log-only
+#### `tool/ptc-dispatch-start` — log-only
 
 ```ts persistence-catalog
 /**
  * One sub-dispatch STARTING inside a `run_code` program: the parent
- * `run_code` call id, the deterministic sub-call id (`<parent>:code:<n>`,
- * numbered in submission order), and the tool `name` with its
+ * `run_code` call id, the opaque sub-call id (new calls use
+ * `<parent>:ptc:<n>`, numbered in submission order), and the tool `name` with its
  * JSON-normalized `arguments` — the exact value dispatched, normalized
  * BEFORE dispatch, so this append can never fail on payload shape.
  * Appended when the scheduler actually starts the call (not at
  * submission), so a start means the tool body pipeline was entered; a
  * call abandoned in the queue logs nothing. Log-only: `deriveMessages()`
  * ignores it; UIs use it for live per-sub-call running state and pair it
- * with `tool/code-dispatch` by `subCallId` (timing = the two events'
+ * with `tool/ptc-dispatch` by `subCallId` (timing = the two events'
  * `time` fields).
  */
-'tool/code-dispatch-start': PtcDispatchStartEventData
+'tool/ptc-dispatch-start': PtcDispatchStartEventData
 ```
 
 Source: [`packages/core/tools/src/types.ts:40`](../packages/core/tools/src/types.ts)
@@ -929,12 +1011,13 @@ Source: [`packages/core/tools/src/types.ts:40`](../packages/core/tools/src/types
   turn: number
   step: number
   message: ToolResultMessage
+  /** Optional failure identity; allowed only when the tool-result block has `isError: true`. */
   error?: { name: string; code: string }
   meta?: JsonValue
 }
 ```
 
-Source: [`packages/core/session/src/types.ts:318`](../packages/core/session/src/types.ts)
+Source: [`packages/core/session/src/types.ts:353`](../packages/core/session/src/types.ts)
 
 ### `tool-workflow/*`
 
@@ -1014,7 +1097,7 @@ Source: [`packages/workflow/tool-workflow/src/types.ts:47`](../packages/workflow
 
 Types: [TurnEndReason](subsystems/session.md)
 
-Source: [`packages/core/session/src/types.ts:275`](../packages/core/session/src/types.ts)
+Source: [`packages/core/session/src/types.ts:285`](../packages/core/session/src/types.ts)
 
 <a id="turnstart--log-only"></a>
 
@@ -1030,7 +1113,7 @@ Source: [`packages/core/session/src/types.ts:275`](../packages/core/session/src/
 'turn/start': { turn: number }
 ```
 
-Source: [`packages/core/session/src/types.ts:266`](../packages/core/session/src/types.ts)
+Source: [`packages/core/session/src/types.ts:276`](../packages/core/session/src/types.ts)
 
 ### `user/*`
 
@@ -1049,7 +1132,7 @@ Source: [`packages/core/session/src/types.ts:266`](../packages/core/session/src/
 'user/message': UserMessage
 ```
 
-Source: [`packages/core/session/src/types.ts:287`](../packages/core/session/src/types.ts)
+Source: [`packages/core/session/src/types.ts:297`](../packages/core/session/src/types.ts)
 
 ### `web/*`
 

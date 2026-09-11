@@ -1,4 +1,4 @@
-import { access, mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises'
+import { access, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -22,7 +22,12 @@ import {
 
 const passed: CoverageCommandResult = { exitCode: 0, signalCode: null }
 
-afterEach(() => vi.restoreAllMocks())
+/** Every temporary root created by this file, removed after each test. */
+const roots: string[] = []
+afterEach(async () => {
+  vi.restoreAllMocks()
+  for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true })
+})
 
 async function writeBlob(command: CoverageCommand): Promise<void> {
   if (command.blobPath === undefined) return
@@ -31,7 +36,9 @@ async function writeBlob(command: CoverageCommand): Promise<void> {
 }
 
 async function temporaryRoot(): Promise<string> {
-  return await mkdtemp(join(tmpdir(), 'dsh-coverage-partitions-'))
+  const root = await mkdtemp(join(tmpdir(), 'dsh-coverage-partitions-'))
+  roots.push(root)
+  return root
 }
 
 /** Write a Vitest results cache under a temporary root. */
@@ -197,6 +204,28 @@ describe('coverage file inventory', () => {
     ])
     expect(inventory.projectOf.get('packages/a/tests/a.spec.ts')).toBe('thread-safe')
     expect(inventory.projectOf.get('packages/b/tests/b.spec.ts')).toBe('process-bound')
+  })
+
+  it('removes every Typert package from instrumented files and project assignments', async () => {
+    const root = await temporaryRoot()
+    const typertFiles = [
+      'packages/typert/generator/tests/type-model.spec.ts',
+      'packages/typert/loader/tests/loader.spec.ts',
+      'packages/typert/protocol/tests/protocol.spec.ts',
+      'packages/typert/registry/tests/typert.spec.ts',
+      'packages/typert/future/tests/nested/client.spec.tsx',
+    ]
+    for (const file of typertFiles) {
+      await mkdir(dirname(join(root, file)), { recursive: true })
+      await writeFile(join(root, file), '')
+    }
+    const retained = 'packages/api/gateway/tests/rpc.spec.ts'
+    const inventory = parseListOutput(
+      [...typertFiles, retained].map(file => `[thread-safe] ${file}`).join('\n'),
+      root,
+    )
+    expect(inventory.files).toEqual([retained])
+    expect([...inventory.projectOf]).toEqual([[retained, 'thread-safe']])
   })
 
   it('averages recorded durations per file from the results cache', async () => {

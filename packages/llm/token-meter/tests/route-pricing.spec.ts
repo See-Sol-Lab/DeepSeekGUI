@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import { LlmRuntime, LlmAdapter, createMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
+import {
+  LlmRuntime, LlmAdapter, createMessage, createUserMessage, projectFilesToText,
+} from '@deepseek-ai/dsh-llm'
 import type { GenerateOptions, LlmImageRequestPricing, Message, StreamChunk, TokenUsage, UserMessage } from '@deepseek-ai/dsh-llm'
 import { AttachmentId } from '@deepseek-ai/dsh-attachment'
-import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
+import type { FileAttachmentRef, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { Session, SessionId, canonicalHeader } from '@deepseek-ai/dsh-session'
 import type { EpochHeader } from '@deepseek-ai/dsh-session'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
@@ -53,11 +55,20 @@ function imageMessage(name: string, text = 'look at this'): UserMessage {
   })
 }
 
+function fileRef(name: string): FileAttachmentRef {
+  return {
+    attachmentId: AttachmentId(`sha256:${'ab'.repeat(32)}`),
+    name,
+    bytes: 2_447_000_000,
+  }
+}
+
 function header(model: string): EpochHeader {
   return canonicalHeader({ config: { provider: 'mock', model } })
 }
 
 interface Harness {
+  ctx: Context
   meter: TokenMeter
   session: Session
 }
@@ -65,10 +76,16 @@ interface Harness {
 async function harness(pricing: (model: string) => LlmImageRequestPricing | undefined): Promise<Harness> {
   const ctx = new Context()
   new SessionProjectionRegistry(ctx)
+  ctx.provide('attachments', {
+    fileHostPath: (ref: FileAttachmentRef) => `/host/${ref.name}`,
+  } as never)
+  ctx.provide('fs', {
+    processPathFromHostPath: (path: string) => path.replace('/host/', '/sandbox/'),
+  } as never)
   const llm = new LlmRuntime(ctx)
   llm.registerAdapter(['mock'], new PricingAdapter(pricing))
   const meter = new TokenMeter(ctx)
-  return { meter, session: Session.create(SessionId('route-priced')) }
+  return { ctx, meter, session: Session.create(SessionId('route-priced')) }
 }
 
 /** Route price of one image-bearing message under the fixed pricing double. */
@@ -84,6 +101,7 @@ function appendSuccessfulCall(session: Session, value: EpochHeader, usage?: Toke
   session.append('step/start', { turn: 1, step: 1 })
   session.append('request/header', { header: value, reason: 'initial' })
   session.append('assistant/message', {
+    stream: [],
     turn: 1,
     step: 1,
     message: createMessage({
@@ -96,9 +114,25 @@ function appendSuccessfulCall(session: Session, value: EpochHeader, usage?: Toke
   session.append('step/end', { turn: 1, step: 1 })
 }
 
-describe('route-aware image pricing', () => {
+describe('request projection pricing', () => {
+  it('prices file blocks as the exact handle text dispatched to the provider', async () => {
+    const { meter, session } = await harness(() => undefined)
+    const ref = fileRef('archive.zip')
+    const message = createUserMessage({
+      content: [{ type: 'file', attachment: ref }],
+      source: { kind: 'user' },
+    })
+    session.append('user/message', message, { surfaceOp: 'append' })
+
+    const measurement = meter.measure(session)
+    const projected = projectFilesToText([message], file => `/sandbox/${file.name}`)[0]
+    if (projected === undefined) throw new Error('missing projected file message')
+    expect(measurement.nodes[0]?.tokens).toBe(estimateMessage(projected))
+    expect(measurement.nodes[0]?.tokens).toBeGreaterThan(estimateMessage(message))
+  })
+
   it('prices a first multimodal request estimate with the routed visual tokens', async () => {
-    const { meter, session } = await harness(() => fixedPricing)
+    const { ctx, meter, session } = await harness(() => fixedPricing)
     const message = imageMessage('photo')
     session.append('user/message', message, { surfaceOp: 'append' })
     session.append('request/header', { header: header('vision'), reason: 'initial' })
@@ -113,6 +147,9 @@ describe('route-aware image pricing', () => {
     expect(measurement.baseline.kind).toBe('estimated')
     expect(measurement.surfaceTokens).toBe(expectedNode)
     expect(measurement.totalTokens).toBe(expectedNode)
+    const breakdown = ctx.sessionProjections.snapshot(session).values.contextBreakdown
+    expect(breakdown).toEqual({ systemTokens: 0, toolsTokens: 0, messageTokens: estimateMessage(message) })
+    expect(breakdown?.messageTokens).not.toBe(measurement.surfaceTokens)
   })
 
   it('adds a post-anchor image at its routed price on top of provider usage', async () => {

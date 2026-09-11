@@ -26,7 +26,7 @@ Local implementation of the [git capability seam](../git/README.md) (`ctx.git`):
 
 - Resolves `git` once per service lifetime and verifies the version once (`git --version`, floor 2.11 for porcelain v2); later queries trust the result.
 - Every query first probes `repoIdentity` so a non-repository directory fails as `GitNotARepositoryError` before any command runs.
-- Every command runs with a 30-second timeout, a 5-second terminate grace, a 4 MiB collected-output bound, and a bounded stderr capture. A truncated listing refuses the result (`GitDiffTooLargeError`) rather than returning a partial one.
+- Every local command runs with a 30-second timeout, a 5-second terminate grace, a 4 MiB collected-output bound, and a bounded stderr capture; `ls-remote` gets 60 seconds and `push` 10 minutes, because they wait on the network. A command killed by its timeout has no exit code and is reported as terminated, never as a refusal. A truncated listing refuses the result (`GitDiffTooLargeError`) rather than returning a partial one.
 - The version probe runs in the harness cwd; every query runs in the caller's working directory.
 - `worktreeAdd(cwd, path, branch)` and `worktreeRemove(cwd, path)` (B4-P3) — `git worktree add -q -b <branch> <path>` and `git worktree remove <path>`, consumed by the managed-worktree task lifecycle. No `--force` is ever passed; git itself refuses a duplicate branch and a dirty work tree.
 - Index/revert operations (B4-P4): `applyIndexPatch(cwd, patch, reverse)` feeds the patch to `git apply --cached [--reverse] -` through the subprocess stdin; `stageFile(cwd, path)` runs `git add -- <path>` (both sides of a rename); `unstageFile(cwd, path)` reverse-applies the staged diff it generates itself (`git diff --cached --binary`, both sides of a rename) so the index moves back toward HEAD with the work tree untouched; `revertFile(cwd, path)` runs `git checkout -- <path>` after refusing untracked and conflict paths up front with `GitRevertRefusedError`. Every write re-verifies the authoritative status where the semantics need it (rename pairs, revert preconditions).
@@ -70,3 +70,5 @@ Independent of live requests: the provider adds nothing to the request prefix, s
 DeepSeekGUI owns this package; upstream ships no equivalent. Since B5-P4 its only consumer is the coding-tools plugin, which registers the DSH tools that call this seam — the retired Task capability no longer sits in between.
 
 </details>
+
+File operations use literal pathspecs. Revert can compare the approved patch, and push validates an opaque proof of its exact destination. Public remote URLs and command errors redact credentials; timeouts remain failures.

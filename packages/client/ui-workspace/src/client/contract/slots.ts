@@ -101,8 +101,14 @@ export type WorkspaceBrowserInjected = {
    * Start a New Session in a Workspace: reuse-or-create its blank session and
    * open it; without an explicit workspace, inherit the current Session
    * Workspace, then the recent Workspace, or clear into the New Session view.
+   *
+   * Returns a promise that rejects when the session could not be created, so
+   * the caller can say so. It used to return nothing and swallow the failure
+   * into a console warning: a user whose harness was not answering clicked
+   * New Session and got silence — no session, no error, nothing to act on
+   * (莉莉丝 2026-09-10). Callers that ignore the result still typecheck.
    */
-  startSession: (workspaceId?: WorkspaceId) => void
+  startSession: (workspaceId?: WorkspaceId) => void | Promise<void>
   /** Open a real Session. */
   open: (sessionId: SessionId) => void
   /**

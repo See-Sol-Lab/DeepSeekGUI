@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-fs-observation-policy` 在 `ctx.fs` 文件系统约定（[`dsh-fs`](../fs/README.zh.md)）之上添加编辑前读取策略：它记录调用会话观察过哪些文件，并用该记录防护每一次写入与编辑——未见文件只能被创建，已观察文件只能在最后看到的版本上被替换，编辑则要求先读取。它只通过 `fs/*` 事件参与，因此不注册任何服务，也没有公开方法；移除它只会让工具回到裸提供方的无条件变更行为，而不会破坏工具。把它与后端（`fs-local`、`fs-sandbox`）和工具（`tool-fs`）一起加载，会让模型在读取文件之前无法成功编辑文件，并收到清晰的恢复提示。需要 agent（智能体）先读后改的部署请选择它。
+`dsh-fs-observation-policy` 要求 agent（智能体）先读取文件，文件系统工具才可覆盖或编辑它。如果文件自读取后发生变化，它也会拒绝变更，并清楚提示重新读取后重试。读取缺失路径会授权带防护的创建，同时仍防止覆盖并发创建的文件。需要编辑前读取安全性的部署请选择它；由于观察记录不持久化，恢复的会话必须重新读取目标。
 
 ## 目录
 
@@ -43,7 +43,7 @@ kind: "package-reference"
 
 ### 失败与恢复
 
-没有先前观测的编辑以代码 `FS_NOT_OBSERVED` 和消息 `edit requires reading "<path>" first` 失败；编辑被观测为缺失的目标以 `FS_NOT_FOUND` 失败。工具会追加恢复指令——先重新读取文件再重试——同时保留错误码。在外部删除的文件上遵循该恢复指令会记录缺失，因此下一次防护写入可以重新创建它，而不会覆盖并发创建者。
+没有先前观测的编辑以代码 `FS_NOT_OBSERVED` 和策略原因 `edit requires reading "<path>" first` 失败；编辑被观测为缺失的目标以 `FS_NOT_FOUND` 失败。工具把策略和提供方的未读失败统一为 `cannot modify "<path>": file has not been read — read the file, then retry`，同时保留错误码和原始原因。在外部删除的文件上遵循该恢复指令会记录缺失，因此下一次防护写入可以重新创建它，而不会覆盖并发创建者。
 
 -----
 
@@ -106,7 +106,7 @@ kind: "package-reference"
 
 #### 模型看到的内容
 
-该插件不添加提示词或 schema。没有先前观测时，它会以代码 `FS_NOT_OBSERVED` 和精确消息 `edit requires reading "<path>" first` 拒绝编辑；编辑被观测为缺失的目标返回 `FS_NOT_FOUND`。正向观测陈旧时，带防护的变更会传播由提供方拥有的 `FS_STALE_VERSION` 错误。[`dsh-tool-fs`](../tool-fs/README.zh.md) 拥有面向模型的错误包装，会为 `FS_STALE_VERSION` 消息追加恢复指令（`— re-read the file, then retry`）、为 `FS_NOT_OBSERVED` 消息追加恢复指令（`— read the file, then retry`），同时保留错误码。外部删除目标后，遵循陈旧恢复指令会记录缺失：下一次带防护的写入可以通过 `createIfAbsent` 重新创建该目标，而提供方会以原子方式保留任何并发创建者写入的文件。
+该插件不添加提示词或 schema。没有先前观测时，它会以代码 `FS_NOT_OBSERVED` 和策略原因 `edit requires reading "<path>" first` 拒绝编辑；编辑被观测为缺失的目标返回 `FS_NOT_FOUND`。正向观测陈旧时，带防护的变更会传播由提供方拥有的 `FS_STALE_VERSION` 错误。[`dsh-tool-fs`](../tool-fs/README.zh.md) 拥有模型侧错误包装：它把所有 `FS_NOT_OBSERVED` 来源规范化为 `cannot modify "<path>": file has not been read — read the file, then retry`，而 `FS_STALE_VERSION` 保留提供方原因并追加 `— re-read the file, then retry`；两者都保留错误码和原始原因。外部删除目标后，遵循陈旧恢复指令会记录缺失：下一次带防护的写入可以通过 `createIfAbsent` 重新创建该目标，而提供方会以原子方式保留任何并发创建者写入的文件。
 
 #### Token 影响
 

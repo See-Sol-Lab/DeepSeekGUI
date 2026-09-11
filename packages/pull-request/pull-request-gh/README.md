@@ -71,3 +71,5 @@ Independent of live requests: the package never touches a request prefix, so it 
 DeepSeekGUI owns this package; upstream ships no equivalent. Since B5-P4 its only consumer is the coding-tools plugin, which registers the DSH tools that call this seam — the retired Task capability no longer sits in between.
 
 </details>
+
+Pull-request bodies travel through stdin. Existing-PR lookup selects open pull requests. Subprocess timeout and truncated output fail explicitly.

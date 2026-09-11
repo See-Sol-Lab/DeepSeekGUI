@@ -669,7 +669,7 @@
         "@deepseek-ai/.+"
       ]
     },
-    "apps/desktop/workbench-plugin": {
+    "apps/deepseekgui/workbench-plugin": {
       "entry": [
         "src/index.ts",
         "src/client/index.ts",
@@ -683,7 +683,7 @@
         "tests/**/*.tsx"
       ]
     },
-    "apps/desktop": {
+    "apps/deepseekgui": {
       "entry": [
         "src/chrome/preload.cts",
         "src/terminal/preload.cts",

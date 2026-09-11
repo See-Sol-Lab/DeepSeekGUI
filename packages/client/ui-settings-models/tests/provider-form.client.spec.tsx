@@ -529,7 +529,8 @@ describe('endpoint interrogation', () => {
 
   it('adopts only the picked candidates, keeping a row the user already tuned', async () => {
     const discover = vi.fn(() => Promise.resolve(ok([
-      { id: 'kept', contextWindow: 999 }, { id: 'fresh', contextWindow: 4096, name: 'Fresh' },
+      { id: 'kept', contextWindow: 999 },
+      { id: 'fresh', contextWindow: 4096, maxTokens: 2048, name: 'Fresh' },
     ])))
     const { mutate } = await mountSection({
       discover,
@@ -544,11 +545,17 @@ describe('endpoint interrogation', () => {
     expect(boxes.map(box => box.checked)).toEqual([false, true])
     fireEvent.click(screen.getByText(en.fetchAdopt))
 
+    expect(screen.getByLabelText<HTMLInputElement>(`${en.modelId} 2`).value).toBe('fresh')
+    expect(screen.getByLabelText<HTMLInputElement>(`${en.modelName} 2`).value).toBe('Fresh')
+    expandModel(2)
+    expect(screen.getByLabelText<HTMLInputElement>(`${en.modelContextWindow} 2`).value).toBe('4096')
+    expect(screen.getByLabelText<HTMLInputElement>(`${en.modelMaxTokens} 2`).value).toBe('2048')
+
     fireEvent.click(screen.getByText(en.apply))
     await waitFor(() => { expect(mutate).toHaveBeenCalled() })
     expect(firstMutate(mutate).ops[0]?.value).toEqual([
       { id: 'kept', contextWindow: 111 },
-      { id: 'fresh', contextWindow: 4096, name: 'Fresh' },
+      { id: 'fresh', contextWindow: 4096, maxTokens: 2048, name: 'Fresh' },
     ])
   })
 
@@ -661,7 +668,7 @@ describe('endpoint interrogation', () => {
     expect(firstMutate(mutate).ops[0]?.value).toEqual([{ id: 'a' }, { id: 'b', maxTokens: 2048 }])
   })
 
-  it('filters by model id or name and scopes bulk selection to visible candidates', async () => {
+  it('filters by model id or name, selects visible candidates, and clears every selection', async () => {
     const discover = vi.fn(() => Promise.resolve(ok([
       { id: 'alpha' }, { id: 'opaque-id', name: 'Beta Display' }, { id: 'gamma' },
     ])))
@@ -687,14 +694,17 @@ describe('endpoint interrogation', () => {
     expect([...dialog.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')]
       .map(box => box.checked)).toEqual([false])
 
-    // Clearing the filter restores every row and preserves hidden selections.
+    // Deselecting a filtered result must also clear hidden selections so they
+    // cannot be adopted accidentally.
     fireEvent.change(search, { target: { value: '' } })
     const boxes = [...dialog.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')]
-    expect(boxes.map(box => box.checked)).toEqual([true, false, true])
+    expect(boxes.map(box => box.checked)).toEqual([false, false, false])
 
+    // Selecting while filtered adds only visible candidates.
+    fireEvent.change(search, { target: { value: 'alpha' } })
     fireEvent.click(within_(dialog, en.fetchSelectAll))
-    expect(boxes.map(box => box.checked)).toEqual([true, true, true])
-    expect(within_(dialog, en.fetchDeselectAll)).toBeTruthy()
+    fireEvent.change(search, { target: { value: '' } })
+    expect(boxes.map(box => box.checked)).toEqual([true, false, false])
 
     fireEvent.change(search, { target: { value: 'missing' } })
     expect(screen.getByText(en.fetchNoMatches)).toBeTruthy()
@@ -1067,6 +1077,73 @@ describe('hand-declared providers', () => {
 
     fireEvent.change(routeField, { target: { value: 'openai' } })
     expect(screen.getByText(en.customRouteTaken).className).toMatch(/error/)
+  })
+
+  it.each(['not-a-url', 'localhost:11434', 'ftp://gateway.acme.example/v1'])(
+    'rejects the non-HTTP base URL %j before discovery or creation', (baseURL) => {
+      const { discover, mutate } = mountCard()
+      fireEvent.change(screen.getByLabelText(en.customRoute), { target: { value: 'acme' } })
+      fireEvent.click(screen.getByRole('button', { name: en.addModel }))
+      fireEvent.change(screen.getByLabelText(`${en.modelId} 1`), { target: { value: 'm' } })
+      fireEvent.change(screen.getByLabelText(en.baseUrl), { target: { value: baseURL } })
+
+      expect(screen.getByText(en.customBaseUrlInvalid)).toBeTruthy()
+      expect(screen.getByLabelText(en.baseUrl).getAttribute('aria-invalid')).toBe('true')
+      expect(buttonNamed(en.fetchModels).disabled).toBe(true)
+      expect(buttonNamed(en.fetchModels).title).toBe(en.customBaseUrlInvalid)
+      expect(buttonNamed(en.create).disabled).toBe(true)
+      expect(discover).not.toHaveBeenCalled()
+      expect(mutate).not.toHaveBeenCalled()
+    },
+  )
+
+  it.each([
+    'http://localhost:11434/v1',
+    'http://127.0.0.1:8080/v1',
+    'http://[::1]:8080/v1',
+    'https://gateway.acme.example:8443/v1',
+  ])('allows the HTTP base URL %j to be interrogated', (baseURL) => {
+    const { discover } = mountCard()
+    fireEvent.change(screen.getByLabelText(en.customRoute), { target: { value: 'acme' } })
+    fireEvent.click(screen.getByRole('button', { name: en.addModel }))
+    fireEvent.change(screen.getByLabelText(`${en.modelId} 1`), { target: { value: 'm' } })
+    fireEvent.change(screen.getByLabelText(en.baseUrl), { target: { value: baseURL } })
+
+    expect(screen.queryByText(en.customBaseUrlInvalid)).toBeNull()
+    expect(buttonNamed(en.fetchModels).disabled).toBe(false)
+    expect(buttonNamed(en.create).disabled).toBe(false)
+    fireEvent.click(screen.getByText(en.fetchModels))
+    expect(firstProbe(discover)).toMatchObject({ baseURL })
+  })
+
+  it('normalizes surrounding whitespace before interrogating and storing a base URL', async () => {
+    const discover = vi.fn(() => Promise.resolve(ok([{ id: 'm' }])))
+    const { mutate, onClose } = mountCard({}, { discover })
+    fireEvent.change(screen.getByLabelText(en.customRoute), { target: { value: 'acme' } })
+    fireEvent.change(screen.getByLabelText(en.baseUrl), {
+      target: { value: '  https://gateway.acme.example/v1  ' },
+    })
+
+    expect(screen.queryByText(en.customBaseUrlInvalid)).toBeNull()
+    fireEvent.click(screen.getByText(en.fetchModels))
+    await waitFor(() => { expect(discover).toHaveBeenCalledTimes(1) })
+    expect(firstProbe(discover)).toMatchObject({ baseURL: 'https://gateway.acme.example/v1' })
+
+    fireEvent.click(await screen.findByText(en.fetchAdopt))
+    await waitFor(() => { expect(buttonNamed(en.create).disabled).toBe(false) })
+    fireEvent.click(screen.getByText(en.create))
+    await waitFor(() => { expect(onClose).toHaveBeenCalledWith(true) })
+    expect(firstMutate(mutate).ops[0]?.value).toMatchObject({ baseURL: 'https://gateway.acme.example/v1' })
+  })
+
+  it('keeps a network failure distinct from base URL syntax', async () => {
+    const discover = vi.fn(() => Promise.resolve(fail('connection refused', 'gateway/internal')))
+    mountCard({}, { discover })
+    fireEvent.change(screen.getByLabelText(en.baseUrl), { target: { value: 'http://localhost:11434/v1' } })
+    fireEvent.click(screen.getByText(en.fetchModels))
+
+    await screen.findByText('connection refused')
+    expect(screen.queryByText(en.customBaseUrlInvalid)).toBeNull()
   })
 
   it('derives a reference the credential seam accepts for every id it admits', () => {

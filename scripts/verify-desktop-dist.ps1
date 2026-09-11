@@ -25,12 +25,12 @@ if (-not (Test-Path $exe)) {
 }
 
 # Delivery-identity consistency (version contract, DEEPSEEKGUI_VERSIONING.md):
-# 1) exe FileVersion = DeepSeekGUI app version (single hand-written source: apps/desktop/package.json).
+# 1) exe FileVersion = DeepSeekGUI app version (single hand-written source: apps/deepseekgui/package.json).
 # 2) resources/dsh/source-commit.txt present and non-empty (packaged builds must be traceable).
 # 3) embedded DSH version read from the actual packaged runtime manifest (no second hand-written constant).
 # NOTE: comments in this script stay ASCII-only — Windows PowerShell 5.1 decodes BOM-less
 # UTF-8 scripts as ANSI and can fold non-ASCII comment lines into following statements.
-$desktopManifestPath = Join-Path (Get-Location) 'apps\desktop\package.json'
+$desktopManifestPath = Join-Path (Get-Location) 'apps\deepseekgui\package.json'
 $appVersion = (Get-Content $desktopManifestPath -Raw | ConvertFrom-Json).version
 $fileVersion = (Get-Item $exe).VersionInfo.FileVersion
 if ($fileVersion -ne $appVersion) {

@@ -23,7 +23,8 @@
 import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { parseUpdateManifest } from '../apps/desktop/src/update-service.ts'
+import { createHash } from 'node:crypto'
+import { parseUpdateManifest } from '../apps/deepseekgui/src/update-service.ts'
 
 /** Repository that serves the public releases. */
 const RELEASE_REPO = 'See-Sol-Lab/DeepSeekGUI'
@@ -100,27 +101,26 @@ function main(): void {
   // The installer names itself after the version the build stamped, so the
   // version is read back from the artefact rather than from a source file:
   // this manifest must describe what was built, not what was intended.
-  const installerLine = sums.split('\n').map(line => line.trim().split(/\s+/)[1] ?? '')
-    .find(name => /^DeepSeekGUI-Setup-.+\.exe$/.test(name))
-  if (installerLine === undefined) fail('no DeepSeekGUI-Setup-*.exe entry in SHA256SUMS.txt')
-  const filename = installerLine
-  const version = /^DeepSeekGUI-Setup-(.+)\.exe$/.exec(filename)?.[1]
-  if (version === undefined) fail(`cannot read a version out of ${filename}`)
-
-  const installerPath = join(DIST_DIR, filename)
-  if (!existsSync(installerPath)) fail(`${filename} is listed in SHA256SUMS.txt but missing from dist/desktop`)
-  const size = statSync(installerPath).size
-  if (size <= 0) fail(`${filename} is empty`)
+  const names = [...new Set(sums.split('\n').map(line => line.trim().split(/\s+/)[1] ?? ''))]
+    .filter(name => /^DeepSeekGUI-Setup-[0-9.]+\.exe$/.test(name) || /^DeepSeekGUI-[0-9.]+-x64\.AppImage$/.test(name))
+  if (names.length === 0) fail('no supported Windows or Linux installer entry in SHA256SUMS.txt')
+  const versions = names.map(name => /^DeepSeekGUI-(?:Setup-)?([0-9.]+)(?:-x64)?\.(?:exe|AppImage)$/.exec(name)?.[1])
+  const version = versions[0]
+  if (version === undefined || versions.some(value => value !== version)) fail('installers must belong to one release version')
+  const assets = names.map((filename) => {
+    const installerPath = join(DIST_DIR, filename)
+    if (!existsSync(installerPath)) fail(`${filename} is listed in SHA256SUMS.txt but missing from dist/desktop`)
+    const size = statSync(installerPath).size
+    if (size <= 0) fail(`${filename} is empty`)
+    const sha256 = digestOf(sums, filename)
+    if (createHash('sha256').update(readFileSync(installerPath)).digest('hex') !== sha256) fail(`${filename} does not match SHA256SUMS.txt`)
+    return { url: `https://github.com/${RELEASE_REPO}/releases/download/${tagFor(version)}/${filename}`, sha256, size, filename }
+  })
 
   const manifest = {
     latestVersion: version,
     releaseNotes: readNotes(),
-    assets: [{
-      url: `https://github.com/${RELEASE_REPO}/releases/download/${tagFor(version)}/${filename}`,
-      sha256: digestOf(sums, filename),
-      size,
-      filename,
-    }],
+    assets,
   }
 
   // Validate with the client's own parser: whatever this writes must be
@@ -136,7 +136,7 @@ function main(): void {
   writeFileSync(OUTPUT_PATH, text)
   console.log(`generate-update-manifest: wrote ${OUTPUT_PATH}`)
   console.log(`  version  ${version}`)
-  console.log(`  asset    ${filename} (${String(Math.round(size / 1024 / 1024))} MB)`)
+  for (const asset of assets) console.log(`  asset    ${asset.filename} (${String(Math.round(asset.size / 1024 / 1024))} MB)`)
   console.log(`  tag      ${tagFor(version)} — the release must be published under this exact tag`)
   console.log('  upload this file as a release asset named update-manifest.json')
 }

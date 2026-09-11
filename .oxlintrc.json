@@ -23,7 +23,7 @@
     "packages/typert/generator/tests/fixtures/type-model/**", // tsgolint rejects this fixture's preserved project shapes before rules run.
     "website/.generated/**",
     "vendor/**", // Vendored source keeps upstream style and idioms.
-    "native/**", // The imported landlock-run subtree has its own gates; see native/README.md.
+    "native/**", // The imported system subtree has its own gates; see native/README.md.
     "**/*.js",
     "**/*.mjs",
     "**/*.config.ts", // Tool and app configs are outside the repository TypeScript programs.

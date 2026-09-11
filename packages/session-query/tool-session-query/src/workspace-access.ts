@@ -81,6 +81,17 @@ async function authorizeTarget(
   if (target === caller.id) return
   const cwd = caller.header.cwd
   if (cwd === undefined) throw serviceBoundary.unauthorizedTarget()
+  const deletion = await ctx.sessionQuery.deletedSession(target)
+  signal.throwIfAborted()
+  if (deletion !== undefined) {
+    if (deletion.cwd !== cwd) throw serviceBoundary.unauthorizedTarget()
+    throw new HarnessError(
+      deletion.state === 'deleted'
+        ? `Session "${target}" was deleted at ${new Date(deletion.deletedAt).toISOString()}. Its messages and attachments are unavailable; do not continue searching its content.`
+        : `Session "${target}" deletion is incomplete. Its content is unavailable; ask the user to retry deletion.`,
+      deletion.state === 'deleted' ? 'SESSION_DELETED' : 'SESSION_DELETION_INCOMPLETE',
+    )
+  }
   const records = await serviceBoundary.call(ctx, signal, 'target authorization', () =>
     ctx.sessionQuery.filterSessions([
       { kind: 'id', values: [target] },

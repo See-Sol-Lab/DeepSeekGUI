@@ -28,6 +28,10 @@ DeepSeekGUI stores sessions through Harness in the active Harness Home. Reopen a
 
 Changing the active Profile or Harness Home changes which session store the interface reads. Returning to the original Home and Profile makes its sessions available again; DeepSeekGUI does not copy sessions between Homes.
 
+## Archive and restore a session
+
+Archiving a session hides it from its workspace group without deleting its log or its place. Archived sessions appear under **Archived** at the end of the session list; **Restore and open** puts the session back in its group and opens it.
+
 ## Attach files and images
 
 Attach an image when the selected model supports image input. For project files, tell the agent which path to inspect rather than pasting large files into the conversation.

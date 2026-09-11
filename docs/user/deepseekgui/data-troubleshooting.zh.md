@@ -8,7 +8,7 @@ DeepSeekGUI 把应用状态与 Managed Harness Home 保存在 Windows 用户目�
 
 | 数据 | 默认位置 | 说明 |
 | --- | --- | --- |
-| Managed Harness Home | `%APPDATA%\DeepSeekGUI\dsh` | Harness 管理的凭据、设置、会话、Profile 与插件。 |
+| Managed Harness Home | `%APPDATA%\DeepSeekGUI\dsh` | Harness 管理的凭据、设置、会话、Profile 与插件。可从**数据位置**迁移；见下文。 |
 | Launcher selection | `%APPDATA%\DeepSeekGUI\launcher-state.json` | 当前 Home 与 Profile、last-known-good 选择和已脱敏的启动失败。 |
 | 桌面偏好 | `%APPDATA%\DeepSeekGUI\desktop-ui-state.json` | 窗口尺寸、主题与本地 UI 确认状态。 |
 | 服务日志 | `%APPDATA%\DeepSeekGUI\dsh-service.log` | 已脱敏并轮转；包含当前文件与有上限的历史文件。 |
@@ -18,6 +18,12 @@ DeepSeekGUI 把应用状态与 Managed Harness Home 保存在 Windows 用户目�
 | 项目记忆 | 所选工作区中的 `<文件夹名>.memory.md` | 助手维护的项目事实，属于项目文件的一部分。 |
 
 Windows 通过 Known Folder API 解析真实应用数据目录。表格使用 `%APPDATA%` 作为熟悉的默认写法。
+
+## 迁移 Managed Harness Home
+
+从菜单选择**数据位置…**可以查看当前数据目录并迁移。选定目标文件夹后：DeepSeekGUI 复制每一项、按大小与 SHA-256 逐项校验、把 launcher 指向新目录，然后请你重启。重启会逐项核对新位置，只有核对通过后才会提示删除旧的那份。在那之前旧文件原样保留；核对失败时保留旧文件并停下。
+
+这条路径只搬 Managed Harness Home。它不搬程序安装位置——安装器、快捷方式、卸载项与更新器才是它的归属——也不搬你选择的 Existing Home、你的项目目录，或 `%APPDATA%\DeepSeekGUI` 下的其他文件。
 
 ## 卸载与重新安装
 
@@ -72,7 +78,7 @@ Profile 切换失败后，DeepSeekGUI 可能回到 last-known-good Profile。恢
 
 ## 检查更新报告没有可用更新
 
-公开通道可能尚无 Release manifest，或者已安装版本已经是最新版本。这不会改变已安装应用。需要时可以从 GitHub 手动下载 Release。
+已安装版本已经是最新发布版本。这不会改变已安装应用。你也可以从 GitHub 手动下载 Release。
 
 ## GUI 无法使用时导出诊断
 

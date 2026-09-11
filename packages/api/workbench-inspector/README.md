@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Browse workspace directories, open text files, and inspect current Git status and patches without a model request. DeepSeekGUI maintains this adapter over the composed filesystem, Git, and SessionQuery providers. Reads are bounded and cancellation-aware; this package has no write endpoint or durable state.
+Inspect workspace and Git facts without model requests. The desktop-only `deleteSession` endpoint delegates authorized deletion to SessionController.
 
 ## Table of Contents
 
@@ -22,14 +22,14 @@ Browse workspace directories, open text files, and inspect current Git status an
 <a id="use-this-package"></a>
 ## Use this package
 
-The DeepSeekGUI Web composition mounts this plugin as a Loader row. Custom compositions need fs, git, sessionQuery, and typert providers; it is not an installable bundle by itself.
+The DeepSeekGUI Web composition mounts this plugin as a Loader row. Custom compositions need fs, git, sessionQuery, sessionController, and typert providers; it is not an installable bundle by itself.
 
 | Field | Default | Meaning |
 | --- | --- | --- |
 | logLimit | 30 | Newest commits the overview returns |
 | maxTextBytes | 524288 | Maximum file-text or diff response size; oversized content fails instead of silently clipping |
 
-WorkbenchFileText contains path and complete bounded text. WorkbenchMemory describes the project memory: the Session cwd, the file name `<folder name>.memory.md` (the folder prefix keeps it distinct from the global memory.md under the DSH home), its text or null when the file does not exist yet, and whether the project has an AGENTS.md. WorkbenchRepository contains the Git root and the provider's RepoStatus. WorkbenchOverview carries the root, the RepoStatus, the configured remotes, the newest commits (sha, subject, author, time), and every registered work tree as a WorkbenchWorktree: the provider's WorktreeInfo plus `current` (the Session's repository root) and `changedPaths` (that tree's own changed paths; empty when clean, unreadable, or bare). Text queries distinguish the Session workspace from its Git root, so untracked repository files use the correct base. Directory browsing is deliberately absent: the desktop opens the system file manager for that.
+WorkbenchFileText contains path and complete bounded text. WorkbenchMemory describes the project memory: the Session cwd, the file name `<folder name>.memory.md` (the folder prefix keeps it distinct from the global memory.md under the DSH home), its text or null when the file does not exist yet, and whether the project has an AGENTS.md. WorkbenchRepository contains the Git root and the provider's RepoStatus. WorkbenchOverview carries the root, the RepoStatus, the configured remotes, the newest commits (sha, subject, author, time), and every registered work tree as a WorkbenchWorktree: the provider's WorktreeInfo plus `current` (the Session's repository root) and `changedPaths` (that tree's own changed paths; empty when clean or bare; statusError reports an unreadable tree). WorkbenchLastReply carries the newest assistant reply of a Session (its text blocks joined; null before the first reply) and whether a `turn/end` follows it; the desktop's feedback triage prompts a hidden session and polls `lastReply` until `complete` is true, which keeps it off the streaming follow channel. `deleteSession(sessionId, signature)` delegates desktop-authorized deletion to the Session owner and its persistence provider. Text queries distinguish the Session workspace from its Git root, so untracked repository files use the correct base. Directory browsing is deliberately absent: the official right Sidebar carries the file tree.
 
 <a id="understand-the-implementation"></a>
 ## Understand the implementation

@@ -8,7 +8,7 @@ DeepSeekGUI keeps its application state and Managed Harness Home under the Windo
 
 | Data | Default location | Notes |
 | --- | --- | --- |
-| Managed Harness Home | `%APPDATA%\DeepSeekGUI\dsh` | Credentials, settings, sessions, Profiles, and plugins managed by Harness. |
+| Managed Harness Home | `%APPDATA%\DeepSeekGUI\dsh` | Credentials, settings, sessions, Profiles, and plugins managed by Harness. You can move it from **Data location**; see below. |
 | Launcher selection | `%APPDATA%\DeepSeekGUI\launcher-state.json` | Active Home and Profile, last known good selection, and redacted boot failure. |
 | Desktop preferences | `%APPDATA%\DeepSeekGUI\desktop-ui-state.json` | Window bounds, theme, and local UI acknowledgements. |
 | Service logs | `%APPDATA%\DeepSeekGUI\dsh-service.log` | Redacted and rotated; current file plus bounded history. |
@@ -18,6 +18,12 @@ DeepSeekGUI keeps its application state and Managed Harness Home under the Windo
 | Project memory | `<folder-name>.memory.md` in the selected workspace | Project facts maintained by the assistant; part of your project files. |
 
 Windows resolves the real application-data directory through its Known Folder API. The table uses `%APPDATA%` as the familiar default notation.
+
+## Move the Managed Harness Home
+
+Choose **Data location…** from the menu to see the current data folder and move it. Pick a destination folder: DeepSeekGUI copies every item, verifies each file by size and SHA-256, points the launcher at the new folder, and asks you to restart. The restart checks the new location item by item, and only after that check passes does DeepSeekGUI offer to delete the old copy. Until then the old files stay exactly as they were; a failed check keeps them and stops.
+
+This path moves the Managed Harness Home only. It never moves the program installation — the installer, shortcuts, uninstall entry, and updater own that — nor an Existing Home you selected, your project folders, or the other files under `%APPDATA%\DeepSeekGUI`.
 
 ## Uninstall and reinstall
 
@@ -72,7 +78,7 @@ The built-in browser uses the installed Microsoft Edge runtime and launches lazi
 
 ## Check for Updates reports no update
 
-The public channel may not have a release manifest yet, or the installed version may already be current. This does not alter the installed application. Download the release manually from GitHub when needed.
+The installed version is already the newest published one. This does not alter the installed application. You can also download a release manually from GitHub.
 
 ## Export diagnostics without the GUI
 

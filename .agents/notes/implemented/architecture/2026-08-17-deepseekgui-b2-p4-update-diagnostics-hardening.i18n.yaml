@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-08-17-deepseekgui-b2-p4-update-diagnostics-hardening.md
-2026-08-17-deepseekgui-b2-p4-update-diagnostics-hardening.md: 61075a94018a6fced034c31aa48142b9bd7535fd
-2026-08-17-deepseekgui-b2-p4-update-diagnostics-hardening.zh.md: dc058f0b6ed52011bb6ede2602d096d47c2e5aca
+2026-08-17-deepseekgui-b2-p4-update-diagnostics-hardening.md: 302c2fb0c54218b8c1eae042acf5a84f20288f0f
+2026-08-17-deepseekgui-b2-p4-update-diagnostics-hardening.zh.md: 8c231c682f2b9287e008161c5b7a4df293deacc5

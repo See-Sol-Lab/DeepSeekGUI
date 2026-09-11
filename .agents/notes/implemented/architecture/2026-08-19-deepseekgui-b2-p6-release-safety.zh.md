@@ -43,6 +43,10 @@ Upgrade verdict:
 
 **PS7 与插件易用性。** 终端宿主探测改为 Windows Terminal → PowerShell 7（Program Files + Store 别名）→ PowerShell → cmd；PS7 只是用户终端推荐项——面板一行非阻塞提示（含 winget 命令），绝不自动安装，Agent 沙箱路径绝不参考它。Plugin Manager 增加「如何安装插件」帮助块，如实说明 DeepSeekGUI 不经营插件市场。
 
+### 中断后的恢复
+
+手动恢复逐个识别白名单文件：当前哈希必须匹配记录中的操作前或操作后哈希。这允许继续完成部分写入的恢复，也不把 `autoRecoveredOnce` 当作写入完成的证明。已经恢复的文件无需再写；其余所有快照必须匹配记录中的操作前哈希，才能开始改动任何文件。确认时读取的磁盘事实会在写入前再次核对。人工处理和漂移状态在启动失败后仍保持人工处理，失败也保留已经消耗的自动恢复次数。
+
 ## 备选方案
 
 - **把 embedded DSH 升到 rc.7**：按 P6 升级规则拒绝——无 P6 必需安全修复、无已确认打包态正确性 bug、无 P6 专属 API；审查证据记录在交付报告。
@@ -65,7 +69,7 @@ Upgrade verdict:
 
 - 打包 S 套件需要全新构建的 `dist/desktop/win-unpacked/DeepSeekGUI.exe`（验收返工后已重建过一次；最终重建属于验收阶段）。在返工后的包上：S1/S4/S5/S7-8（permission-ui）PASS、S11（headless 诊断）PASS、S10a/S10c（插件恢复）PASS——S10a 到达 `recovered` 且白名单文件 byte-identical，S10c 经确认恢复走完 `recovery-needed → recovered`。S2/S3/S6/S13、S9、S10b、S12 的测试代码已修复，下次重建后可重跑（逐项证据见返工交付报告）。
 - 验收返工抓到并修复了一个产品真 bug（恢复结算时机）：`settlePluginRecovery` 曾挂在每个控制命令之后运行，且 Harness running 时会把 running 状态的 journal 直接 clear——实测在途 add 的 journal 在 post-check 前被误清、Restart Later 后任意命令会把 pending 事务误 verified。修复后 settle 只对 boot 型命令（`switch-profile`/`restart-harness`/`use-managed-home`）结算，boot 健康分支按纯函数 `bootHealthySettleAction` 判定（pending-verification→verify；running→残留清理或保持；recovery-needed/drift→keep），`pluginOperationInFlight` 区分在途与崩溃残留。
-- S2/S3/S6/S13 经官方 RPC 用 repo 内 mock LLM（`@deepseek-ai/dsh-llm-mock-server`，`tool_call_success` → pwsh）跑真实 agent；`waitTurnSettled` 改为等待官方 `session.history` 事件流的真实相位（`tool/call` 出现过 + `turn/end` 出现），不再是按钮消失近似。审批经官方 UI 按钮（拒绝 / 允许一次）应答；黑框断言在执行期间采样可见 pwsh 窗口（进程名 + 启动时间）。destructive 断言只在隔离临时根内。
+- S2/S3/S6/S13 经官方 RPC 用 repo 内 mock LLM（`@deepseek-ai/dsh-llm-mock-server`，`tool_call_success` → pwsh）跑真实 agent；`waitTurnSettled` 改为等待官方 `session/follow` 开场快照（通过携带认证 cookie 的 WebSocket 获取）的真实相位（`tool/call` 出现过 + `turn/end` 出现），不再是按钮消失近似。审批经官方 UI 按钮（拒绝 / 允许一次）应答；黑框断言在执行期间采样可见 pwsh 窗口（进程名 + 启动时间）。destructive 断言只在隔离临时根内。
 - S12 经 `tests-e2e/fixtures/drive-open-dialog.ps1`（UIAutomation；中英文按钮名都匹配，另加官方 `Select Workspace Directory` 标题；脚本为 UTF-8 WITH BOM——PowerShell 5.1 把无 BOM 的 UTF-8 按 ANSI 解码，非 ASCII 字节会吞掉后面的行）驱动 native IFileOpenDialog。
 - 本机环境全局设置了 `NODE_ENV=production`，会破坏仓库的 jsdom 套件（React `act()` 与 vite node-external 处理）；本地单测全部用 `$env:NODE_ENV='test'` 跑。CI 没有这个变量。
 - `packages/subprocess/subprocess-local` 保持上游原样（返工 R1 已把 `windowsHide` 改动恢复到 HEAD）；黑框问题由打包态 S13 实测回答，其自身 spec 按既有配置在 win32 被排除。

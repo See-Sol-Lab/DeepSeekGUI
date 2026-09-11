@@ -1,6 +1,6 @@
 <div align="center">
 
-# <img src="./apps/desktop/src/chrome/icon.png" width="38" alt="" align="absmiddle" /> DeepSeekGUI
+# <img src="./apps/deepseekgui/src/chrome/icon.png" width="38" alt="" align="absmiddle" /> DeepSeekGUI v1.1.1
 
 </div>
 
@@ -11,7 +11,7 @@ English | [中文](README.md)
 </div>
 
 <p align="center">
-  <em>Work with DeepSeek on your projects in a local workbench.</em>
+  <em>A DeepSeek local workbench that stays stable.</em>
 </p>
 
 <p align="center">
@@ -23,13 +23,9 @@ English | [中文](README.md)
   <a href="https://github.com/See-Sol-Lab/DeepSeekGUI/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/See-Sol-Lab/DeepSeekGUI/total?style=flat-square" /></a>
   <img alt="Windows 10 and 11 x64" src="https://img.shields.io/badge/Windows-10%20%7C%2011%20x64-0078D4?style=flat-square&logo=windows" />
   <a href="https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.1.0-linux.1"><img alt="Linux x64 AppImage" src="https://img.shields.io/badge/Linux-x64%20AppImage-FCC624?style=flat-square&logo=linux&logoColor=black" /></a>
-  <a href="apps/desktop/LICENSE"><img alt="DeepSeekGUI product layer: PolyForm Perimeter 1.0.1" src="https://img.shields.io/badge/DeepSeekGUI-PolyForm%20Perimeter%201.0.1-6f42c1?style=flat-square" /></a>
+  <a href="apps/deepseekgui/LICENSE"><img alt="DeepSeekGUI product layer: PolyForm Perimeter 1.0.1" src="https://img.shields.io/badge/DeepSeekGUI-PolyForm%20Perimeter%201.0.1-6f42c1?style=flat-square" /></a>
   <a href="LICENSE-MIT-UPSTREAM"><img alt="Upstream DeepSeek Harness: MIT" src="https://img.shields.io/badge/Upstream%20Harness-MIT-2ea44f?style=flat-square" /></a>
   <a href="https://doi.org/10.5281/zenodo.22205160"><img alt="DOI" src="https://zenodo.org/badge/DOI/10.5281/zenodo.22205160.svg" /></a>
-</p>
-
-<p align="center">
-  <a href="https://dshfind.com/en/plugins/See-Sol-Lab/DeepSeekGUI?ref=badge"><img alt="DeepSeekGUI on dshfind" src="https://dshfind.com/api/card/See-Sol-Lab/DeepSeekGUI?lang=en" width="440" /></a>
 </p>
 
 <p align="center">
@@ -47,21 +43,19 @@ English | [中文](README.md)
 </p>
 -->
 
-DeepSeekGUI is a local AI workbench built on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). Choose a project folder and ask the assistant to read code, edit files, run commands, and browse the web. Inspect the project through Changes, Git, Worktrees, and Memory views, use dedicated tools for commits, pushes, and Pull Requests, and carry collaboration forward with global and project memory.
-
-The distribution bundles its runtime. Configure a model API key to get started.
+DeepSeekGUI is a local AI workbench built on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness); configure a model API key and start. Choose a project folder and ask the assistant to read code, edit files, run commands, and browse the web. Check the project at any time through the Changes and Git views, use dedicated tools for commits, pushes, and Pull Requests, and carry collaboration forward with global and project memory.
 
 **Not an official DeepSeek product.** Built on DeepSeek Harness and independently developed, with no affiliation with or endorsement by DeepSeek. The upstream runtime and official Web UI are DeepSeek's work.
 
-**Layered licensing:** The original DeepSeekGUI product layer uses the [PolyForm Perimeter License 1.0.1](apps/desktop/LICENSE); upstream DeepSeek Harness remains under the [MIT License](LICENSE-MIT-UPSTREAM).
+**Layered licensing:** The original DeepSeekGUI product layer uses the [PolyForm Perimeter License 1.0.1](apps/deepseekgui/LICENSE); upstream DeepSeek Harness remains under the [MIT License](LICENSE-MIT-UPSTREAM).
 
-**Current release: [v1.1.0](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.1.0).** The local Workbench, Git / PR tools, global and project memory, and desktop notifications are available. The Workbench extends the official Harness client through plugins and uses Harness sessions, tools, and permissions.
+**Current release: [v1.1.1](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.1.1).** The embedded Harness moves to 0.1.5-rc.2, with a first-run guide, in-place updates, data-folder migration, and archived-session management. The Workbench extends the official Harness client through plugins and uses Harness sessions, tools, and permissions.
 
 ## Download
 
 | Platform | Download | Requirements |
 | --- | --- | --- |
-| Windows | [Download installer](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.1.0/DeepSeekGUI-Setup-1.1.0.exe) | Windows 10/11, x64 |
+| Windows | [Download installer](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.1.1/DeepSeekGUI-Setup-1.1.1.exe) | Windows 10/11, x64 |
 | Linux | [Download AppImage](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.1.0-linux.1/DeepSeekGUI-1.1.0-x86_64.AppImage) | x64, AppImage; experimental support |
 
 The Windows installer installs to your user account and bundles its runtime. Linux uses a separate AppImage distribution; download and verification details are on the [v1.1.0-linux.1](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.1.0-linux.1) release page.
@@ -74,21 +68,14 @@ The Windows installer installs to your user account and bundles its runtime. Lin
 After downloading the installer, calculate its SHA256 in PowerShell:
 
 ```powershell
-Get-FileHash .\DeepSeekGUI-Setup-1.1.0.exe -Algorithm SHA256
+Get-FileHash .\DeepSeekGUI-Setup-1.1.1.exe -Algorithm SHA256
 ```
 
-Compare it with [`SHA256SUMS.txt`](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.1.0/SHA256SUMS.txt) before installing. See the [troubleshooting guide](docs/user/deepseekgui/data-troubleshooting.md#windows-smartscreen-blocks-the-installer) if needed.
+Compare it with [`SHA256SUMS.txt`](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.1.1/SHA256SUMS.txt) before installing. See the [troubleshooting guide](docs/user/deepseekgui/data-troubleshooting.md#windows-smartscreen-blocks-the-installer) if needed.
 
 </details>
 
 ## Quick start
-
-1. Install DeepSeekGUI and open it.
-2. Go to **Settings → Models** and enter your DeepSeek API key.
-3. Choose a model; select one with vision support if you need image input.
-4. Return to the home screen and choose a workspace folder.
-5. Start a session and describe the task. Review file diffs in Changes and repository status and operation results in Git.
-6. Optionally save collaboration preferences in **Settings → Global Memory** and inspect or organize project memory in the conversation's **Memory** view.
 
 See the [quick-start guide](docs/user/deepseekgui/quickstart.md) for a full walkthrough.
 
@@ -146,21 +133,7 @@ See the [quick-start guide](docs/user/deepseekgui/quickstart.md) for a full walk
 - **Profiles and plugins** — Switch Harness Homes and Profiles, manage compatible plugins, and inspect configuration and runtime status.
 - **Desktop integration** — Chinese and English interfaces, system tray, update checks, and local diagnostics.
 
-See the [v1.1.0 release notes](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.1.0) for the complete version changes.
-
-## Why DeepSeekGUI
-
-**Visible project state.** Inspect file changes, branches, commits, and worktrees beside the conversation without requesting the model for each status check.
-
-**Lasting project knowledge.** Global memory stores cross-project preferences; project memory records decisions, conventions, and corrections. Each is managed separately.
-
-**Reviewable operations.** Git, PR, and browser result cards show summaries and details. Commits and pushes use Harness approvals, and you choose the permission mode.
-
-**Visible browsing.** The built-in browser shows the pages the assistant visits, with sensitive interactions subject to Harness approvals.
-
-**Local storage, network access as needed.** Sessions, credentials, settings, and memory are stored locally. Model requests go to your configured provider.
-
-**Built on Harness.** Use native profiles, plugins, hooks, and the CLI, with one runtime shared by the Workbench and conversations.
+See the [v1.1.1 release notes](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.1.1) for the complete version changes.
 
 ## Documentation
 
@@ -177,6 +150,7 @@ See the [v1.1.0 release notes](https://github.com/See-Sol-Lab/DeepSeekGUI/releas
 | [Data and troubleshooting](docs/user/deepseekgui/data-troubleshooting.md) | Data locations, privacy, common issues |
 
 The docs also include upstream Harness tutorials and plugin-authoring reference.
+[Product roadmap for the in-house Workbench](https://github.com/See-Sol-Lab/DeepSeekGUI/issues)
 
 ## Data and privacy
 
@@ -197,7 +171,7 @@ git clone https://github.com/See-Sol-Lab/DeepSeekGUI.git
 cd DeepSeekGUI
 pnpm install
 pnpm run build
-pnpm run dev:desktop
+pnpm run dev:deepseekgui
 ```
 
 Build the Windows distribution:
@@ -206,7 +180,7 @@ Build the Windows distribution:
 pnpm run build:desktop-dist
 ```
 
-See [DeepSeekGUI Desktop](apps/desktop/README.md) for packaging details.
+See [DeepSeekGUI Desktop](apps/deepseekgui/README.md) for packaging details.
 
 <a id="run"></a>
 
@@ -243,10 +217,6 @@ pnpm dsh web
 Two scopes:
 
 - **Upstream Harness** code stays under DeepSeek's [MIT License](LICENSE-MIT-UPSTREAM).
-- **DeepSeekGUI** original work is source-available under the [PolyForm Perimeter License 1.0.1](apps/desktop/LICENSE). Personal, educational, research, hobby, and internal business use are fine. Building a competing product requires a separate license from See-Sol-Lab.
+- **DeepSeekGUI** original work is source-available under the [PolyForm Perimeter License 1.0.1](apps/deepseekgui/LICENSE). Personal, educational, research, hobby, and internal business use are fine. Building a competing product requires a separate license from See-Sol-Lab.
 
 The root [`LICENSE`](LICENSE) explains how the scopes apply. Read [DeepSeekGUI licensing](DEEPSEEKGUI-LICENSE.md) and [third-party notices](THIRD_PARTY_NOTICES.md) before redistributing.
-
----
-
-DeepSeekGUI is the public release repository. Day-to-day development happens in a private repo; releases publish the product tree.

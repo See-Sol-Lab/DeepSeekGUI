@@ -20,6 +20,20 @@ import {
 /** Group key for Sessions outside every Workspace. */
 export const UNGROUPED_KEY = ''
 
+/**
+ * Resolve the Workspace browser group that owns one Session.
+ * @param workspaces - authoritative Workspace membership.
+ * @param sessionId - Session whose browser group is required.
+ * @returns owning Workspace id, or {@link UNGROUPED_KEY} when no Workspace accounts for it.
+ */
+export function owningGroupKey(
+  workspaces: readonly WorkspaceView[],
+  sessionId: SessionId,
+): string {
+  return (workspaces.find(workspace => workspace.sessionIds.includes(sessionId))
+    ?.workspaceId as string | undefined) ?? UNGROUPED_KEY
+}
+
 /** Pending interaction kinds with dedicated Workspace-row presentation. */
 export type SessionPendingInteractionStatus = 'approval' | 'plan-review' | 'question'
 type SessionPendingInteractions = ReadonlyMap<SessionId, SessionPendingInteractionBase>
@@ -63,6 +77,15 @@ export interface GroupNode {
   containsCurrent: boolean
   /** Visible session rows (empty while the group is folded). */
   sessions: readonly SessionNode[]
+}
+
+/** One archived-session row: title plus the group it restores into. */
+export interface ArchivedNode {
+  id: SessionId
+  /** Display title; falls back to the directory label when the session has none. */
+  title: string
+  /** Workspace display title the session returns to; empty for the ungrouped bucket. */
+  workspace: string
 }
 
 /** One flat search row combining list metadata with an optional content match. */
@@ -261,6 +284,42 @@ function sessionNode(
 }
 
 /**
+ * Project the registry-global archive set into ordered rows for the restore
+ * surface. Members follow Host archive order; ids the current list projection
+ * no longer holds drop out, and every id yields at most one row.
+ * @param list - sessions list snapshot (the projection retains archived summaries).
+ * @param workspaces - Workspace membership and display labels.
+ * @param archivedSessionIds - registry-global archive set in Host order.
+ * @returns one row per resolvable archived id.
+ */
+export function deriveArchived(
+  list: SessionListState,
+  workspaces: readonly WorkspaceView[],
+  archivedSessionIds: readonly SessionId[],
+): ArchivedNode[] {
+  const workspaceBySession = new Map<SessionId, string>()
+  for (const workspace of workspaces) {
+    for (const sessionId of workspace.sessionIds) {
+      if (!workspaceBySession.has(sessionId)) workspaceBySession.set(sessionId, workspace.title)
+    }
+  }
+  const rows: ArchivedNode[] = []
+  const seen = new Set<SessionId>()
+  for (const id of archivedSessionIds) {
+    if (seen.has(id)) continue
+    seen.add(id)
+    const summary = list.byId[id]
+    if (summary === undefined) continue
+    rows.push({
+      id,
+      title: sessionTitle(summary) || workspaceLabel(summary.cwd),
+      workspace: workspaceBySession.get(id) ?? '',
+    })
+  }
+  return rows
+}
+
+/**
  * Derive the workspace browser groups with every session as a top-level row.
  *
  * Every group shows; sessions populate under expanded groups in the selected
@@ -287,8 +346,7 @@ export function deriveGroups(
   const descendants = indexSubagentDescendants(list.byId)
   const currentGroup = list.current === undefined
     ? undefined
-    : (workspaces.find(w => w.sessionIds.includes(list.current as SessionId))?.workspaceId as string | undefined)
-        ?? UNGROUPED_KEY
+    : owningGroupKey(workspaces, list.current)
   const groups: GroupNode[] = []
   for (const g of groupByWorkspace(list, workspaces, archived, view.ungroupedOrder)) {
     const expanded = expandedGroups.has(g.key)

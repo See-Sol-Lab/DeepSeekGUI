@@ -68,6 +68,7 @@ export class RepositoryCleaner {
     const canonicalRoot = await realpath(this.root)
 
     await this.addIfPresent(targets, join(this.root, '.dsh-build'), canonicalRoot)
+    await this.addIfPresent(targets, join(this.root, 'apps/desktop/.desktop-build'), canonicalRoot)
 
     // These checks cover legacy root-level incremental state emitted by older configs.
     await this.addIfPresent(targets, join(this.root, '.typecheck'), canonicalRoot)
@@ -76,7 +77,7 @@ export class RepositoryCleaner {
     }
     await this.addIfPresent(
       targets,
-      join(this.root, 'native/landlock-run/tsconfig.tsbuildinfo'),
+      join(this.root, 'native/system/tsconfig.tsbuildinfo'),
       canonicalRoot,
     )
 
@@ -121,10 +122,16 @@ export class RepositoryCleaner {
     const outputs = new Set<string>()
     const pending = [join(this.root, 'tsconfig.json')]
     const visited = new Set<string>()
-    const nativeEntryOutput = join(this.root, 'native/landlock-run/packages/entry/lib')
-    // The DeepSeekGUI desktop shell emits compiled JS directly into lib (Electron
-    // loads it as-is; no tsdown bundling step), so its outDir has no /types tail.
-    const desktopOutput = join(this.root, 'apps/desktop/lib')
+    const nativeEntryOutput = join(this.root, 'native/system/packages/entry/lib')
+    // The DeepSeekGUI shell and the two plugins the dsh loader reads as-is emit
+    // compiled JS straight into lib with no tsdown bundling step, so their
+    // outDirs have no /types tail. The Workbench plugin does bundle and keeps
+    // the ordinary lib/types layout, so it is not listed here.
+    const directEmitOutputs = new Set([
+      join(this.root, 'apps/deepseekgui/lib'),
+      join(this.root, 'apps/deepseekgui/browser-plugin/lib'),
+      join(this.root, 'apps/deepseekgui/coding-tools-plugin/lib'),
+    ])
 
     while (pending.length > 0) {
       const nextConfigPath = pending.pop()
@@ -138,7 +145,7 @@ export class RepositoryCleaner {
         const typesDirectory = resolve(parsed.options.outDir)
         const outputDirectory = basename(typesDirectory) === 'types'
           ? dirname(typesDirectory)
-          : typesDirectory === nativeEntryOutput || typesDirectory === desktopOutput
+          : typesDirectory === nativeEntryOutput || directEmitOutputs.has(typesDirectory)
             ? typesDirectory
             : undefined
         if (outputDirectory === undefined) {

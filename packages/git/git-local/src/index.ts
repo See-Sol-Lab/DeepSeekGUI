@@ -9,10 +9,13 @@
  */
 
 import type { SubprocessOutcome, SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
+import { createHmac, randomBytes } from 'node:crypto'
+import { relative, resolve, sep } from 'node:path'
 import {
   GitCapability, GitCommandFailedError, GitCommitRefusedError, GitDiffTooLargeError,
   GitNoSuchRemoteError, GitNotARepositoryError, GitPushRefusedError, GitRevertRefusedError,
   GitStagedTreeDriftError, GitUnavailableError, GitUnsupportedVersionError,
+  redactGitText,
 } from '@deepseek-ai/dsh-git'
 import type {
   AuthorIdentity, CommitInfo, DiffResult, DiffScope, GitCommitResult, HeadState, PushApproval, PushOutcome, PushPreview,
@@ -57,6 +60,18 @@ export const STAGED_PATCH_MAX_BYTES = 8 * 1024 * 1024
 /** A hung git query must not block the harness forever. */
 const GIT_QUERY_TIMEOUT_MS = 30_000
 
+/**
+ * Network commands get their own ceilings. The 30 s query timeout was applied
+ * to `git push` too, so a first push of a large repository over a slow uplink
+ * was killed mid-transfer and reported as "rejected" — the kill produces no
+ * exit code and no stderr, and the refusal classifier read that silence as a
+ * generic rejection while the remote may already have accepted the pack.
+ */
+const GIT_PUSH_TIMEOUT_MS = 10 * 60_000
+
+/** `ls-remote` round-trips to the remote; a dead host answers in about this long. */
+const GIT_REMOTE_QUERY_TIMEOUT_MS = 60_000
+
 /** Grace period for terminating a hung query. */
 const GIT_QUERY_GRACE_MS = 5_000
 
@@ -73,11 +88,19 @@ export class LocalGitCapability extends GitCapability {
 
   readonly minimumGitVersion = MINIMUM_GIT_VERSION
 
-  private executablePromise?: Promise<string>
+  private executablePromise: Promise<string> | undefined
   private versionChecked = false
+  private readonly destinationKey = randomBytes(32)
+
+  private destinationToken(url: string): string {
+    return createHmac('sha256', this.destinationKey).update(url).digest('hex')
+  }
 
   async resolveGit(): Promise<string> {
-    this.executablePromise ??= this.resolveExecutable()
+    this.executablePromise ??= this.resolveExecutable().catch((error: unknown) => {
+      this.executablePromise = undefined
+      throw error
+    })
     return await this.executablePromise
   }
 
@@ -142,7 +165,7 @@ export class LocalGitCapability extends GitCapability {
   async worktrees(cwd: string): Promise<WorktreeInfo[]> {
     await this.ensureUsable()
     await this.repoIdentity(cwd)
-    const output = await this.run(cwd, ['worktree', 'list', '--porcelain'])
+    const output = await this.run(cwd, ['-c', 'core.quotePath=false', 'worktree', 'list', '--porcelain'])
     return parseWorktreePorcelain(output.stdout)
   }
 
@@ -188,7 +211,7 @@ export class LocalGitCapability extends GitCapability {
     const cached = scope === 'staged' ? ['--cached'] : []
     const pathspec = path === undefined ? [] : ['--', path]
     // Inspection must not refresh the index or execute repository-configured converters.
-    const command = ['-c', 'core.fsmonitor=false', 'diff', '--no-ext-diff', '--no-textconv', ...cached]
+    const command = ['--literal-pathspecs', '-c', 'core.fsmonitor=false', 'diff', '--no-ext-diff', '--no-textconv', ...cached]
     const names = await this.run(cwd, [...command, '--name-status', '-z', ...pathspec])
     const numstats = await this.run(cwd, [...command, '--numstat', '-z', ...pathspec])
     const files = mergeDiffSummaries(parseNameStatusZ(names.stdout), parseNumstatZ(numstats.stdout))
@@ -210,7 +233,7 @@ export class LocalGitCapability extends GitCapability {
   async stageFile(cwd: string, path: string): Promise<void> {
     await this.ensureUsable()
     await this.repoIdentity(cwd)
-    await this.run(cwd, ['add', '--', ...await this.renamePaths(cwd, path)])
+    await this.run(cwd, ['--literal-pathspecs', 'add', '--', ...await this.renamePaths(cwd, path)])
   }
 
   async unstageFile(cwd: string, path: string): Promise<void> {
@@ -223,7 +246,7 @@ export class LocalGitCapability extends GitCapability {
     // binary, rename, and unborn-HEAD entries.
     const staged = await this.run(
       cwd,
-      ['diff', '--cached', '--binary', '--', ...paths],
+      ['--literal-pathspecs', 'diff', '--no-ext-diff', '--no-textconv', '--cached', '--binary', '--', ...paths],
       { maxBytes: STAGED_PATCH_MAX_BYTES },
     )
     if (staged.stdout === '') return
@@ -236,25 +259,32 @@ export class LocalGitCapability extends GitCapability {
    * added); a pathspec limited to one side would stage or unstage only half.
    */
   private async renamePaths(cwd: string, path: string): Promise<string[]> {
+    const root = (await this.repoIdentity(cwd)).root
+    const name = relative(root, resolve(cwd, path)).split(sep).join('/')
     const entry = (await this.status(cwd)).entries.find(candidate =>
-      candidate.path === path || candidate.origPath === path)
+      candidate.path === name || candidate.origPath === name)
     return entry?.origPath !== undefined && entry.origPath !== entry.path
-      ? [entry.origPath, entry.path]
+      ? [entry.origPath, entry.path].map(value => relative(cwd, resolve(root, value)))
       : [path]
   }
 
-  async revertFile(cwd: string, path: string): Promise<void> {
+  async revertFile(cwd: string, path: string, expectedPatch?: string): Promise<void> {
     await this.ensureUsable()
-    await this.repoIdentity(cwd)
+    const root = (await this.repoIdentity(cwd)).root
+    const name = relative(root, resolve(cwd, path)).split(sep).join('/')
     // Precondition check against the authoritative status: B4 never restores
     // or deletes untracked files and never auto-resolves conflicts. Git's own
     // refusal remains the backstop for anything the check missed.
     const status = await this.status(cwd)
     const entry = status.entries.find(candidate =>
-      candidate.path === path || candidate.origPath === path)
-    if (entry?.kind === 'untracked') throw new GitRevertRefusedError(path, 'untracked')
-    if (entry?.kind === 'conflict') throw new GitRevertRefusedError(path, 'conflict')
-    await this.run(cwd, ['checkout', '--', path])
+      candidate.path === name || candidate.origPath === name)
+    if (entry === undefined) throw new Error('Revert requires one exact changed tracked path from git_status')
+    if (entry.kind === 'untracked') throw new GitRevertRefusedError(path, 'untracked')
+    if (entry.kind === 'conflict') throw new GitRevertRefusedError(path, 'conflict')
+    if (expectedPatch !== undefined && (await this.diff(cwd, 'unstaged', path, true, STAGED_PATCH_MAX_BYTES)).patch !== expectedPatch) {
+      throw new Error('The file changed after approval; request a new revert approval')
+    }
+    await this.run(cwd, ['--literal-pathspecs', 'checkout', '--', path])
   }
 
   async authorIdentity(cwd: string): Promise<AuthorIdentity | undefined> {
@@ -344,8 +374,8 @@ export class LocalGitCapability extends GitCapability {
     }
     return [...entries].map(([name, urls]): RemoteInfo => ({
       name,
-      fetchUrl: urls.fetchUrl ?? '',
-      ...urls.pushUrl === undefined || urls.pushUrl === urls.fetchUrl ? {} : { pushUrl: urls.pushUrl },
+      fetchUrl: redactGitText(urls.fetchUrl ?? ''),
+      ...urls.pushUrl === undefined || urls.pushUrl === urls.fetchUrl ? {} : { pushUrl: redactGitText(urls.pushUrl) },
     }))
   }
 
@@ -394,7 +424,7 @@ export class LocalGitCapability extends GitCapability {
       const ls = await this.run(
         cwd,
         ['ls-remote', '--symref', '--', pushUrl, target, 'HEAD'],
-        { maxBytes: 64 * 1024 },
+        { maxBytes: 64 * 1024, timeoutMs: GIT_REMOTE_QUERY_TIMEOUT_MS },
       )
       for (const line of ls.stdout.split('\n')) {
         const symref = /^ref:\s+refs\/heads\/(\S+)\s+HEAD$/u.exec(line)
@@ -430,13 +460,14 @@ export class LocalGitCapability extends GitCapability {
     let credentialHelper: string | undefined
     try {
       const helper = (await this.run(cwd, ['config', '--get', 'credential.helper'])).stdout.trim()
-      if (helper !== '') credentialHelper = helper
+      if (helper !== '') credentialHelper = /^[A-Za-z0-9._-]+$/u.test(helper) ? helper : 'custom helper (details hidden)'
     } catch {
       // No helper configured: git will fall back to its prompts (which fail
       // without a TTY) or platform defaults — a fact, not an error here.
     }
     return {
-      remote: { ...info, pushUrl },
+      remote: { ...info, pushUrl: redactGitText(pushUrl) },
+      destinationToken: this.destinationToken(pushUrl),
       sourceOid,
       localBranch,
       remoteBranch,
@@ -463,20 +494,24 @@ export class LocalGitCapability extends GitCapability {
     const target = await this.branchRef(cwd, remoteBranch)
     const sourceOid = (await this.run(cwd, ['rev-parse', '--verify', `${source}^{commit}`])).stdout.trim()
     const pushUrl = await this.pushUrl(cwd, remote)
-    if (expected !== undefined && (expected.sourceOid !== sourceOid || expected.pushUrl !== pushUrl)) {
+    if (expected !== undefined && (expected.sourceOid !== sourceOid || expected.destinationToken !== this.destinationToken(pushUrl))) {
       throw new Error('push source or destination changed after approval; request a new preview')
     }
     try {
-      await this.run(cwd, ['push', '--', pushUrl, `${sourceOid}:${target}`])
+      await this.run(cwd, ['push', '--', pushUrl, `${sourceOid}:${target}`], { timeoutMs: GIT_PUSH_TIMEOUT_MS })
     } catch (error) {
-      if (error instanceof GitCommandFailedError) {
+      // Only a push that git itself ended with an exit code is a refusal to
+      // classify. A push killed by the timeout or a signal has no exit code and
+      // no verdict: the remote may or may not have taken the pack, and calling
+      // that "rejected" would be a guess.
+      if (error instanceof GitCommandFailedError && error.exitCode !== null && !error.timedOut) {
         throw new GitPushRefusedError(classifyPushFailure(error.stderr), error.stderr)
       }
       throw error
     }
     // The remote ref's new SHA: the push succeeded, so the remote is
     // reachable; ls-remote reads the authoritative remote fact.
-    const ls = await this.run(cwd, ['ls-remote', '--', pushUrl, target])
+    const ls = await this.run(cwd, ['ls-remote', '--', pushUrl, target], { timeoutMs: GIT_REMOTE_QUERY_TIMEOUT_MS })
     const pushedSha = ls.stdout.split('\n').find(line => line !== '')?.split('\t')[0] ?? ''
     if (pushedSha === '') {
       throw new GitCommandFailedError(
@@ -541,15 +576,17 @@ export class LocalGitCapability extends GitCapability {
   private async run(
     cwd: string,
     args: readonly string[],
-    options: { maxBytes?: number; notARepository?: boolean; stdin?: string } = {},
+    options: { maxBytes?: number; notARepository?: boolean; stdin?: string; timeoutMs?: number } = {},
   ): Promise<{ stdout: string; stderr: string; exitCode: number | null }> {
     const git = await this.resolveGit()
+    const timeoutMs = options.timeoutMs ?? GIT_QUERY_TIMEOUT_MS
+    const signal = AbortSignal.timeout(timeoutMs)
     let outcome: SubprocessOutcome
     let stdout = ''
     let stderr = ''
     let lossy = false
     try {
-      const handle = this.spawn(cwd, git, args, options.maxBytes, options.stdin)
+      const handle = this.spawn(cwd, git, args, options.maxBytes, options.stdin, signal)
       outcome = await handle.done
       const read = handle.collected.stdout?.readFrom(0)
       stdout = read?.text ?? ''
@@ -561,13 +598,19 @@ export class LocalGitCapability extends GitCapability {
       )
     }
     if (lossy) {
-      throw new GitDiffTooLargeError(args.join(' '), options.maxBytes ?? READ_MODEL_MAX_BYTES)
+      throw new GitDiffTooLargeError(redactGitText(args.join(' ')), options.maxBytes ?? READ_MODEL_MAX_BYTES)
     }
+    if (signal.aborted) throw new GitCommandFailedError([git, ...args], cwd, outcome.exitCode, `Git exceeded ${timeoutMs}ms; outcome must be checked before retrying. ${stderr}`, true)
     if (outcome.exitCode !== 0) {
       if (options.notARepository === true && outcome.exitCode === 128) {
         throw new GitNotARepositoryError(cwd)
       }
-      throw new GitCommandFailedError([git, ...args], cwd, outcome.exitCode, stderr)
+      // No exit code means git never finished: the timeout (or a signal) killed
+      // it. Say so — an empty stderr would otherwise read as a silent refusal.
+      const detail = outcome.exitCode === null
+        ? `${stderr}${stderr === '' ? '' : '\n'}git ${args[0] ?? ''} was terminated (${outcome.signal ?? 'no signal'}) after ${String(timeoutMs)}ms without exiting`
+        : stderr
+      throw new GitCommandFailedError([git, ...args], cwd, outcome.exitCode, detail)
     }
     return { stdout, stderr, exitCode: outcome.exitCode }
   }
@@ -578,6 +621,7 @@ export class LocalGitCapability extends GitCapability {
     args: readonly string[],
     maxBytes: number | undefined,
     stdin?: string,
+    signal = AbortSignal.timeout(GIT_QUERY_TIMEOUT_MS),
   ): ReturnType<SubprocessRuntime['spawn']> {
     return this.ctx.subprocess.spawn({
       argv: [git, ...args],
@@ -589,7 +633,7 @@ export class LocalGitCapability extends GitCapability {
         stderr: { maxBytes: 64 * 1024 },
       },
       graceMs: GIT_QUERY_GRACE_MS,
-      signal: AbortSignal.timeout(GIT_QUERY_TIMEOUT_MS),
+      signal,
     })
   }
 }

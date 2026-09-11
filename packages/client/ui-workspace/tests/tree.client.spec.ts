@@ -5,7 +5,7 @@ import type { SessionPendingInteractionBase } from '@deepseek-ai/dsh-client-ui-s
 import type { ScheduleId, ScheduleRecord } from '@deepseek-ai/dsh-schedule/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import {
-  deriveFlat, deriveGroups, deriveSearchResults, workspaceLabel,
+  deriveArchived, deriveFlat, deriveGroups, deriveSearchResults, owningGroupKey, workspaceLabel,
   UNGROUPED_KEY,
 } from '../src/client/tree.ts'
 import { createWorkspaceViewStore } from '../src/client/stores.ts'
@@ -33,11 +33,49 @@ const view = (expandedGroups: readonly string[] = [], ungroupedOrder?: readonly 
 const noArchive: readonly SessionId[] = []
 const noAttention: ReadonlyMap<SessionId, SessionPendingInteractionBase> = new Map()
 const archived = (...ids: string[]): readonly SessionId[] => ids.map(sid)
+
+describe('deriveArchived', () => {
+  it('projects the archive set in Host order with titles and return groups', () => {
+    const sessions = list(
+      summary('first', 10, '/projects/first'),
+      summary('second', 10, '/projects/loose'),
+      summary('third', 10, '/projects/other'),
+    )
+    const workspaces = [workspace('alpha', ['first'], 'Alpha'), workspace('beta', ['third'], 'Beta')]
+    expect(deriveArchived(sessions, workspaces, archived('third', 'first', 'second')))
+      .toEqual([
+        { id: sid('third'), title: 'third', workspace: 'Beta' },
+        { id: sid('first'), title: 'first', workspace: 'Alpha' },
+        { id: sid('second'), title: 'second', workspace: '' },
+      ])
+  })
+
+  it('drops ids absent from the list projection and never duplicates', () => {
+    const sessions = list(summary('kept', 10))
+    expect(deriveArchived(sessions, [], archived('ghost', 'kept', 'kept')))
+      .toEqual([{ id: sid('kept'), title: 'kept', workspace: '' }])
+  })
+
+  it('falls back to the directory label for an untitled session', () => {
+    const untitled = { ...summary('untitled', 10, '/projects/新 项目'), displayTitle: '' }
+    const sessions = list(untitled)
+    expect(deriveArchived(sessions, [], archived('untitled')))
+      .toEqual([{ id: sid('untitled'), title: '新 项目', workspace: '' }])
+  })
+})
 const schedule = (id: string, scheduledAt: string): ScheduleRecord => ({
   id: id as ScheduleId,
   kind: 'at',
   prompt: id,
   scheduledAt,
+})
+
+describe('owningGroupKey', () => {
+  it('returns the owning Workspace id or the Ungrouped key', () => {
+    const workspaces = [workspace('first', ['owned'])]
+    expect(owningGroupKey(workspaces, sid('owned'))).toBe('first')
+    expect(owningGroupKey(workspaces, sid('loose'))).toBe(UNGROUPED_KEY)
+  })
 })
 
 describe('deriveGroups', () => {

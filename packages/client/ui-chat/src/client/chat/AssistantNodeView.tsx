@@ -5,6 +5,7 @@ import { AssistantMarkdown } from './AssistantMarkdown.tsx'
 /** Streaming, settled, and interrupted Assistant states share one keyed renderer instance. */
 export const AssistantNodeView = memo(function AssistantNodeView({
   node, useTurnData, turnProcess, openFile, renderMessageImages, fileMentions, t,
+  displayText, releaseText, textDisplayActive,
 }: ChatNodeViewProps<'assistant-step'>) {
   const data = node.data
   const turn = node.location.kind === 'turn' || node.location.kind === 'step'
@@ -26,6 +27,9 @@ export const AssistantNodeView = memo(function AssistantNodeView({
     && turnProcess.spec.inlineReasoning
     && !turnProcess.open
   const revealProcess = useCallback(() => { turnProcess?.setOpen(true) }, [turnProcess])
+  // B6-P4: the node key is the stable identity of this assistant row, so a
+  // block's smoothing schedule can never collide with another row or Session.
+  const displayKeyPrefix = `${node.key}:`
   return (
     <AssistantMarkdown
       blocks={data.blocks}
@@ -35,6 +39,10 @@ export const AssistantNodeView = memo(function AssistantNodeView({
       reasoningHidden={reasoningHidden}
       revealProcess={revealProcess}
       mentions={mentions}
+      displayKeyPrefix={displayKeyPrefix}
+      displayText={displayText}
+      releaseText={releaseText}
+      textDisplayActive={textDisplayActive}
       t={t}
     />
   )

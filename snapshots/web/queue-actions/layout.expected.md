@@ -3,8 +3,9 @@
     - button "workspace" [disabled]
   - img
   - text: Standard mode
-  - button "Session log":
-    - text: Session log
+  - button "More actions":
+    - img
+  - button "Open right sidebar":
     - img
   - tablist:
     - tab "Chat" [selected]
@@ -41,6 +42,8 @@
 - button "2 queued messages"
 - textbox "Cmd/Ctrl+Enter steers all queued messages"
 - button "Commands":
+  - img
+- button "Add attachment":
   - img
 - 'button "Access mode, current: Workspace Write"': Workspace Write
 - button "Select model, current DeepSeek-V4-Flash":

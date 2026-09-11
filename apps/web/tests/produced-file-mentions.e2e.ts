@@ -50,6 +50,7 @@ function mentionFixture(): string {
     args: JSON.stringify({ file_path: path, content: `content of ${path}\n` }),
   }))
   session.append('assistant/message', {
+    stream: [],
     turn: 1,
     step: 1,
     message: createAssistantMessage({
@@ -80,8 +81,10 @@ function mentionFixture(): string {
       }),
     }, { surfaceOp: 'append', sourceEventSeqs: [source.seq] })
   }
+  session.append('step/end', { turn: 1, step: 1 })
   session.append('step/start', { turn: 1, step: 2 })
   session.append('assistant/message', {
+    stream: [],
     turn: 1,
     step: 2,
     message: createAssistantMessage({
@@ -106,6 +109,8 @@ function mentionFixture(): string {
       id: '{{sessionId}}',
       createdAt: 0,
       cwd: '{{cwd}}',
+      isSeeded: false,
+      delegationDepth: 0,
     }),
     ...session.snapshotEvents().map(event => JSON.stringify({
       ...event,
@@ -154,7 +159,7 @@ describe('web e2e: inline-code mentions of produced files', () => {
     expect(await mentions.first().getAttribute('aria-label')).toBe('Open site/report.html')
     expect(await mentions.first().getAttribute('title')).toBe('site/report.html')
     // The turn still ends with its produced-files row (all three writes).
-    expect(await page.getByText('Produced', { exact: true }).count()).toBe(1)
+    expect(await page.getByText('Files changed', { exact: true }).count()).toBe(1)
 
     expect(tripwire.pageErrors).toEqual([])
     expect(tripwire.warnings).toEqual([])

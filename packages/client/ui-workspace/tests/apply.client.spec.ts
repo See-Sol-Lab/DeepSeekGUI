@@ -21,6 +21,8 @@ async function bench() {
   const insertSessionBefore = vi.fn(async () => ({}))
   const open = vi.fn()
   const clear = vi.fn()
+  const selectPanel = vi.fn()
+  ctx.provide('layout', { selectPanel, beginNavigation: () => new AbortController().signal })
   const search = vi.fn(async () => ({
     ok: true as const,
     value: { items: [{ sessionId: 'session' as never, snippet: 'match' }], hasMore: false },
@@ -41,6 +43,7 @@ async function bench() {
     delete: vi.fn(async () => undefined),
     insertBefore: vi.fn(async () => undefined),
     archiveSession: vi.fn(async () => undefined),
+    unarchiveSession: vi.fn(async () => undefined),
     insertSessionBefore,
   } as never)
   ctx.provide('sessions', {
@@ -71,7 +74,7 @@ async function bench() {
   ctx.provide('locale', locale)
   return {
     ctx, slots: ctx.get('slots') as SlotRegistry, locale, create, rename,
-    insertSessionBefore, open, clear, search, renameSession, binding, fork, pickDirectory,
+    insertSessionBefore, open, clear, selectPanel, search, renameSession, binding, fork, pickDirectory,
   }
 }
 
@@ -90,7 +93,7 @@ describe('ui-workspace apply', () => {
 
   it('declares the services it drives', () => {
     expect(inject).toEqual([
-      'slots', 'sessions', 'workspaces', 'locale', 'remote', 'remote.directoryPicker',
+      'slots', 'sessions', 'workspaces', 'locale', 'remote', 'remote.directoryPicker', 'layout',
     ])
   })
 
@@ -116,13 +119,13 @@ describe('ui-workspace apply', () => {
     const b = await bench()
     declare(b.slots, 'sidebar.workspaces', 'conversation.hero.workspace')
     await b.ctx.plugin({ inject: [...inject], apply }).await()
-    const startSession = vi.spyOn(b.ctx.uiWorkspace, 'startSession').mockImplementation(() => undefined)
+    const startSession = vi.spyOn(b.ctx.uiWorkspace, 'startSession').mockImplementation(() => Promise.resolve())
 
     const browser = (b.slots.entries('sidebar.workspaces')[0]!.inject as () => WorkspaceBrowserInjected)()
     // Both arms delegate to the shared Session navigation action.
-    browser.startSession('ws' as never)
+    void browser.startSession('ws' as never)
     expect(startSession).toHaveBeenCalledWith('ws')
-    browser.startSession()
+    void browser.startSession()
     expect(startSession).toHaveBeenLastCalledWith(undefined)
     browser.open('session' as never)
     expect(b.open).toHaveBeenCalledWith('session')

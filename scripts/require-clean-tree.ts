@@ -15,7 +15,7 @@
  * @module @see-sol-lab/deepseekgui/scripts/require-clean-tree
  */
 
-import { readDevSourceCommit } from '../apps/desktop/src/version-info.ts'
+import { readDevSourceCommit } from '../apps/deepseekgui/src/version-info.ts'
 
 /** Override sources: the assemble-stage flag and the chain-wide variable. */
 export const ALLOW_DIRTY_FLAG = '--allow-dirty'

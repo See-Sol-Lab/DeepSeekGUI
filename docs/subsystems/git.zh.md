@@ -48,7 +48,7 @@ status 与 diff 解析是对机器格式的纯函数（`-z` 下记录 NUL 分隔
 
 ## 消费方
 
-`PushApproval` 包含 `sourceOid`（获批提交）和 `pushUrl`（生效目标）。调用方在审批前从 `PushPreview` 捕获二者并传给 `push`；源或 URL 漂移时拒绝写入。预览接受显式源分支与目标分支。只有本地拥有目标提交时，候选提交才是精确差集；否则为全部源历史。分支名称验证与完整引用阻止 force/delete refspec 语法。
+`PushApproval` 包含 `sourceOid`（获批提交）和 `destinationToken`（生效目标的不可读证明）。调用方在审批前从 `PushPreview` 捕获二者并传给 `push`；源或目标改变时拒绝写入，展示的 URL 会隐藏凭据。预览接受显式源分支与目标分支。只有本地拥有目标提交时，候选提交才是精确差集；否则为全部源历史。分支名称验证与完整引用阻止 force/delete refspec 语法。
 
 DeepSeekGUI B4 在这条 seam 上的 `git.*` RPC 域已随上游 dsh 0.1.2 Remote 迁移退役（B5-P1）；seam 上的 Agent 编码动作改经 DeepSeekGUI coding tools（B5-P4）进入同一会话（结果写入 Session log），GUI 检查读取官方 Remote 投影。`worktreeAdd`/`worktreeRemove` 仍是 seam 仅有的 worktree 写原语，留给用户或 Agent 明确选择的 worktree 动作。
 
@@ -215,9 +215,10 @@ abstract unstageFile(cwd: string, path: string): Promise<void>
  * lost before invoking this.
  * @param cwd - Working directory inside the repository.
  * @param path - Path relative to the repo root.
+ * @param expectedPatch - Optional approved unstaged patch; changed content refuses the revert.
  * @returns resolution after the work tree was restored.
  */
-abstract revertFile(cwd: string, path: string): Promise<void>
+abstract revertFile(cwd: string, path: string, expectedPatch?: string): Promise<void>
 
 /**
  * The configured commit author (`git var GIT_AUTHOR_IDENT`), or `undefined`

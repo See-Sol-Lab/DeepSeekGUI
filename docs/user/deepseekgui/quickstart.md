@@ -53,6 +53,8 @@ Create a new session and give the agent one concrete outcome, for example:
 
 Once you are comfortable with the result, ask for a bounded change. DeepSeekGUI streams the reply and keeps the session in the selected Harness Home so you can resume it later.
 
+A fresh installation shows a short first-run guide above the message box. It points at **Settings → Models**, then follows your first message, the first approval, and the Changes view; you can skip it at any point.
+
 ![A completed DeepSeekGUI coding task that creates and runs a JavaScript file](assets/workbench-overview.png)
 
 ## 6. Review approvals and changes

@@ -8,7 +8,7 @@
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { describe, expect, it, vi } from 'vitest'
+import { afterAll, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import type { ShellRunResult, CollectedOutput } from '@deepseek-ai/dsh-shell'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
@@ -22,6 +22,10 @@ import { classifyDenial, classifyRunnerFailure, isRunnerSpawnFailure } from '../
 import type { Config } from '@deepseek-ai/dsh-bash-sandbox'
 
 const spillDir = mkdtempSync(join(tmpdir(), 'dsh-bash-sandbox-spec-'))
+
+afterAll(() => {
+  rmSync(spillDir, { recursive: true, force: true })
+})
 
 /** One recorded provider call: the argv handed over and the policy it rode with. */
 interface ConfineCall {
@@ -518,12 +522,17 @@ describe('result facts', () => {
 
   it('reports a real permission failure as a sandbox denial with the mode it ran under', async () => {
     const { bash } = await setup()
-    const lockedDir = join(mkdtempSync(join(tmpdir(), 'dsh-sandbox-denied-')), 'locked')
-    mkdirSync(lockedDir)
-    chmodSync(lockedDir, 0o555)
-    const result = await bash.run(bash.resolve({ command: `echo x > ${lockedDir}/f` }))
-    expect(result.exitCode).not.toBe(0)
-    expect(result.sandbox).toEqual({ mode: 'read-only', denied: true, enforcement: 'full' })
+    const deniedRoot = mkdtempSync(join(tmpdir(), 'dsh-sandbox-denied-'))
+    try {
+      const lockedDir = join(deniedRoot, 'locked')
+      mkdirSync(lockedDir)
+      chmodSync(lockedDir, 0o555)
+      const result = await bash.run(bash.resolve({ command: `echo x > ${lockedDir}/f` }))
+      expect(result.exitCode).not.toBe(0)
+      expect(result.sandbox).toEqual({ mode: 'read-only', denied: true, enforcement: 'full' })
+    } finally {
+      rmSync(deniedRoot, { recursive: true, force: true })
+    }
   })
 
   it('carries the provider\'s partial-enforcement fact through unchanged', async () => {
@@ -547,7 +556,7 @@ describe('background sandbox facts', () => {
       await task.done
 
       expect(task.status).toBe('killed')
-      expect(task.readOutput().delta).toContain('spawn failed:')
+      expect(task.readOutput().delta).toContain('subprocess failed before reporting an outcome:')
       expect(task.sandbox).toEqual({
         mode: 'read-only',
         denied: false,
@@ -560,18 +569,17 @@ describe('background sandbox facts', () => {
     }
   })
 
-  it('does not invent runner evidence when a spawn rejection has no structured reason', async () => {
+  it('does not invent runner evidence when a provider rejection has no structured reason', async () => {
     const { ctx, bash } = await setup()
     const emptyReader: SubprocessOutputReader = {
       readFrom: () => ({ text: '', nextOffset: 0, lossy: false }),
     }
     vi.spyOn(ctx.subprocess, 'spawn').mockReturnValue({
-      pid: -1,
       stdin: undefined,
       stdout: undefined,
       stderr: undefined,
       collected: { stdout: emptyReader, stderr: emptyReader },
-      // Arbitrary subprocess providers can reject without a value; that edge is the point of this test.
+      // Arbitrary subprocess providers can reject without a value or public stage.
       // oxlint-disable-next-line typescript/prefer-promise-reject-errors
       done: Promise.reject(undefined),
       terminate: vi.fn(),
@@ -581,7 +589,7 @@ describe('background sandbox facts', () => {
     const task = bash.start(bash.resolve({ command: 'true' }))
     await task.done
 
-    expect(task.readOutput().delta).toContain('spawn failed: undefined')
+    expect(task.readOutput().delta).toContain('subprocess failed before reporting an outcome: undefined')
     expect(task.sandbox).toEqual({
       mode: 'read-only',
       denied: false,

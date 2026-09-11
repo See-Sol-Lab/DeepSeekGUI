@@ -46,8 +46,11 @@ export function parsePorcelainV2(output: string): RepoStatus {
   }
 
   const head: RepoStatus['head'] = { kind: 'branch', name: headers['branch.head'] ?? '' }
-  if (headers['branch.oid'] !== undefined && headers['branch.oid'] !== '') head.oid = headers['branch.oid']
-  if (head.name === '') head.kind = head.oid === undefined ? 'unborn' : 'detached'
+  const oid = headers['branch.oid']
+  if (oid !== undefined && oid !== '' && oid !== '(initial)') head.oid = oid
+  if (oid === '(initial)') head.kind = 'unborn'
+  else if (head.name === '(detached)') { head.kind = 'detached'; head.name = head.oid ?? '' }
+  else if (head.name === '') head.kind = head.oid === undefined ? 'unborn' : 'detached'
 
   let upstream: RepoStatus['upstream']
   if (headers['branch.upstream'] !== undefined) {

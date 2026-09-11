@@ -36,7 +36,12 @@ on:
   workflow_dispatch:
 
 # Manual runs are never cancelled: each one was started on purpose, and a
-# later dispatch does not make an earlier one stale.
+# later dispatch does not make an earlier one stale. Upstream 0.1.5 switched
+# this to an unconditional `true`, which is right for its push and nightly
+# triggers; this fork runs the suite only from workflow_dispatch and each run
+# spends real DeepSeek API credit, so cancelling an in-flight run would throw
+# away money already spent. The expression stays so a restored pull_request
+# trigger would again cancel superseded PR runs.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}

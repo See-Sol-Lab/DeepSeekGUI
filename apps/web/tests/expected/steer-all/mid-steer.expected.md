@@ -3,8 +3,9 @@
     - button "Use the ask_user_question tool to" [disabled]
   - img
   - text: Standard mode
-  - button "Session log":
-    - text: Session log
+  - button "More actions":
+    - img
+  - button "Open right sidebar":
     - img
   - tablist:
     - tab "Chat" [selected]
@@ -31,8 +32,10 @@
 - text: "Interjection: include the word ORANGE in your final reply."
 - button "Copy":
   - img
-- textbox "Message or run a task... / commands, @ files or sessions"
+- textbox "Message or run a task, / commands, @ files or sessions"
 - button "Commands":
+  - img
+- button "Add attachment":
   - img
 - 'button "Access mode, current: Workspace Write"': Workspace Write
 - button "Select model, current DeepSeek-V4-Flash":

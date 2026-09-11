@@ -18,7 +18,7 @@ Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnp
 
 ### `ctx.workbenchInspector` — `WorkbenchInspector`
 
-Read-only Remote namespace; no Session events, model requests, or writes.
+Read-only workspace inspection plus desktop-authorized Session deletion.
 
 ```ts cordis-catalog
 /**
@@ -58,6 +58,25 @@ Read-only Remote namespace; no Session events, model requests, or writes.
  * @returns the bounded provider diff; truncation is never silent.
  */
 @Remote async diff(sessionId: SessionId, scope: DiffScope, path: string, signal: AbortSignal): Promise<DiffResult>
+
+/**
+ * The newest assistant reply of a Session and whether its turn has ended.
+ * The desktop's feedback triage (#15) prompts a hidden session and polls
+ * this; reading the log through the query service keeps it off the
+ * streaming follow channel the desktop has no client for.
+ * @param sessionId - the session to read.
+ * @param signal - Request cancellation.
+ * @returns the reply text (text blocks joined) and its completeness.
+ */
+@Remote async lastReply(sessionId: SessionId, signal: AbortSignal): Promise<WorkbenchLastReply>
+
+/**
+ * Delegate authorized deletion to the Session owner, waiting for active work.
+ * @param sessionId - Session selected by the desktop user.
+ * @param signature - Desktop authorization bound to Home and Session ID.
+ * @returns Completion of content deletion and its client announcement.
+ */
+@Remote async deleteSession(sessionId: SessionId, signature: string): Promise<void>
 
 /**
  * Repository-level facts for the Git and Worktree views in one read:

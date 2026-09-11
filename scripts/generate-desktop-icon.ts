@@ -21,19 +21,19 @@ import { fileURLToPath } from 'node:url'
 import sharp from 'sharp'
 
 /** Output icon directory (electron-builder's default buildResources). */
-const ICON_DIR = fileURLToPath(new URL('../apps/desktop/build', import.meta.url))
+const ICON_DIR = fileURLToPath(new URL('../apps/deepseekgui/build', import.meta.url))
 /** Output .ico path (electron-builder's preferred Windows icon format). */
-const ICO_PATH = fileURLToPath(new URL('../apps/desktop/build/icon.ico', import.meta.url))
+const ICO_PATH = fileURLToPath(new URL('../apps/deepseekgui/build/icon.ico', import.meta.url))
 /** Output PNG path: loaded at runtime by the chrome top bar. */
-const PNG_PATH = fileURLToPath(new URL('../apps/desktop/src/chrome/icon.png', import.meta.url))
+const PNG_PATH = fileURLToPath(new URL('../apps/deepseekgui/src/chrome/icon.png', import.meta.url))
 /** Output tray ICO path: loaded at runtime by the system tray (multi-resolution). */
-const TRAY_ICO_PATH = fileURLToPath(new URL('../apps/desktop/src/chrome/tray.ico', import.meta.url))
+const TRAY_ICO_PATH = fileURLToPath(new URL('../apps/deepseekgui/src/chrome/tray.ico', import.meta.url))
 /**
  * Output tray PNG path: the Linux tray asset. Linux trays take a single PNG
  * (no ICO container support); 32px covers HiDPI scaling without going blurry
  * at the common 22–24px slot.
  */
-const TRAY_PNG_PATH = fileURLToPath(new URL('../apps/desktop/src/chrome/tray.png', import.meta.url))
+const TRAY_PNG_PATH = fileURLToPath(new URL('../apps/deepseekgui/src/chrome/tray.png', import.meta.url))
 /** Source favicon path. */
 const FAVICON_PATH = fileURLToPath(new URL('../apps/web/public/favicon.svg', import.meta.url))
 

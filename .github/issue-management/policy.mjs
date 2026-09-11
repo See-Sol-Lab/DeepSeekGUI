@@ -7,9 +7,7 @@ import { pathToFileURL } from 'node:url'
 import config from './config.json' with { type: 'json' }
 
 const API_VERSION = '2026-03-10'
-const BODY_LIMIT = 50
 const AUDIT_MARKER = '<!-- dsh-issue-policy -->'
-const OWNER_LINE = /^Owner: @([A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?)$/
 const TYPES = new Set(['Idea', 'Feature', 'Bug', 'Research', 'Task'])
 const PRIORITIES = ['p0', 'p1', 'p2', 'p3']
 const PR_KINDS = new Set([
@@ -52,6 +50,9 @@ for (const status of ['In progress', 'In review']) {
 if (typeof config.lifecycleActor !== 'string' || !config.lifecycleActor) {
   throw new Error('config.lifecycleActor 未设置')
 }
+if (typeof config.priorityField !== 'string' || !config.priorityField) {
+  throw new Error('config.priorityField 未设置')
+}
 if (typeof config.startDateField !== 'string' || !config.startDateField) {
   throw new Error('config.startDateField 未设置')
 }
@@ -59,107 +60,6 @@ if (typeof config.projectTimeZone !== 'string' || !config.projectTimeZone) {
   throw new Error('config.projectTimeZone 未设置')
 }
 Intl.DateTimeFormat('en-US', { timeZone: config.projectTimeZone })
-
-/**
- * Return Markdown outside balanced details elements.
- * @param {string} body Markdown body.
- * @returns {{text: string, balanced: boolean, detailsCount: number, allCollapsed: boolean}} Visible source and details shape.
- */
-export function extractOutsideDetails(body) {
-  const source = body.replace(/<!--[\s\S]*?-->/g, '')
-  const tag = /<\/?details\b[^>]*>/gi
-  let depth = 0
-  let cursor = 0
-  let balanced = true
-  let text = ''
-  let detailsCount = 0
-  let allCollapsed = true
-
-  for (const match of source.matchAll(tag)) {
-    const index = match.index ?? 0
-    if (depth === 0) text += source.slice(cursor, index)
-    if (/^<\//.test(match[0])) {
-      if (depth === 0) balanced = false
-      else depth -= 1
-    } else {
-      depth += 1
-      detailsCount += 1
-      if (/\sopen(?:\s|=|>)/i.test(match[0])) allCollapsed = false
-    }
-    cursor = index + match[0].length
-  }
-
-  if (depth === 0) text += source.slice(cursor)
-  if (depth !== 0) balanced = false
-  return { text, balanced, detailsCount, allCollapsed }
-}
-
-/**
- * Count Chinese characters and contiguous Latin, numeric, or code tokens.
- * @param {string} body Markdown body.
- * @returns {{units: number, balanced: boolean, detailsCount: number, allCollapsed: boolean}} Visible unit count and details shape.
- */
-export function countVisibleUnits(body) {
-  const outside = extractOutsideDetails(body)
-  const visible = outside.text
-    .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
-    .replace(/\[([^\]]+)\]\[[^\]]*\]/g, '$1')
-    .replace(/<((?:https?:\/\/|mailto:)[^>]+)>/gi, '$1')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&(?:[A-Za-z]+|#\d+|#x[0-9A-Fa-f]+);/g, ' ')
-    .replace(/[\u0060*~\[\]{}()<>#!|]/g, ' ')
-  const han = visible.match(/\p{Script=Han}/gu)?.length ?? 0
-  const tokens = visible.match(/[\p{Script=Latin}\p{Number}_./:@+-]+/gu)?.length ?? 0
-  return {
-    units: han + tokens,
-    balanced: outside.balanced,
-    detailsCount: outside.detailsCount,
-    allCollapsed: outside.allCollapsed,
-  }
-}
-
-function firstNonblankLine(body) {
-  return body
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .find(Boolean)
-}
-
-/**
- * Validate required body sections and check Owner against assignees.
- * @param {{body: string, assignees: string[], allowUnassignedOwner?: boolean}} input Body input.
- * @returns {string[]} Validation errors.
- */
-export function validateBody({
-  body,
-  assignees,
-  allowUnassignedOwner = config.allowUnassignedOwner ?? false,
-}) {
-  const errors = []
-  const count = countVisibleUnits(body)
-  const owner = firstNonblankLine(body)?.match(OWNER_LINE)?.[1] ?? null
-  const normalized = [...new Set(assignees.map((login) => login.toLowerCase()))]
-
-  if (!count.balanced) errors.push('details 标签必须成对闭合')
-  if (count.detailsCount === 0) errors.push('正文必须包含默认收起的 <details> 区域')
-  if (!count.allCollapsed) errors.push('details 必须默认收起，不得设置 open')
-  if (count.units > BODY_LIMIT) {
-    errors.push(`正文外露部分为 ${count.units} 单位，超过 50 单位`)
-  }
-  if (normalized.length >= 2 && !owner) {
-    errors.push('多个 Assignees 时首个非空行必须是 Owner: @login')
-  } else if (normalized.length >= 2 && !normalized.includes(owner.toLowerCase())) {
-    errors.push('Owner 必须属于 Assignees')
-  } else if (
-    normalized.length < 2 &&
-    owner &&
-    !(normalized.length === 0 && allowUnassignedOwner)
-  ) {
-    errors.push('零或一个 Assignee 时不得写 Owner 行')
-  }
-  return errors
-}
 
 /**
  * Decide whether the human-review policy applies to a PR.
@@ -312,26 +212,16 @@ export function retainIssueReferences(references, issues) {
 
 /**
  * Validate one Issue with its Project status.
- * @param {{title: string, body: string, assignees: string[], labels: string[], type: string|null, priority: string|null, status: string|null, state: string, stateReason: string|null}} issue Issue snapshot.
+ * @param {{labels: string[], type: string|null, priority: string|null, status: string|null, state: string, stateReason: string|null}} issue Issue snapshot.
  * @returns {string[]} Validation errors.
  */
 export function validateIssue(issue) {
-  const errors = validateBody(issue)
+  const errors = []
   const status = issue.status
-  const invalidLabels = issue.labels.filter(
-    (label) => label.startsWith('kind/') || LEGACY_LABELS.has(label),
-  )
+  const invalidLabels = issue.labels.filter(isInvalidIssueLabel)
 
-  if (!/\p{Script=Han}/u.test(issue.title)) errors.push('Issue 标题必须包含中文')
   if (invalidLabels.length > 0) {
     errors.push(`Issue 不得使用 PR kind 或旧版标签：${invalidLabels.join(', ')}`)
-  }
-  if (
-    /^\s*(?:\[(?:Idea|Feature|Bug|Research|Task|P[0-3]|Inbox|Backlog|Ready|In progress|In review|Done|No action|Owner|area\/[^\]]+)[^\]]*\]|(?:Idea|Feature|Bug|Research|Task|P[0-3]|Inbox|Backlog|Ready|In progress|In review|Done|No action|Owner|area\/[^:： ]+)\s*[:：-])/iu.test(
-      issue.title,
-    )
-  ) {
-    errors.push('Issue 标题不得带 Type、Priority、Status、area 或 Owner 前缀')
   }
   if (!TYPES.has(issue.type ?? '')) errors.push('Type 必须是五种原生英文 Type 之一')
   if (!status || !config.statuses.includes(status)) errors.push('Issue 必须在 Project 中且具有合法 Status')
@@ -351,6 +241,10 @@ export function validateIssue(issue) {
     errors.push(`${status} 必须对应开放 Issue`)
   }
   return errors
+}
+
+function isInvalidIssueLabel(label) {
+  return label.startsWith('kind/') || LEGACY_LABELS.has(label)
 }
 
 /**
@@ -415,9 +309,14 @@ function token() {
   return value
 }
 
+function projectToken() {
+  return process.env.PROJECT_TOKEN || token()
+}
+
 async function api(path, options = {}) {
+  const { allow404 = false, ...requestOptions } = options
   const response = await fetch(`${process.env.GITHUB_API_URL ?? 'https://api.github.com'}${path}`, {
-    ...options,
+    ...requestOptions,
     headers: {
       Accept: 'application/vnd.github+json',
       Authorization: `Bearer ${token()}`,
@@ -426,10 +325,10 @@ async function api(path, options = {}) {
       ...options.headers,
     },
   })
-  if (options.allow404 && response.status === 404) return null
+  if (allow404 && response.status === 404) return null
   if (!response.ok) {
     const body = await response.text()
-    throw new Error(`${options.method ?? 'GET'} ${path}: ${response.status} ${body}`)
+    throw new Error(`${requestOptions.method ?? 'GET'} ${path}: ${response.status} ${body}`)
   }
   if (response.status === 204) return null
   return response.json()
@@ -439,29 +338,32 @@ async function graphql(query, variables) {
   const result = await api('/graphql', {
     method: 'POST',
     body: JSON.stringify({ query, variables }),
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      Authorization: `Bearer ${projectToken()}`,
+      'Content-Type': 'application/json',
+    },
   })
   if (result.errors?.length) throw new Error(result.errors.map((error) => error.message).join('; '))
   return result.data
 }
 
-async function issueSnapshot(number, status = undefined) {
+/**
+ * Read one Issue together with its Project planning values.
+ * @param {number} number Same-repository Issue number.
+ * @param {string|null|undefined} status Optional known Project status.
+ * @returns {Promise<object|null>} Issue snapshot, or null when the number identifies a pull request.
+ */
+export async function issueSnapshot(number, status = undefined) {
   const issue = await api(`/repos/${config.organization}/${config.repository}/issues/${number}`)
   if (issue.pull_request) return null
-  const values = await api(
-    `/repos/${config.organization}/${config.repository}/issues/${number}/issue-field-values?per_page=100`,
-  )
-  const field = (name) => values.find((value) => value.issue_field_name === name)
+  const context = await projectContext(number)
   return {
     number,
     nodeId: issue.node_id,
-    title: issue.title,
-    body: issue.body ?? '',
-    assignees: issue.assignees.map((assignee) => assignee.login),
     labels: issue.labels.map((label) => label.name),
     type: issue.type?.name ?? null,
-    priority: field(config.priorityField)?.single_select_option?.name ?? null,
-    status: status === undefined ? await projectStatus(number) : status,
+    priority: context.item?.priorityValue?.name ?? null,
+    status: status === undefined ? (context.item?.fieldValueByName?.name ?? null) : status,
     state: issue.state,
     stateReason: issue.state_reason ?? null,
   }
@@ -476,6 +378,7 @@ async function projectContext(number, includeStatusActor = false, includeStartDa
       $project: Int!
       $includeStatusActor: Boolean!
       $includeStartDate: Boolean!
+      $priorityField: String!
       $startDateField: String!
     ) {
       organization(login: $organization) {
@@ -484,8 +387,19 @@ async function projectContext(number, includeStatusActor = false, includeStartDa
           title
           fields(first: 50) {
             nodes {
-              ... on ProjectV2Field { id name dataType }
-              ... on ProjectV2SingleSelectField { id name dataType options { id name } }
+              ... on ProjectV2Field {
+                id
+                name
+                dataType
+                isIssueField
+              }
+              ... on ProjectV2SingleSelectField {
+                id
+                name
+                dataType
+                isIssueField
+                options { id name }
+              }
             }
           }
         }
@@ -510,6 +424,9 @@ async function projectContext(number, includeStatusActor = false, includeStartDa
               fieldValueByName(name: "Status") {
                 ... on ProjectV2ItemFieldSingleSelectValue { name optionId }
               }
+              priorityValue: fieldValueByName(name: $priorityField) {
+                ... on ProjectV2ItemFieldSingleSelectValue { name optionId }
+              }
               startDateValue: fieldValueByName(name: $startDateField)
                 @include(if: $includeStartDate) {
                 ... on ProjectV2ItemFieldDateValue { date }
@@ -526,6 +443,7 @@ async function projectContext(number, includeStatusActor = false, includeStartDa
       project: config.projectNumber,
       includeStatusActor,
       includeStartDate,
+      priorityField: config.priorityField,
       startDateField: config.startDateField,
     },
   )
@@ -535,6 +453,14 @@ async function projectContext(number, includeStatusActor = false, includeStartDa
   if (!issue) throw new Error(`#${number} 不存在`)
   const statusField = project.fields.nodes.find((field) => field?.name === 'Status')
   if (!statusField) throw new Error('Project 缺少 Status 字段')
+  const priorityField = project.fields.nodes.find((field) => field?.name === config.priorityField)
+  if (!priorityField) throw new Error(`Project 缺少 ${config.priorityField} 字段`)
+  if (priorityField.dataType !== 'SINGLE_SELECT') {
+    throw new Error(`Project ${config.priorityField} 字段必须为 Single Select`)
+  }
+  if (priorityField.isIssueField) {
+    throw new Error(`Project ${config.priorityField} 字段必须为 Project custom field`)
+  }
   const startDateField = includeStartDate
     ? project.fields.nodes.find((field) => field?.name === config.startDateField)
     : null
@@ -544,6 +470,9 @@ async function projectContext(number, includeStatusActor = false, includeStartDa
   if (startDateField && startDateField.dataType !== 'DATE') {
     throw new Error(`Project ${config.startDateField} 字段必须为 Date`)
   }
+  if (startDateField?.isIssueField) {
+    throw new Error(`Project ${config.startDateField} 字段必须为 Project Date 字段`)
+  }
   const item = issue.projectItems.nodes.find((candidate) => candidate.project.id === project.id)
   const latestStatusEvent = issue.timelineItems?.nodes
     ?.filter((event) => event?.project?.id === project.id)
@@ -552,12 +481,7 @@ async function projectContext(number, includeStatusActor = false, includeStartDa
     latestStatusEvent && latestStatusEvent.status === item?.fieldValueByName?.name
       ? (latestStatusEvent.actor?.login ?? null)
       : null
-  return { project, issue, statusField, startDateField, item, statusActor }
-}
-
-async function projectStatus(number) {
-  const context = await projectContext(number)
-  return context.item?.fieldValueByName?.name ?? null
+  return { project, issue, statusField, priorityField, startDateField, item, statusActor }
 }
 
 async function ensureProjectItem(number, includeStartDate = false) {
@@ -576,13 +500,14 @@ async function ensureProjectItem(number, includeStartDate = false) {
     item: {
       id: data.addProjectV2ItemById.item.id,
       fieldValueByName: null,
+      priorityValue: null,
       startDateValue: null,
     },
   }
 }
 
 /**
- * Initialize one Issue's Project Start date when it is empty.
+ * Initialize one Issue's Project Start Date when it is empty.
  * @param {number} number Same-repository Issue number.
  * @param {string} date Date in YYYY-MM-DD form.
  * @returns {Promise<void>} Resolves after the conditional Project update.
@@ -651,6 +576,25 @@ async function setStatus(number, status) {
   await updateStatus(await ensureProjectItem(number), status)
 }
 
+/**
+ * Remove pull-request kinds and retired aliases from one Issue snapshot.
+ * @param {{number: number, labels: string[]}} issue Issue snapshot.
+ * @returns {Promise<object>} Snapshot containing only labels that remain on the Issue.
+ */
+export async function repairIssueLabels(issue) {
+  const invalidLabels = issue.labels.filter(isInvalidIssueLabel)
+  for (const label of invalidLabels) {
+    await api(
+      `/repos/${config.organization}/${config.repository}/issues/${issue.number}/labels/${encodeURIComponent(label)}`,
+      { method: 'DELETE', allow404: true },
+    )
+  }
+  return {
+    ...issue,
+    labels: issue.labels.filter((label) => !isInvalidIssueLabel(label)),
+  }
+}
+
 async function upsertAudit(number, errors) {
   const comments = await api(
     `/repos/${config.organization}/${config.repository}/issues/${number}/comments?per_page=100`,
@@ -683,10 +627,18 @@ async function upsertAudit(number, errors) {
   }
 }
 
-async function auditIssue(number, extraErrors = [], status = undefined) {
+/**
+ * Repair deterministic Issue metadata violations and publish the remaining audit result.
+ * @param {number} number Same-repository Issue number.
+ * @param {string[]} extraErrors Errors supplied by the triggering lifecycle operation.
+ * @param {string|null|undefined} status Optional known Project status.
+ * @returns {Promise<string[]>} Violations that remain after repair.
+ */
+export async function auditIssue(number, extraErrors = [], status = undefined) {
   const issue = await issueSnapshot(number, status)
   if (!issue) return []
-  const errors = [...extraErrors, ...validateIssue(issue)]
+  const repairedIssue = await repairIssueLabels(issue)
+  const errors = [...extraErrors, ...validateIssue(repairedIssue)]
   await upsertAudit(number, errors)
   return errors
 }

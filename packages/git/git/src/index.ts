@@ -1,10 +1,4 @@
-/**
- * Service Definition for the Git capability seam (`ctx.git`): read-only
- * repository facts — identity, HEAD/branch/upstream, work trees, status, and
- * diff summaries — served through stable machine formats. Git owns the
- * repository; this seam only reads it and never writes (no stage, no
- * worktree creation, no commit, no push). The local implementation lives in
- * `@deepseek-ai/dsh-git-local`.
+/** Git reads and explicit mutations through composed providers.
  * @module @deepseek-ai/dsh-git
  */
 
@@ -19,13 +13,24 @@ export type {
 } from './types.ts'
 import type { GitCommitResult, PushApproval, PushOutcome, PushPreview, RemoteInfo } from './types.ts'
 
+/** Remove URL credentials and token parameters from Git diagnostics and displayed remote addresses.
+ * @param text - Git output or a displayed remote URL.
+ * @returns Text with recognized credentials removed.
+ */
+export function redactGitText(text: string): string {
+  return text.replace(/([a-z][a-z0-9+.-]*:\/\/)[^/@\s]+@/giu, '$1<redacted>@')
+    .replace(/([?&](?:token|access_token|private_token|password)=)[^\s&#]*/giu, '$1<redacted>')
+    .replace(/github_pat_[A-Za-z0-9_]{16,}/gu, 'github_pat_<redacted>')
+    .replace(/gh[pousr]_[A-Za-z0-9]{16,}/gu, 'gh*_<redacted>')
+}
+
 /** The git executable could not be resolved or executed in this environment. */
 export class GitUnavailableError extends Error {
   /**
    * @param detail - Resolution or spawn failure detail.
    */
   constructor(detail: string) {
-    super(`git is unavailable: ${detail}`)
+    super(`git is unavailable: ${redactGitText(detail)}`)
     this.name = 'GitUnavailableError'
   }
 }
@@ -68,17 +73,21 @@ export class GitCommandFailedError extends Error {
    * @param command - The argv that failed.
    * @param cwd - The working directory the command ran in.
    * @param exitCode - The process exit code.
-   * @param stderr - The raw captured stderr (presented, not parsed).
+   * @param stderr - Captured stderr, redacted before presentation.
+   * @param timedOut - Whether the command exceeded its deadline.
    */
   constructor(
     readonly command: readonly string[],
     readonly cwd: string,
     readonly exitCode: number | null,
     readonly stderr: string,
+    readonly timedOut = false,
   ) {
     super(
-      `git ${command.slice(1).join(' ')} failed (exit ${String(exitCode)}): ${stderr.trim()}`,
+      redactGitText(`git ${command.slice(1).join(' ')} ${timedOut ? 'timed out' : `failed (exit ${String(exitCode)})`}: ${stderr.trim()}`),
     )
+    this.command = command.map(redactGitText)
+    this.stderr = redactGitText(stderr)
     this.name = 'GitCommandFailedError'
   }
 }
@@ -360,9 +369,10 @@ export abstract class GitCapability extends Service {
    * lost before invoking this.
    * @param cwd - Working directory inside the repository.
    * @param path - Path relative to the repo root.
+   * @param expectedPatch - Optional approved unstaged patch; changed content refuses the revert.
    * @returns resolution after the work tree was restored.
    */
-  abstract revertFile(cwd: string, path: string): Promise<void>
+  abstract revertFile(cwd: string, path: string, expectedPatch?: string): Promise<void>
 
   /**
    * The configured commit author (`git var GIT_AUTHOR_IDENT`), or `undefined`

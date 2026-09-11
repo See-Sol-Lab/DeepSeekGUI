@@ -490,6 +490,103 @@
   color: var(--dsw-alias-label-secondary);
 }
 
+/* Archived-session restore group (B6-1). */
+.archivedRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 12px;
+}
+
+.archivedTitle {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.archivedWorkspace {
+  flex: none;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-caption);
+}
+
+.archivedRestore {
+  flex: none;
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  padding: 3px 10px;
+  cursor: pointer;
+  color: var(--dsw-alias-label-secondary);
+  background: transparent;
+  border: 1px solid var(--dsw-alias-label-caption);
+  border-radius: 6px;
+}
+
+.archivedRestore:hover {
+  color: var(--dsw-alias-label-primary);
+}
+
+.startFailure {
+  padding: 4px 12px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-status-error, #d93026);
+  overflow-wrap: anywhere;
+}
+
+.archivedDelete {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  cursor: pointer;
+  color: var(--dsw-alias-label-tertiary);
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+}
+
+.archivedDelete:hover {
+  color: var(--dsw-alias-status-error, #d93026);
+  background: var(--dsw-alias-fill-secondary);
+}
+
+.archivedWarning {
+  flex: none;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-status-error, #d93026);
+}
+
+.archivedDeleteConfirm {
+  flex: none;
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  padding: 3px 10px;
+  cursor: pointer;
+  color: var(--dsw-alias-status-error, #d93026);
+  background: transparent;
+  border: 1px solid var(--dsw-alias-status-error, #d93026);
+  border-radius: 6px;
+}
+
+.archivedHint {
+  padding: 4px 12px 8px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .wide {
     animation: none;

@@ -33,13 +33,13 @@ pnpm install
 | Command | What it does |
 | --- | --- |
 | `pnpm run build` | Build everything |
-| `pnpm run dev:desktop` | Start the desktop app in development mode |
+| `pnpm run dev:deepseekgui` | Start the desktop app in development mode |
 | `pnpm run build:desktop-dist` | Build the Windows distribution |
 | `pnpm run typecheck` | Run type checking |
 | `pnpm run lint` | Check code style (`lint:fix` applies fixes) |
 | `pnpm test` | Run the test suite |
 
-See [apps/desktop/README.md](apps/desktop/README.md) for engineering details and packaging verification.
+See [apps/deepseekgui/README.md](apps/deepseekgui/README.md) for engineering details and packaging verification.
 
 ## Repository boundaries
 
@@ -47,7 +47,7 @@ If DeepSeekGUI's vision is a car, DeepSeek Harness is the engine inside it. Upst
 
 In practice:
 
-- **DeepSeekGUI's own desktop code lives in `apps/desktop/`.** Improvements here are welcome.
+- **DeepSeekGUI's own desktop code lives in `apps/deepseekgui/`.** Improvements here are welcome.
 - **Upstream Harness code** (`packages/`, `apps/cli`, `apps/web`, and friends) follows the official repository. Send changes for those to [upstream](https://github.com/deepseek-ai/deepseek-harness).
 
 ## Sending a pull request
@@ -59,7 +59,7 @@ In practice:
 
 **Before you submit**
 
-- [ ] Changes stay within `apps/desktop/` or another DeepSeekGUI-owned area
+- [ ] Changes stay within `apps/deepseekgui/` or another DeepSeekGUI-owned area
 - [ ] `pnpm run build` passes
 - [ ] `pnpm run typecheck` and `pnpm run lint` pass
 - [ ] UI and documentation changes are synced in both languages

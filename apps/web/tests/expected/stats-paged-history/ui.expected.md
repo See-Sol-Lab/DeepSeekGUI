@@ -1,8 +1,9 @@
 - banner:
   - navigation "Session hierarchy":
     - button "{{workspace}}" [disabled]
-  - button "Session log":
-    - text: Session log
+  - button "More actions":
+    - img
+  - button "Open right sidebar":
     - img
   - tablist:
     - tab "Chat" [selected]
@@ -459,12 +460,16 @@
 - text: 7/25 {{clock}}
 - button "Back to bottom":
   - img
-- textbox "Message or run a task... / commands, @ files or sessions"
+- textbox "Message or run a task, / commands, @ files or sessions"
 - button "Commands":
+  - img
+- button "Add attachment":
   - img
 - 'button "Access mode, current: Workspace Write"': Workspace Write
 - button "Select model, current DeepSeek-V4-Flash":
   - text: DeepSeek-V4-Flash
   - img
 - button "Send message" [disabled]
-- text: 28 turns · 28 steps LLM {{duration}}
+- button "28 turns 28 steps":
+  - img
+  - text: 28 turns 28 steps

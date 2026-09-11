@@ -90,7 +90,6 @@ async function openSeed(page: Page): Promise<void> {
   const resultCount = await results.count()
   if (resultCount !== 1) throw new Error(`expected one seeded search result, received ${String(resultCount)}`)
   await results.click()
-  await results.click()
   await page.getByText(FIXTURE.markers.assistant(FIXTURE.turns), { exact: false })
     .last().waitFor({ timeout: 30_000 })
   await nextPaint(page)
@@ -174,6 +173,10 @@ describe('web e2e: long Chat interaction contract', () => {
 
   it.skipIf(MODE === 'record')('keeps heterogeneous rows and their actions bound to exact semantic identities', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-chat-long-interactions'))
+    await expect.poll(
+      () => scaffold.ctx.agents.get(SessionId(SESSION_ID)) !== undefined,
+      { timeout: 10_000 },
+    ).toBe(true)
     const source = scaffold.ctx.agents.get(SessionId(SESSION_ID))
     if (source === undefined) throw new Error('seeded long-history agent is not attached')
 

@@ -1,0 +1,63 @@
+{
+  "extends": "../../../tsconfig.base.client.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "lib/types",
+    "tsBuildInfoFile": "lib/tsconfig.tsbuildinfo",
+    "types": ["client-build-environment", "node"]
+  },
+  "include": [
+    "src"
+  ],
+  "references": [
+    { "path": "../../../packages/api/remotes/tsconfig.client.json" },
+    { "path": "../../../packages/api/workbench-inspector" },
+    { "path": "../../../packages/git/git" },
+    { "path": "../../../packages/typert/protocol" },
+    {
+      "path": "../../../vendor/cordis"
+    },
+    {
+      "path": "../../../packages/core/session"
+    },
+    {
+      "path": "../../../packages/core/system-prompt"
+    },
+    {
+      "path": "../../../packages/llm/llm"
+    },
+    {
+      "path": "../../../packages/api/session-controller/tsconfig.client.json"
+    },
+    {
+      "path": "../../../packages/client/locale"
+    },
+    {
+      "path": "../../../packages/client/ui-slots"
+    },
+    {
+      "path": "../../../packages/client/ui-session"
+    },
+    {
+      "path": "../../../packages/client/ui-sidebar"
+    },
+    {
+      "path": "../../../packages/client/ui-conversation"
+    },
+    {
+      "path": "../../../packages/client/ui-chat"
+    },
+    {
+      "path": "../../../packages/client/ui-tool"
+    },
+    {
+      "path": "../../../packages/client/ui-renderer"
+    },
+    {
+      "path": "../../../packages/session/session-stats"
+    },
+    {
+      "path": "../../../packages/llm/token-meter"
+    }
+  ]
+}

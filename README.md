@@ -1,6 +1,6 @@
 <div align="center">
 
-# <img src="./apps/desktop/src/chrome/icon.png" width="38" alt="" align="absmiddle" /> DeepSeekGUI v1.1.0
+# <img src="./apps/deepseekgui/src/chrome/icon.png" width="38" alt="" align="absmiddle" /> DeepSeekGUI v1.1.1
 
 </div>
 
@@ -23,7 +23,7 @@
   <a href="https://github.com/See-Sol-Lab/DeepSeekGUI/releases"><img alt="下载量" src="https://img.shields.io/github/downloads/See-Sol-Lab/DeepSeekGUI/total?style=flat-square" /></a>
   <img alt="Windows 10 与 11 x64" src="https://img.shields.io/badge/Windows-10%20%7C%2011%20x64-0078D4?style=flat-square&logo=windows" />
   <a href="https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.1.0-linux.1"><img alt="Linux x64 AppImage" src="https://img.shields.io/badge/Linux-x64%20AppImage-FCC624?style=flat-square&logo=linux&logoColor=black" /></a>
-  <a href="apps/desktop/LICENSE"><img alt="DeepSeekGUI 产品层：PolyForm Perimeter 1.0.1" src="https://img.shields.io/badge/DeepSeekGUI-PolyForm%20Perimeter%201.0.1-6f42c1?style=flat-square" /></a>
+  <a href="apps/deepseekgui/LICENSE"><img alt="DeepSeekGUI 产品层：PolyForm Perimeter 1.0.1" src="https://img.shields.io/badge/DeepSeekGUI-PolyForm%20Perimeter%201.0.1-6f42c1?style=flat-square" /></a>
   <a href="LICENSE-MIT-UPSTREAM"><img alt="上游 DeepSeek Harness：MIT" src="https://img.shields.io/badge/Upstream%20Harness-MIT-2ea44f?style=flat-square" /></a>
   <a href="https://doi.org/10.5281/zenodo.22205160"><img alt="DOI" src="https://zenodo.org/badge/DOI/10.5281/zenodo.22205160.svg" /></a>
 </p>
@@ -47,13 +47,15 @@ DeepSeekGUI 是基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek
 
 **非官方产品：** 基于 DeepSeek Harness 构建，由第三方独立开发，与 DeepSeek 无隶属关系，未获官方背书。
 
-**当前版本：[v1.1.0](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.1.0)。** 本地 Workbench、Git / PR 工具、两层记忆和桌面通知已发布。工作台通过插件扩展官方 Harness 客户端，继续使用 Harness 的会话、工具与权限机制。
+**分层许可：** DeepSeekGUI 原创产品层采用 [PolyForm Perimeter License 1.0.1](apps/deepseekgui/LICENSE)；上游 DeepSeek Harness 仍遵循 [MIT License](LICENSE-MIT-UPSTREAM)。
+
+**当前版本：[v1.1.1](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.1.1)。** 内嵌 Harness 升级到 0.1.5-rc.2，新增首次启动引导、就地更新、数据目录迁移和归档会话管理。工作台通过插件扩展官方 Harness 客户端，继续使用 Harness 的会话、工具与权限机制。
 
 ## 下载
 
 | 平台 | 下载 | 要求 |
 | --- | --- | --- |
-| Windows | [下载安装包](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.1.0/DeepSeekGUI-Setup-1.1.0.exe) | Windows 10/11，x64 |
+| Windows | [下载安装包](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.1.1/DeepSeekGUI-Setup-1.1.1.exe) | Windows 10/11，x64 |
 | Linux | [下载 AppImage](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.1.0-linux.1/DeepSeekGUI-1.1.0-x86_64.AppImage) | x64，AppImage；实验性支持 |
 
 Windows 安装包安装到当前用户目录，自带运行时。Linux 使用独立的 AppImage 发行文件，下载与校验信息见 [v1.1.0-linux.1](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.1.0-linux.1) 发布页。
@@ -66,10 +68,10 @@ Windows 安装包安装到当前用户目录，自带运行时。Linux 使用独
 下载安装包后，在 PowerShell 中计算 SHA256：
 
 ```powershell
-Get-FileHash .\DeepSeekGUI-Setup-1.1.0.exe -Algorithm SHA256
+Get-FileHash .\DeepSeekGUI-Setup-1.1.1.exe -Algorithm SHA256
 ```
 
-与 [`SHA256SUMS.txt`](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.1.0/SHA256SUMS.txt) 核对后再安装。遇到问题看[故障排查指南](docs/user/deepseekgui/data-troubleshooting.zh.md#windows-smartscreen-blocks-the-installer)。
+与 [`SHA256SUMS.txt`](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.1.1/SHA256SUMS.txt) 核对后再安装。遇到问题看[故障排查指南](docs/user/deepseekgui/data-troubleshooting.zh.md#windows-smartscreen-blocks-the-installer)。
 
 </details>
 
@@ -131,7 +133,7 @@ Get-FileHash .\DeepSeekGUI-Setup-1.1.0.exe -Algorithm SHA256
 - **Profile 与插件** — 切换 Harness Home 和 Profile，管理兼容插件，查看配置与运行状态。
 - **桌面集成** — 中英双语界面、系统托盘、更新检查与本地诊断。
 
-完整版本变更见 [v1.1.0 发布说明](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.1.0)。
+完整版本变更见 [v1.1.1 发布说明](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.1.1)。
 
 ## 文档
 
@@ -169,7 +171,7 @@ git clone https://github.com/See-Sol-Lab/DeepSeekGUI.git
 cd DeepSeekGUI
 pnpm install
 pnpm run build
-pnpm run dev:desktop
+pnpm run dev:deepseekgui
 ```
 
 构建 Windows 发行版：
@@ -178,7 +180,7 @@ pnpm run dev:desktop
 pnpm run build:desktop-dist
 ```
 
-打包细节见 [DeepSeekGUI Desktop](apps/desktop/README.zh.md)。
+打包细节见 [DeepSeekGUI Desktop](apps/deepseekgui/README.zh.md)。
 
 <a id="run"></a>
 
@@ -215,7 +217,6 @@ pnpm dsh web
 两部分：
 
 - **上游 Harness** 代码继续遵循 DeepSeek 的 [MIT License](LICENSE-MIT-UPSTREAM)。
-- **DeepSeekGUI** 原创代码以 [PolyForm Perimeter License 1.0.1](apps/desktop/LICENSE) 源码可见发布。个人、学习、研究、爱好、公司内部用都行；做竞品需要找 See-Sol-Lab 另外拿授权。
+- **DeepSeekGUI** 原创代码以 [PolyForm Perimeter License 1.0.1](apps/deepseekgui/LICENSE) 源码可见发布。个人、学习、研究、爱好、公司内部用都行；做竞品需要找 See-Sol-Lab 另外拿授权。
 
 根目录 [`LICENSE`](LICENSE) 说明了两部分怎么划分。重新分发前请读 [DeepSeekGUI 许可说明](DEEPSEEKGUI-LICENSE.md)和[第三方声明](THIRD_PARTY_NOTICES.md)。
-
