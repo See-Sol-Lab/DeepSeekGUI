@@ -49,6 +49,8 @@ DeepSeekGUI 是基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek
 
 **当前版本：[v1.1.1](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.1.1)。** 内嵌 Harness 升级到 0.1.5-rc.2，新增首次启动引导、就地更新、数据目录迁移和归档会话管理。工作台通过插件扩展官方 Harness 客户端，继续使用 Harness 的会话、工具与权限机制。
 
+[产品自研workbench路线图](https://see-sol-lab.github.io/research/deepseekgui-single-task-signal.html)
+
 ## 下载
 
 | 平台 | 下载 | 要求 |
@@ -161,8 +163,6 @@ Git、文件栏、模型设置、浏览器及归档页面截图来自 v1.1.1；�
 | [数据与故障排查](docs/user/deepseekgui/data-troubleshooting.zh.md) | 数据目录迁移、卸载保留、隐私、故障排查 |
 
 文档里也保留了上游 Harness 的开发教程和插件开发参考。
-
-[产品自研workbench路线图](https://see-sol-lab.github.io/research/deepseekgui-single-task-signal.html)
 
 ## 数据与隐私
 
