@@ -1,0 +1,19 @@
+# Bilingual-pair consistency record for 2026-09-14-memory-cross-window-and-continuation.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-14-memory-cross-window-and-continuation.md
+/agent-note-memory-across-windows-task-hand-over-and-session-deletion:
+  en: 4217eed995acaf60
+  zh: 95012b888770ef0c
+/agent-note-memory-across-windows-task-hand-over-and-session-deletion/problem:
+  en: 2154063bb727e98f
+  zh: 2bf2f3c843f7c162
+/agent-note-memory-across-windows-task-hand-over-and-session-deletion/decision:
+  en: 7ed18113e5bb525c
+  zh: d878192732afaa7e
+/agent-note-memory-across-windows-task-hand-over-and-session-deletion/alternatives-considered:
+  en: 40366359554746cf
+  zh: cd02cef290b21114
+/agent-note-memory-across-windows-task-hand-over-and-session-deletion/consequences:
+  en: a0ae44efef228112
+  zh: 3169da4c2810cfbd

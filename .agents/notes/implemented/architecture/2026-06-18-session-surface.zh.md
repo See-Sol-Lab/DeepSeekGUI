@@ -37,7 +37,7 @@ surface 元数据仅属于四种 surface 事件类型（`system/message`、`user
 
 ### 持久化
 
-这些字段作为顶层 JSON 属性序列化。JSONL 无需单独列映射即可保留位置与来源。[V3 规范信封决策](2026-09-06-v3-canonical-session-envelopes.zh.md)负责精确替换键与严格准入依据；[V2 到 V3 规范](../../../../packages/session/session-format-v2-to-v3/README.zh.md#canonical-envelopes)负责历史转换。本文继续负责有序投影的所有权与替换依据。
+这些字段作为顶层 JSON 属性序列化。JSONL 无需单独列映射即可保留位置与源事件引用。[V3 规范信封决策](2026-09-06-v3-canonical-session-envelopes.zh.md)负责精确替换键与严格准入依据；[V2 到 V3 规范](../../../../packages/session/session-format-v2-to-v3/README.zh.md#canonical-envelopes)负责历史转换。本文继续负责有序投影的所有权与替换依据。
 
 ### 崩溃恢复
 

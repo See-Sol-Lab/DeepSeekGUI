@@ -65,7 +65,7 @@ export function exportHeadlessDiagnostics(facts: HeadlessExportFacts): string {
   const deadline = Date.now() + facts.timeoutMs
   const assertNotTimedOut = (): void => {
     if (Date.now() >= deadline) {
-      throw new Error(`headless 导出超过 ${String(facts.timeoutMs)}ms 未完成`)
+      throw new Error(`The headless export did not finish within ${String(facts.timeoutMs)}ms`)
     }
   }
   // 服务日志（current + 全部轮转历史），先 redaction 再交给纯函数组装。

@@ -25,8 +25,6 @@ const ZH: ChromeStrings = {
   // B3-15（住户 2026-08-24 批准）：Harness 崩掉时，设置页随官方 web UI 一起
   // 不可达（它就住在 3080 里），主窗口原本一个重启入口都没有，只剩系统托盘。
   // 故障态恰恰最需要它，而 chrome 层是我们自己的 renderer，DSH 死了它还活着。
-  'menu.plugin-recovery.restore': '恢复上次插件变更',
-  'menu.plugin-recovery.open-profile': '打开 Profile 文件夹',
   'menu.restart-harness': '重启 Harness',
   'menu.terminal': 'DSH 终端',
   // 逃生门语义（2026-09-02 开发者定调）：官方 Web UI 是备份/诊断层——GUI 出问题时用户仍能用官方界面自助维护。
@@ -87,6 +85,12 @@ const ZH: ChromeStrings = {
   'diag.update.install': '安装更新',
   'diag.update.dismiss': '关闭提示',
   'diag.update.smart-screen': '当前版本未进行代码签名，Windows SmartScreen 可能提示"未知发布者"。',
+  // B7-P2：更新说明区（受限 Markdown、按界面语言取段、独立滚动）与顶栏更新提示。
+  'update.notes.release-page': '新功能 ↗',
+  'update.hint': '发现新版本 {version}',
+  'update.hint.downloading': '{version} 下载中…',
+  'update.hint.ready': '更新已就绪 🎁',
+  'update.hint.title': '点击查看更新状态',
   'feedback.notice.copied': 'issue 内容已复制到剪贴板，正在打开 GitHub 页面。粘贴后提交即可。',
   'feedback.notice.failed': '复制或打开浏览器失败：',
   'feedback.gateway.sending': '正在提交…',
@@ -155,7 +159,6 @@ const ZH: ChromeStrings = {
   'fail.dsh-failed.title': 'DSH 服务启动失败',
   'fail.dsh-failed.message': '{stage}: {message}{hint}',
   // ---- main 直接弹给用户的错误消息（reportFailure 的 detail；③类） ----
-  'error.plugin-busy': '已有一项插件操作在进行中；请先取消或等待其结束',
   'error.harness-booting': 'Harness 正在启动/切换中，请等状态变为运行中后再进行插件操作',
   'error.workspace-missing': '会话工作区目录不存在：{path}。请恢复该目录，或选择其他工作区。',
   'error.wt-launch': 'Windows Terminal 启动失败: {reason}',
@@ -196,13 +199,10 @@ const ZH: ChromeStrings = {
   'msg.update-install-state-changed': '确认期间更新包或更新状态发生了变化，本次安装已取消，请重新确认。',
   'msg.update-verified': '下载并验证完成，可以安装',
   'msg.update-download-cancelled': '下载已取消',
-  'msg.plugin-op-cancelled': '操作已取消；launcher selection 未改变。目标 Profile 可能处于未完成的中间状态，刷新可查看当前磁盘事实。',
 }
 
 const EN: ChromeStrings = {
   'menu.about': 'About DeepSeekGUI',
-  'menu.plugin-recovery.restore': 'Undo Last Plugin Change',
-  'menu.plugin-recovery.open-profile': 'Open Profile Folder',
   'menu.restart-harness': 'Restart Harness',
   'menu.terminal': 'DSH Terminal',
   'menu.compatibility': 'Official Web UI',
@@ -254,6 +254,11 @@ const EN: ChromeStrings = {
   'diag.update.install': 'Install Update',
   'diag.update.dismiss': 'Dismiss',
   'diag.update.smart-screen': 'this build is not code-signed; Windows SmartScreen may warn about the unknown publisher.',
+  'update.notes.release-page': 'What’s new ↗',
+  'update.hint': 'New version {version}',
+  'update.hint.downloading': 'Downloading {version}\u2026',
+  'update.hint.ready': 'Update ready 🎁',
+  'update.hint.title': 'Click to see the update status.',
   'feedback.notice.copied': 'The issue body was copied to the clipboard and the GitHub page is opening. Paste it there and submit.',
   'feedback.notice.failed': 'Copy or browser open failed: ',
   'feedback.gateway.sending': 'Submitting…',
@@ -315,7 +320,6 @@ const EN: ChromeStrings = {
   'fail.launcher-invalid.message': 'Cannot read the launcher configuration at {path} even after restoring defaults: {reason}',
   'fail.dsh-failed.title': 'DSH service failed to start',
   'fail.dsh-failed.message': '{stage}: {message}{hint}',
-  'error.plugin-busy': 'A plugin operation is already in progress. Cancel it or wait for it to finish.',
   'error.harness-booting': 'Harness is starting or switching. Wait until it is running before plugin operations.',
   'error.workspace-missing': 'The session workspace folder does not exist: {path}. Restore the folder or pick another workspace.',
   'error.wt-launch': 'Windows Terminal failed to start: {reason}',
@@ -355,7 +359,6 @@ const EN: ChromeStrings = {
   'msg.update-install-state-changed': 'The update file or state changed during confirmation. Installation was cancelled; confirm again.',
   'msg.update-verified': 'Downloaded and verified. Ready to install.',
   'msg.update-download-cancelled': 'Download cancelled',
-  'msg.plugin-op-cancelled': 'Operation cancelled. The launcher selection is unchanged. The target profile may be in an unfinished intermediate state — refresh to see the current facts on disk.',
 }
 
 /**

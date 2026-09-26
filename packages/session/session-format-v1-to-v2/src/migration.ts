@@ -291,7 +291,7 @@ function transformMessage(
   }
   if (pending === undefined
     || !matchesChunkSources(pending.group, sources)) {
-    throw refusal(`assistant/message ${event.seq} chunk provenance is not one complete ordered attempt`)
+    throw refusal(`assistant/message ${event.seq} chunk references are not one complete ordered attempt`)
   }
   assertAttemptCut(state, pending.group, event.seq)
   pending.group.terminal = true

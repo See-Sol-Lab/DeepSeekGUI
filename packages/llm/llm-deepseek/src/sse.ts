@@ -1,40 +1,28 @@
-/**
- * Decode an SSE byte stream into event `data` payloads. Framing — chunk
- * reassembly, UTF-8/CRLF/BOM handling, comment and non-data field skipping,
- * multi-`data:` joining — is `eventsource-parser`'s. Comments are reported
- * only through an optional transport-activity callback. This module keeps the
- * DeepSeek protocol: the literal `[DONE]` is yielded so the caller owns final
- * flushing, and EOF before it raises {@link LlmError}. Framing is spec-strict:
- * an event dispatches only on its blank-line terminator, so an unterminated
- * tail at EOF is truncation, not a flushable payload.
- *
- * @module dsh-llm-deepseek/sse
- */
+/** SSE framing delegated to eventsource-parser; JSON errors remain provider failures. */
 
 import { EventSourceParserStream } from 'eventsource-parser/stream'
 import { LlmError } from '@deepseek-ai/dsh-llm'
+import { object } from './replay.ts'
+import { providerError } from './transport.ts'
 
-/** The terminal payload DeepSeek (and OpenAI) send after the last chunk. */
-export const DONE = '[DONE]'
-
-/**
- * Parse an SSE byte stream into data payloads. Yields `[DONE]` as the final
- * value and returns; throws `LlmError('STREAM_CLOSED')` when the stream ends
- * without it (truncated response — the model call cannot be trusted).
- * @param stream - raw SSE bytes; reads may split anywhere, including mid-UTF-8 sequence.
- * @param onComment - optional transport-activity callback; comments never enter the yielded payload stream.
- * @returns each event's data payload in arrival order, the `[DONE]` sentinel last.
+/** Decode complete SSE frames without treating an unterminated tail as an event.
+ * @param body - provider response bytes.
+ * @param activity - pulse the idle watchdog for events and heartbeat comments.
+ * @returns JSON events, including message_stop; the translator owns completion.
  */
-export async function* parseSse(
-  stream: ReadableStream<BufferSource>,
-  onComment?: (comment: string) => void,
-): AsyncGenerator<string> {
-  const events = stream
-    .pipeThrough(new TextDecoderStream())
-    .pipeThrough(new EventSourceParserStream({ onComment }))
-  for await (const { data } of events) {
-    yield data
-    if (data === DONE) return
+export async function* parseSse(body: ReadableStream<BufferSource>, activity: () => void): AsyncGenerator<Record<string, unknown>> {
+  const events = body.pipeThrough(new TextDecoderStream()).pipeThrough(new EventSourceParserStream({ onComment: activity }))
+  for await (const frame of events) {
+    activity()
+    let raw: unknown
+    try { raw = JSON.parse(frame.data) } catch (_invalidSseJson) {
+      throw new LlmError('DeepSeek Messages SSE contains invalid JSON', 'MALFORMED_RESPONSE')
+    }
+    const event = object(raw)
+    if (typeof event.type !== 'string' || (frame.event !== undefined && frame.event !== event.type)) {
+      throw new LlmError('DeepSeek Messages SSE event type mismatch', 'MALFORMED_RESPONSE')
+    }
+    if (event.type === 'error') throw providerError(event, undefined)
+    yield event
   }
-  throw new LlmError('SSE stream ended without [DONE]', 'STREAM_CLOSED')
 }

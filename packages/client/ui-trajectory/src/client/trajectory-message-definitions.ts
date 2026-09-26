@@ -5,7 +5,7 @@ import type {
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-agent/types'
 import { trajectoryNode } from './trajectory-definition-common.ts'
-import { contextForm, contextProvenance } from './trajectory-event-projection.ts'
+import { contextForm, contextProducer } from './trajectory-event-projection.ts'
 
 /* jscpd:ignore-start -- Target-owned Definitions intentionally keep their event
  * state machines independent; see ../../../../../.agents/notes/implemented/
@@ -136,10 +136,24 @@ const trajectoryInboxDefinition: ConversationNodeDefinition<InboxState> = {
 const trajectoryMessageDefinition: ConversationNodeDefinition<MessageNode> = {
   kind: 'trajectory-input-message',
   target: 'trajectory',
-  match: event => event.type === 'user/message'
-    ? { id: String(event.seq), role: 'start' }
-    : null,
+  match: (event) => {
+    return event.type === 'user/message' || event.type === 'developer/message'
+      ? { id: String(event.seq), role: 'start' }
+      : null
+  },
   start: (_context, match, reader) => {
+    if (match.event.type === 'developer/message') {
+      const { seq, time, data: { message } } = match.event
+      return {
+        kind: 'context',
+        seq,
+        time,
+        content: message.content,
+        source: message.source,
+        producer: contextProducer(message.source),
+        form: contextForm(message.source),
+      }
+    }
     if (match.event.type !== 'user/message') {
       throw new Error('trajectory-input-message start requires user/message')
     }
@@ -151,7 +165,7 @@ const trajectoryMessageDefinition: ConversationNodeDefinition<MessageNode> = {
         time: event.time,
         content: event.data.content,
         source: event.data.source,
-        provenance: contextProvenance(event.data.source),
+        producer: contextProducer(event.data.source),
         form: contextForm(event.data.source),
       }
     }

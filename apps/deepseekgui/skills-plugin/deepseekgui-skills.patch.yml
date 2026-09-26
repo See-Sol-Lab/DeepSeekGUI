@@ -1,0 +1,14 @@
+# DeepSeekGUI 技能管理器插件的 launcher overlay（B7-P4）。
+#
+# 与设置分区 / Workbench 同一模式：由 DeepSeekGUI 启动 Harness 时经 `--patch`
+# 传入，落在合成顺序最后一层，不进用户 profile——用户自己跑 `dsh web` 没有
+# 这层，卸载 DeepSeekGUI 也零残留。
+#
+# 这一层只插一行：把技能管理器的浏览器侧（设置 → 技能（本地））加进本轮
+# composition。宿主侧的 `@deepseek-ai/dsh-skill-manager` 服务由 web-app bundle
+# 自己的 cordis.patch.yml 挂载（与 workbench-inspector 同一行列），这里不重复。
+# 技能库目录不是官方 provider 的根：装了不等于会话能看到，那是 P5 的项目选择。
+
+- insert:
+    - id: deepseekgui-skills
+      name: '@see-sol-lab/deepseekgui-skills'

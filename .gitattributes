@@ -8,12 +8,8 @@
 
 *.pdf binary
 
-# Pairing records are generated from the three confirmed owner-blob pairs.
-# The worktree-local installer registers the fail-closed driver command.
-*.i18n.yaml merge=dsh-translation-pairing
-
-# Vendored third-party sources are carried verbatim: the vendor manifest guard
-# exists to keep them byte-identical to upstream, so this repository's whitespace
-# rules must not apply to them. Without this, `git diff --check` reports upstream's
-# trailing whitespace as though it were ours to fix.
-vendor/** -whitespace
+# The persistence catalog is the readable projection of these generated schemas.
+docs/persistence-schema.json linguist-generated=true
+docs/persistence-changes/*.schema.json linguist-generated=true
+docs/persistence-changes/releases/*.schema.json linguist-generated=true
+docs/persistence-changes/historical-formats/*.schema.json linguist-generated=true

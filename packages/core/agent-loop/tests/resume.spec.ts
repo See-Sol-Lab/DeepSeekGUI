@@ -5,6 +5,7 @@ import { appendFile, mkdtemp, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import LlmRuntime from '@deepseek-ai/dsh-llm'
+import type { ContextFormed } from '@deepseek-ai/dsh-llm'
 import SessionStore, { SessionLogOffset, SessionSeq, Session, SessionId, TOOL_OUTCOME_UNKNOWN } from '@deepseek-ai/dsh-session'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
@@ -16,6 +17,12 @@ import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import { MockAdapter, textResponse } from './mock-adapter.ts'
+
+declare module '@deepseek-ai/dsh-llm' {
+  interface MessageSourceMap {
+    'tool-bash': { kind: 'tool-bash' } & ContextFormed
+  }
+}
 
 const dirs: string[] = []
 afterEach(async () => { for (const d of dirs.splice(0)) await rm(d, { recursive: true, force: true }) })
@@ -589,12 +596,12 @@ describe('the session-persistence Agent Note: AgentLoop factory create/resume', 
     await ctx2.fiber.dispose()
   })
 
-  it('agent/session-start fires "startup" for createAgent and "resume" for resume()', async () => {
-    // Lifecycle 1: a fresh createAgent emits session-start with source 'startup'.
+  it('agent/created fires "startup" for createAgent and "resume" for resume()', async () => {
+    // Lifecycle 1: a fresh createAgent announces creation with source 'startup'.
     const adapter1 = new MockAdapter([textResponse('a')])
     const { ctx: ctx1, root } = await persistentHarness(adapter1)
     const sources1: string[] = []
-    ctx1.on('agent/session-start', ({ source }) => void sources1.push(source))
+    ctx1.on('agent/created', ({ source }) => void sources1.push(source))
     const h1 = await ctx1.agents.create({ sessionId: SessionId('start-sess') })
     expect(sources1).toEqual(['startup'])
     h1.agent.followup(createUserMessage({ content: [{ type: 'text', text: 'q' }], source: { kind: 'user' } }))
@@ -602,10 +609,10 @@ describe('the session-persistence Agent Note: AgentLoop factory create/resume', 
     await h1.dispose()
     await ctx1.fiber.dispose()
 
-    // Lifecycle 2: resuming the persisted session emits session-start 'resume'.
+    // Lifecycle 2: resuming the persisted session announces creation 'resume'.
     const ctx2 = await mountPersistentHarness(root, new MockAdapter([textResponse('b')]))
     const sources2: string[] = []
-    ctx2.on('agent/session-start', ({ source }) => void sources2.push(source))
+    ctx2.on('agent/created', ({ source }) => void sources2.push(source))
     await ctx2.agents.resume({ resumeSessionId: SessionId('start-sess') })
     expect(sources2).toEqual(['resume'])
     await ctx2.fiber.dispose()
@@ -626,11 +633,8 @@ describe('the session-persistence Agent Note: AgentLoop factory create/resume', 
     })
     ctx.on('agent/created', ({ agent }) => {
       expect(agent.status).toBe('idle')
-      order.push('agent/created')
-    })
-    ctx.on('agent/session-start', ({ agent }) => {
       expect(() => { agent.cancel({ kind: 'user' }) }).not.toThrow()
-      order.push('agent/session-start')
+      order.push('agent/created')
     })
 
     const resuming = ctx.agents.resume({
@@ -671,7 +675,6 @@ describe('the session-persistence Agent Note: AgentLoop factory create/resume', 
       'setup-listener:session/created',
       'agent/created',
       'setup-listener:agent/created',
-      'agent/session-start',
     ])
     await handle.dispose()
     await ctx.fiber.dispose()
@@ -722,7 +725,6 @@ describe('the session-persistence Agent Note: AgentLoop factory create/resume', 
     const published: string[] = []
     ctx.on('session/created', () => void published.push('session/created'))
     ctx.on('agent/created', () => void published.push('agent/created'))
-    ctx.on('agent/session-start', () => void published.push('agent/session-start'))
 
     await expect(ctx.agents.resume({
       resumeSessionId: sessionId,
@@ -827,7 +829,6 @@ describe('the session-persistence Agent Note: AgentLoop factory create/resume', 
     const published: string[] = []
     ctx.on('session/created', () => void published.push('session/created'))
     ctx.on('agent/created', () => void published.push('agent/created'))
-    ctx.on('agent/session-start', () => void published.push('agent/session-start'))
 
     let resuming!: ReturnType<typeof ctx.agents.resume>
     const owner = await ctx.plugin(Object.assign((inner: Context) => {
@@ -846,7 +847,7 @@ describe('the session-persistence Agent Note: AgentLoop factory create/resume', 
     const retry = await promptly(ctx.agents.resume({ resumeSessionId: sessionId, agentOptions: { provider: 'mock', model: 'mock' } }))
     await rejection
     expect(opens).toBe(2)
-    expect(published).toEqual(['session/created', 'agent/created', 'agent/session-start'])
+    expect(published).toEqual(['session/created', 'agent/created'])
 
     // Settlement of the abandoned backend open cannot resume the old
     // transaction: the late handle is closed, and no second publication lands
@@ -856,7 +857,7 @@ describe('the session-persistence Agent Note: AgentLoop factory create/resume', 
     await expect.poll(() => abandoned.close.mock.calls.length).toBe(1)
     expect(ctx.agents.get(sessionId)).toBe(retry.agent)
     expect(ctx.sessions.get(sessionId)).toBe(retry.agent.session)
-    expect(published).toEqual(['session/created', 'agent/created', 'agent/session-start'])
+    expect(published).toEqual(['session/created', 'agent/created'])
 
     await retry.dispose()
     await ctx.fiber.dispose()
@@ -949,7 +950,7 @@ describe('the session-persistence Agent Note: AgentLoop factory create/resume', 
     const a1 = (await ctx1.agents.create({ sessionId: SessionId('inject-sess'), meta: { cwd: '/w' }, agentOptions: { provider: 'mock', model: 'mock' } })).agent
     a1.followup(createUserMessage({ content: [{ type: 'text', text: 'q' }], source: { kind: 'user' } }))
     await waitForIdle(ctx1, a1)
-    a1.inject(createUserMessage({ content: [{ type: 'text', text: 'background job 42 finished' }], source: { kind: 'plugin', plugin: 'tool-bash' } }))
+    a1.inject(createUserMessage({ content: [{ type: 'text', text: 'background job 42 finished' }], source: { kind: 'tool-bash' } }))
     await a1.whenIdle()
     await ctx1.sessions.flush(a1.session)
     // Simulate a wedged first lifecycle: a graceful dispose would durably

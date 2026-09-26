@@ -6,7 +6,7 @@ import { isAbsolute } from 'node:path'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { ModelSelection } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-agent-default-model'
-import type {} from '@deepseek-ai/dsh-agent-presets'
+import type {} from '@deepseek-ai/dsh-agent-preset-registry'
 import { boundContextSummary, createUserMessage, errorChain, type LlmCallConfig } from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-permission-presets'
 import type { SessionId } from '@deepseek-ai/dsh-session'
@@ -109,7 +109,7 @@ function installInitialModelSelection(agentCtx: Context, selection: ModelSelecti
  * Agent remains lifecycle-owned by `ctx` and follows normal Session behavior.
  *
  * @param ctx - untraced runtime context that owns the resulting Agent.
- * @param delivery - exact verified provider delivery used for provenance.
+ * @param delivery - exact verified provider delivery recorded in the message source.
  * @param ruleId - rule that returned the request.
  * @param request - same-process rule result.
  * @param signal - registration lifetime cancellation through publication.
@@ -124,7 +124,8 @@ export async function createWebhookSession(
   const resolved = resolveRequest(ctx, request)
   ctx.permissionPresets.resolve(resolved.permissionPreset)
   const preset = await ctx.agentPresets.resolve(resolved.agentPreset)
-  await ctx.agentPresets.standingKeyFor(preset.id)
+  await using presetScope = await ctx.agentPresets.acquireScope(preset.id)
+  void presetScope
   signal.throwIfAborted()
 
   const workspace = await ctx.workspaceRegistry.create(resolved.workspacePath)

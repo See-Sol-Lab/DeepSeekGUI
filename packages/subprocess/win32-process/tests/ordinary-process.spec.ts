@@ -18,7 +18,7 @@ import {
   JobObjectBasicAccountingInformation,
   WAIT_TIMEOUT,
 } from '../src/abi.ts'
-import { PROCESS_INFORMATION, STARTUPINFOW } from '../src/ffi.ts'
+import { processInformationType, startupInfoType } from '../src/ffi.ts'
 import type {
   CurrentTokenProcessSpawnOptions,
   CurrentTokenProcessBindings,
@@ -51,7 +51,7 @@ function api(overrides: Partial<CurrentTokenProcessBindings> = {}): CurrentToken
     uvGetOsfhandle: vi.fn((fileDescriptor: number) => BigInt(100 + fileDescriptor)),
     setHandleInformation: vi.fn(() => 1),
     createProcessW: vi.fn((_app, _line, _pa, _ta, _inherit, _flags, _env, _cwd, _startup, info) => {
-      koffi.encode(info, PROCESS_INFORMATION, {
+      koffi.encode(info, processInformationType(), {
         hProcess: 60n,
         hThread: 61n,
         dwProcessId: 1234,
@@ -72,10 +72,49 @@ function api(overrides: Partial<CurrentTokenProcessBindings> = {}): CurrentToken
     getLastError: vi.fn(() => 5),
     formatMessageW: vi.fn(() => 0),
     ...overrides,
-  } as unknown as CurrentTokenProcessBindings
+  } as CurrentTokenProcessBindings
 }
 
 describe('ordinary Job process operations', () => {
+  it.each([3, 2])('supplies fd 7 with standard handle type %s and releases its temporary inheritance', (standardType) => {
+    let descriptorBytes: Buffer | undefined
+    const flags = vi.fn(() => 1)
+    const bindings = api({
+      getFileType: vi.fn(handle => handle === 107n ? 3 : standardType),
+      setHandleInformation: flags,
+      createProcessW: vi.fn((_app, _line, _pa, _ta, _inherit, _flags, _env, _cwd, startupPointer, processInfo) => {
+        const startup = koffi.decode(startupPointer, startupInfoType()) as { cbReserved2: number; lpReserved2: NativePtr }
+        descriptorBytes = Buffer.from(koffi.decode(startup.lpReserved2, 'uint8', startup.cbReserved2) as number[])
+        koffi.encode(processInfo, processInformationType(), { hProcess: 60n, hThread: 61n, dwProcessId: 1234, dwThreadId: 5678 })
+        return 1
+      }),
+    })
+    expect(spawnCurrentTokenJobProcess(bindings, options({
+      stdio: { stdin: 4, stdout: 5, stderr: 6, control: 7 },
+    }))).toEqual({ pid: 1234, process: 60n, job: 50n })
+    const bytes = descriptorBytes as Buffer
+    expect(bytes.readUInt32LE(0)).toBe(8)
+    const standardFlag = standardType === 3 ? 9 : 65
+    expect([...bytes.subarray(4, 12)]).toEqual([standardFlag, standardFlag, standardFlag, 0, 0, 0, 0, 9])
+    expect(bytes.readBigUInt64LE(12 + 7 * 8)).toBe(107n)
+    expect(bytes.readBigUInt64LE(12 + 3 * 8)).toBe(0xffff_ffff_ffff_ffffn)
+    expect(flags).toHaveBeenCalledWith(107n, 1, 1)
+    expect(flags).toHaveBeenCalledWith(107n, 1, 0)
+  })
+
+  it('refuses a control carrier that is not a pipe before creating the target', () => {
+    const createProcessW = vi.fn()
+    const closeHandle = vi.fn(() => 1)
+    const setHandleInformation = vi.fn(() => 1)
+    const bindings = api({ getFileType: vi.fn(() => 1), createProcessW, closeHandle, setHandleInformation })
+    expect(() => spawnCurrentTokenJobProcess(bindings, options({
+      stdio: { stdin: 4, stdout: 5, stderr: 6, control: 7 },
+    }))).toThrow('not a Windows pipe')
+    expect(createProcessW).not.toHaveBeenCalled()
+    expect(closeHandle).toHaveBeenCalledWith(50n)
+    expect(setHandleInformation).toHaveBeenCalledWith(107n, 1, 0)
+  })
+
   it('creates suspended, assigns the Job, and resumes before returning', () => {
     const events: string[] = []
     const createProcessW = vi.fn((
@@ -91,7 +130,7 @@ describe('ordinary Job process operations', () => {
       info: NativePtr,
     ) => {
       events.push('create')
-      koffi.encode(info, PROCESS_INFORMATION, { hProcess: 60n, hThread: 61n, dwProcessId: 1234, dwThreadId: 5678 })
+      koffi.encode(info, processInformationType(), { hProcess: 60n, hThread: 61n, dwProcessId: 1234, dwThreadId: 5678 })
       return 1
     })
     const bindings = api({
@@ -154,8 +193,8 @@ describe('ordinary Job process operations', () => {
       setHandleInformation,
       uvGetOsfhandle,
       createProcessW: vi.fn((_app, _line, _pa, _ta, _inherit, _flags, _env, _cwd, infoPtr, processInfo) => {
-        startup = koffi.decode(infoPtr, STARTUPINFOW) as Record<string, unknown>
-        koffi.encode(processInfo, PROCESS_INFORMATION, {
+        startup = koffi.decode(infoPtr, startupInfoType()) as Record<string, unknown>
+        koffi.encode(processInfo, processInformationType(), {
           hProcess: 60n,
           hThread: 61n,
           dwProcessId: 1234,
@@ -165,7 +204,7 @@ describe('ordinary Job process operations', () => {
       }),
     })
     expect(spawnCurrentTokenJobProcess(bindings, options())).toEqual({ pid: 1234, process: 60n, job: 50n })
-    expect(startup).toMatchObject({ hStdInput: 104n, hStdOutput: 105n, hStdError: 106n })
+    expect(startup).toMatchObject({ dwFlags: 0x101, wShowWindow: 0, hStdInput: 104n, hStdOutput: 105n, hStdError: 106n })
     expect(uvGetOsfhandle).toHaveBeenNthCalledWith(1, 4)
     expect(uvGetOsfhandle).toHaveBeenNthCalledWith(2, 5)
     expect(uvGetOsfhandle).toHaveBeenNthCalledWith(3, 6)

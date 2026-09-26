@@ -4,7 +4,6 @@ import { spawnSync, type SpawnSyncReturns } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import {
   existsSync,
-  globSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -18,17 +17,11 @@ import { basename, dirname, isAbsolute, join, normalize, relative, resolve, sep 
 import { createInterface } from 'node:readline/promises'
 import { pathToFileURL } from 'node:url'
 import { parseArgs } from 'node:util'
-import { PUBLIC_EXPERIMENTAL_PACKAGE_DIRECTORIES } from './experimental-package-policy.ts'
+import { discoverNpmBaselineManifests } from './npm-baseline-packages.ts'
 import { validateTarballPayload } from './publication-payload.ts'
 
 const DEFAULT_REGISTRY = 'https://registry.npm.harnessment.com'
 const DEFAULT_OUTPUT_DIRECTORY = '.artifacts/npm-baseline'
-const PACKAGE_PATTERNS = [
-  'vendor/*/package.json',
-  'packages/!(experimental)/*/package.json',
-  'apps/*/package.json',
-  ...PUBLIC_EXPERIMENTAL_PACKAGE_DIRECTORIES.map(directory => `${directory}/package.json`),
-] as const
 const DEPENDENCY_SECTIONS = [
   'dependencies',
   'devDependencies',
@@ -244,7 +237,7 @@ class WorkspacePackageSet {
   ) {}
 
   static discover(root: string): WorkspacePackageSet {
-    const manifestPaths = globSync(PACKAGE_PATTERNS, { cwd: root }).sort()
+    const manifestPaths = discoverNpmBaselineManifests(root)
     if (manifestPaths.length === 0) {
       throw new Error('no package manifests found under vendor/, packages/, or apps/')
     }
@@ -775,9 +768,9 @@ interface InspectedTarball {
 }
 
 function inspectTarball(path: string, runner: CommandRunner): InspectedTarball {
-  const manifest = JSON.parse(
+  const manifest: unknown = JSON.parse(
     runner.capture('tar', ['-xOf', path, 'package/package.json'], dirname(path)),
-  ) as unknown
+  )
   if (!isRecord(manifest)) throw new Error(`${path} contains an invalid package.json`)
   return {
     name: expectString(manifest, 'name', path),

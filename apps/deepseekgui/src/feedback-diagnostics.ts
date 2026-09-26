@@ -32,8 +32,6 @@ export interface FeedbackDiagnosticsInput {
   plugins: { name: string; spec: string }[]
   /** 上次退出是否未正常走到清理；null = 无历史证据。 */
   lastExitUnclean: boolean | null
-  /** plugin recovery journal 状态；null = 无未决事务。 */
-  recoveryJournalState: string | null
   /** 服务日志尾部行（每行已过 redactSecrets；本模块再补用户上下文规则）。 */
   logTail: string[]
   /** Harness 七相状态的可读文本。 */
@@ -68,9 +66,6 @@ export function buildFeedbackDiagnostics(input: FeedbackDiagnosticsInput): strin
       : input.plugins.map(plugin => `- ${plugin.name} (${plugin.spec})`)),
     '',
     `Last exit: ${input.lastExitUnclean === null ? 'no record' : input.lastExitUnclean ? 'did not end normally' : 'clean'}`,
-    ...(input.recoveryJournalState === null
-      ? []
-      : ['', `Plugin recovery journal: ${input.recoveryJournalState}`]),
     '',
     'Recent diagnostics log:',
     ...(input.logTail.length === 0 ? ['(no logs available)'] : input.logTail),

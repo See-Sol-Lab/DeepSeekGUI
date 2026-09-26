@@ -1,6 +1,22 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-08-15-desktop-installer-user-data-isolation.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/proposed/feature/2026-08-15-desktop-installer-user-data-isolation.md
-2026-08-15-desktop-installer-user-data-isolation.md: 848d72cbecb649cc67fe55f66142630c05460366
-2026-08-15-desktop-installer-user-data-isolation.zh.md: 4e9997933d53a152e15f175e559f5dc7d9a0358d
+/agent-note-installer-and-app-scoped-user-data:
+  en: da24e04ae22e20e5
+  zh: 357dc2a0b48d92da
+/agent-note-installer-and-app-scoped-user-data/problem:
+  en: d018d68cd1da2bec
+  zh: 893554a01631b07f
+/agent-note-installer-and-app-scoped-user-data/proposal:
+  en: b63d6548466b0c1e
+  zh: 174f3c4d8fc1a876
+/agent-note-installer-and-app-scoped-user-data/alternatives-considered:
+  en: 6443a2378054f7ed
+  zh: d967604b4988b9fd
+/agent-note-installer-and-app-scoped-user-data/acceptance-criteria:
+  en: 3b7c640ac4815d59
+  zh: 081cef7e09fd9ce2
+/agent-note-installer-and-app-scoped-user-data/risks:
+  en: a6e867904c5b552f
+  zh: 5e0f9bcbc1432bd3

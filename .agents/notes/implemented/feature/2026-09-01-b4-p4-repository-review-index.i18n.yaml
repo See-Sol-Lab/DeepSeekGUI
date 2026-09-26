@@ -1,6 +1,34 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-09-01-b4-p4-repository-review-index.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-01-b4-p4-repository-review-index.md
-2026-09-01-b4-p4-repository-review-index.md: 0d58610b7aa5b5b4052adc7bcb6fa94a8712ed28
-2026-09-01-b4-p4-repository-review-index.zh.md: a08be399e71449b15ea30e4e055ddf211002592d
+/agent-note-b4-p4-repository-review-index-file-hunk-stage-unstage-and-controlled-tracked-revert-over-git-diff-facts:
+  en: 3d599005c03b8eb5
+  zh: 525dc82bff13f602
+/agent-note-b4-p4-repository-review-index-file-hunk-stage-unstage-and-controlled-tracked-revert-over-git-diff-facts/problem:
+  en: 74dbd08a2b896011
+  zh: 54b0e06945301fab
+/agent-note-b4-p4-repository-review-index-file-hunk-stage-unstage-and-controlled-tracked-revert-over-git-diff-facts/decision:
+  en: a15c7c13f167e5ac
+  zh: 63bcc2ef60c2f344
+/agent-note-b4-p4-repository-review-index-file-hunk-stage-unstage-and-controlled-tracked-revert-over-git-diff-facts/decision/the-git-seam-s-index-revert-write-surface:
+  en: 41594a2e090f3c51
+  zh: b1b567df533f0dd5
+/agent-note-b4-p4-repository-review-index-file-hunk-stage-unstage-and-controlled-tracked-revert-over-git-diff-facts/decision/wire-domain-every-write-answers-with-the-fresh-authoritative-status:
+  en: e0cfcc4474315eaf
+  zh: ec5789fc29c033bc
+/agent-note-b4-p4-repository-review-index-file-hunk-stage-unstage-and-controlled-tracked-revert-over-git-diff-facts/decision/repository-review-ui-per-kind-actions-hunk-patches-revert-confirmation:
+  en: 75b0481e0a473ae3
+  zh: 0131909d3e60a4bc
+/agent-note-b4-p4-repository-review-index-file-hunk-stage-unstage-and-controlled-tracked-revert-over-git-diff-facts/decision/session-changes-locate-entry:
+  en: 96b50c8c1b9e4291
+  zh: cfd40832a951ebc9
+/agent-note-b4-p4-repository-review-index-file-hunk-stage-unstage-and-controlled-tracked-revert-over-git-diff-facts/verification:
+  en: 91dd16fbdeec2d54
+  zh: cbe42f612d517957
+/agent-note-b4-p4-repository-review-index-file-hunk-stage-unstage-and-controlled-tracked-revert-over-git-diff-facts/alternatives-considered:
+  en: 373d8a6f19995c14
+  zh: 4ebdf788aae46154
+/agent-note-b4-p4-repository-review-index-file-hunk-stage-unstage-and-controlled-tracked-revert-over-git-diff-facts/consequences:
+  en: b9d47fc57fdf20ae
+  zh: 2f270d8c06f20687

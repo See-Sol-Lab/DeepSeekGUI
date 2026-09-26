@@ -1,6 +1,43 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/pull-request/pull-request-gh/README.md
-README.md: 7dfe530e511aded82c331a64d9c3de9072b36268
-README.zh.md: 34b573c66fa23ce8304eec2181413dabd22e0b24
+/:
+  en: b340289b4fb91008
+  zh: 62599b3736bec119
+/dsh-pull-request-gh:
+  en: 4677af100bd2de2e
+  zh: 625d3fb4654fb912
+/dsh-pull-request-gh/summary:
+  en: 30207a37c1dd95f9
+  zh: 0839900401325eca
+/dsh-pull-request-gh/table-of-contents:
+  en: a1215fc02956592b
+  zh: 38d71a149a188177
+/dsh-pull-request-gh/commands:
+  en: 9ba39e8d3bd5551e
+  zh: 1417b3e7bc89afd8
+/dsh-pull-request-gh/failure-classification:
+  en: 310b8ee3cc09cbdd
+  zh: 531db385fb216d48
+/dsh-pull-request-gh/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/dsh-pull-request-gh/model-experience/pull-request-creation:
+  en: d63a3a85f162d6ee
+  zh: 88ee9e9f5a98574c
+/dsh-pull-request-gh/model-experience/pull-request-creation/what-the-model-sees:
+  en: 6cdac90c780d0b20
+  zh: d036eebedeb7ed56
+/dsh-pull-request-gh/model-experience/pull-request-creation/token-effect:
+  en: 383e653b2db35fcc
+  zh: adfc86303a3bd964
+/dsh-pull-request-gh/model-experience/pull-request-creation/kv-cache-effect:
+  en: 524afbded27fb06b
+  zh: e967377ff652e385
+/dsh-pull-request-gh/known-limitations-and-deferred-work:
+  en: dedf153e33b27913
+  zh: a694ba563f83a4d6
+/dsh-pull-request-gh/known-limitations-and-deferred-work/dev-note:
+  en: a0d91fc82ffae4dc
+  zh: b32744fe68e75c0f

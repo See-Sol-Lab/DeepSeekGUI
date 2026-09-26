@@ -6,7 +6,7 @@ Status: implemented
 
 ## 问题
 
-[参考 CI 运行](https://github.com/deepseek-harness/deepseek-harness/actions/runs/34206953049)报告：轮询一秒后 webhook 创建的 Session 仍不存在，五秒读取期限内 PowerShell 输出为空。HTTP 接受、UI 投影状态、进程启动和持久化完成是不同的观察。测试需要明确的完成条件，并用对照阻止中间状态满足该条件。[完成等待决策](2026-09-08-ci-readiness-and-completion.zh.md)拥有这些条件与 lane 预算；这些 fixture 通过受控延迟使顺序与清理可观察。
+参考 CI 运行 (run 34206953049)报告：轮询一秒后 webhook 创建的 Session 仍不存在，五秒读取期限内 PowerShell 输出为空。HTTP 接受、UI 投影状态、进程启动和持久化完成是不同的观察。测试需要明确的完成条件，并用对照阻止中间状态满足该条件。[完成等待决策](2026-09-08-ci-readiness-and-completion.zh.md)拥有这些条件与 lane 预算；这些 fixture 通过受控延迟使顺序与清理可观察。
 
 ## 决策
 
@@ -22,7 +22,7 @@ Status: implemented
 
 [Workspace 管理测试](../../../../apps/web/tests/workspace-management.e2e.ts)在下一次目录对话框操作前等待恢复后的 composer 焦点。归档用例通过 Session controller 为已知 seed id 设置显式用户标题，再用该精确标题跨重载定位行。无关的恢复行无法匹配该定位器；持久化归档断言仍检查 seed id 和保留的日志。
 
-[Worker 预算测试](../../../../packages/code-runtime/code-runtime-worker-thread/tests/budget.spec.ts)保留真实 worker 执行与绑定传输，只控制 Host 定时器和 ELU 样本。测试先确认绑定已进入，再检验 idle、active 和壁钟决策，使启动超时不能冒充绑定期间的预算决策。[真实 worker 测试](../../../../packages/code-runtime/code-runtime-worker-thread/tests/runtime.spec.ts)独立保留实际 ELU、空闲绑定和热循环覆盖。
+[Node 运行时测试](../../../../packages/ptc-runtime/ptc-runtime-node/tests/runtime.spec.ts)执行真实受管进程、绑定传输、经过时间截止与取消。[沙箱 Node 决策](../architecture/2026-09-11-sandboxed-node-ptc-runtime.zh.md)取代 worker ELU 预算及其受控样本测试；真实进程与传输证据仍然必要。
 
 [分离启动测试](../../../../packages/host/open-in-app/tests/launch-detached.spec.ts)控制观察时间，并通过真实 launcher 登记的回调发送迟到进程事件。测试检查仅完成一次、仅 unref 一次且不终止子进程。[Resolver 测试](../../../../packages/host/open-in-app/tests/resolver.spec.ts)保留真实进程的环境变量和提前退出用例。
 
@@ -30,7 +30,7 @@ Status: implemented
 
 ### 已构建 Client 的导入分类
 
-[Node import sweep](../../../../packages/experimental/webworker-runtime/tests/compile/transform-corpus-check.ts)只有在 Node 针对准确的 `dockkit.module.css` 路径报告 `ERR_UNKNOWN_FILE_EXTENSION` 时才接受 Dockkit bundle。其他错误以及意外成功的豁免导入都会失败。限定范围的 resolve/load hook 覆盖预期 CSS 失败、任意失败、其他 stylesheet、其他错误码和过期豁免，不修改共享构建产物。
+[Node import sweep](../../../../packages/experimental/webworker-runtime/tests/compile/transform-corpus-check.ts)只有在 Node 针对某个 `.css` 文件报告 `ERR_UNKNOWN_FILE_EXTENSION` 时才接受 Dockkit bundle，其他每个错误以及每个意外成功的豁免导入都会失败；该豁免覆盖哪些样式表由[样式表豁免决策](../bug-fix/2026-09-10-built-bundle-css-exemption.zh.md)拥有。限定范围的 resolve/load hook 覆盖预期 CSS 失败、其他样式表、其他扩展名、任意失败、其他错误码和陈旧豁免，不修改共享构建产物。
 
 ## 考虑过的替代方案
 
@@ -38,7 +38,7 @@ Status: implemented
 
 **从接受或预览推断完成。** HTTP 202 和乐观图片可能早于被断言的操作。
 
-**用受控样本替换实测 worker 覆盖。** 拒绝，因为会遗漏对 Node 实际 ELU 与传输行为的验证。
+**用受控样本代替真实执行。** 不采纳，因为仅靠定时器样本无法验证进程启动、控制传输或受管清理。
 
 ## 影响
 

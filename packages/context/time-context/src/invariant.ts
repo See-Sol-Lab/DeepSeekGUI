@@ -105,7 +105,7 @@ function validateReading(
   }
   const source = event.data.source
   /* v8 ignore next 2 -- replay and dispatch callers select this exact package-owned source before validation. */
-  if (source.kind !== 'plugin' || source.plugin !== SOURCE_NAME) {
+  if (source.kind !== SOURCE_NAME) {
     fail('time-context source must retain package ownership')
   }
   const sections: unknown = 'sections' in source ? source.sections : undefined
@@ -113,7 +113,7 @@ function validateReading(
   const section = typeof sectionValue === 'object' && sectionValue !== null
     ? sectionValue as Record<string, unknown>
     : undefined
-  if (Object.keys(source).length !== 4
+  if (Object.keys(source).length !== 3
     || source.form !== 'snapshot'
     || !Array.isArray(sections)
     || sections.length !== 1
@@ -161,11 +161,11 @@ function validateReading(
 /* jscpd:ignore-start -- package companions share replay and dispatch plumbing */
 /** Validate all package-owned readings already present in one session. */
 function validateSession(session: Session, fail: InvariantFailure): void {
+  // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
   const events = session.snapshotEvents()
   for (const [index, event] of events.entries()) {
     if (event.type !== 'user/message'
-      || event.data.source.kind !== 'plugin'
-      || event.data.source.plugin !== SOURCE_NAME) continue
+      || event.data.source.kind !== SOURCE_NAME) continue
     validateReading(events.slice(0, index), event, fail)
   }
 }
@@ -178,8 +178,8 @@ const install: InvariantInstaller = Object.assign((ctx: Context, fail: Invariant
     if (eventName !== 'session/event') return
     const [session, event] = args as [Session, SessionEvent]
     if (event.type !== 'user/message'
-      || event.data.source.kind !== 'plugin'
-      || event.data.source.plugin !== SOURCE_NAME) return
+      || event.data.source.kind !== SOURCE_NAME) return
+    // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
     validateReading(session.snapshotEvents(), event, fail)
   }, { global: true })
 }, { inject: ['sessions'] })

@@ -6,7 +6,7 @@ Status: implemented
 
 ## Problem
 
-`WorkspaceAnalyzer` 先把每个类型引用解析到原始声明再分类，然后只读引用所在文件自己的 `import` 语句来判断该引用是否经由公开导出跨包。一个包若在自己的某个模块里重新导出另一个包的类型，并在别处用相对路径导入该模块，就会报 `crosses a package without an explicit package import`，尽管包导入只隔一跳。这个失败在任何批次大小和包顺序下都会稳定出现；它出现在哪次分析里，取决于哪次分析把引用方的包选为根，因此 [issue 3525](https://github.com/deepseek-harness/deepseek-harness/issues/3525) 观察到的现象像是与批次相关。
+`WorkspaceAnalyzer` 先把每个类型引用解析到原始声明再分类，然后只读引用所在文件自己的 `import` 语句来判断该引用是否经由公开导出跨包。一个包若在自己的某个模块里重新导出另一个包的类型，并在别处用相对路径导入该模块，就会报 `crosses a package without an explicit package import`，尽管包导入只隔一跳。这个失败在任何批次大小和包顺序下都会稳定出现；它出现在哪次分析里，取决于哪次分析把引用方的包选为根，因此 issue 3525 观察到的现象像是与批次相关。
 
 ## Decision
 

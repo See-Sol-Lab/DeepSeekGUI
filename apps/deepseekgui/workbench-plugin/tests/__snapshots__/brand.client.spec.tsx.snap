@@ -2,7 +2,7 @@
 
 exports[`DeepSeekGUI workbench brand > matches the marker snapshot 1`] = `
 <span
-  style="border: 1px solid; border-radius: 999px; font-size: 11px; line-height: 18px; padding: 0px 8px; opacity: 0.75; white-space: nowrap;"
+  style="border: 1px solid var(--dsw-alias-border-l4); border-radius: 999px; font-size: 11px; line-height: 18px; padding: 0px 8px; color: var(--dsw-alias-label-secondary); white-space: nowrap;"
   title="DeepSeekGUI Workbench"
 >
   Workbench

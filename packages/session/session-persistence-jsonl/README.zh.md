@@ -29,7 +29,7 @@ kind: "package-reference"
 
 ### 何时选择
 
-当消费方受益于每会话一份产物——导航、外部工具或可逐行读取的原始日志——时选择此后端。它是随产品交付的唯一 Session 持久化 provider。后端把会话保存在部署控制的根下：项目本地、共享、临时或集中式。
+当消费方受益于每会话一份产物——导航、外部工具或可逐行读取的原始日志——时选择此后端。它是唯一的第一方会话持久化提供方。后端把会话保存在部署控制的根下：项目本地、共享、临时或集中式。
 
 ### 最小配置
 
@@ -62,12 +62,14 @@ kind: "package-reference"
       session.jsonl.zstd         # released v0, compressed root
       session.v1.jsonl.zstd      # released v1, compressed root
       session.v2.jsonl.zstd      # released v2, compressed root
+      session.v3.jsonl.zstd      # released v3/current, compressed root
       session.jsonl              # released v0, raw root
       session.v1.jsonl           # released v1, raw root
-      session.v2.jsonl           # released v2, raw root; later versions use vN
+      session.v2.jsonl           # released v2, raw root
+      session.v3.jsonl           # released v3/current, raw root; later versions use vN
 ```
 
-会话 id 在使用前被单射转义为一个安全路径段（无遍历、无冲突）。规范化 cwd 让项目目录保持可读、便于导航；规范化相同的 cwd 字符串共享项目目录，而会话 id 仍选择不同会话目录。runtime 操作选择数值最高的规范 generation，格式拒绝诊断会点名该绝对路径，让操作者能找到构建拒绝解读的原始日志。
+会话 id 在使用前被单射转义为一个安全路径段（无遍历、无冲突）。规范化 cwd 让项目目录保持可读、便于导航；规范化相同的 cwd 字符串共享项目目录，而会话 id 仍选择不同会话目录。运行时操作选择数值最高的规范 generation，格式拒绝诊断会点名该绝对路径，让操作者能找到构建拒绝解读的原始日志。
 
 ### 持久性与崩溃语义
 
@@ -77,7 +79,11 @@ kind: "package-reference"
 
 ### 读取日志
 
-`open(id, 'read'|'write')` 选择最高规范 generation。当前格式输入走普通快速路径。对于历史输入，只读 open 会单遍解码并迁移源、校验当前逻辑结果，然后在不发布后继的情况下返回。写 open 会在可用时复用按 revision 为键的 preparation，否则执行同一套 preparation，再按有界分片编码同目录临时文件、在 Worker Thread 中校验、复查源修订，并在返回前以不覆盖方式发布当前后继。源保持逐字节不变。如果源在 preparation 后发生变化，该次写 open 会失败，已经返回给读方的逻辑历史不会被替换；后续写 open 会针对新的 revision 重新执行 preparation。Backend 在 memo 化前冻结已解码的 event graph，并在此时将其标记为 `shared-frozen`；句柄读取和 slice 即使为空也保留该状态。只有尚未实体化的 pending 空日志报告 `detached`。`stat(id)` 与 `list()` 只选择并转换最高 generation 的 header，不读取事件行，也不启动迁移；快照携带所选文件的 `sizeBytes` 与尽力而为的 stat 派生修订号。选择 `compression: 'none'` 后，日志是外部读取方可直接消费的换行分隔文本；压缩默认值必须经后端读取。
+`open(id, 'read'|'write')` 选择最高规范 generation。当前格式输入走普通快速路径。对于历史输入，只读 open 会单遍解码并迁移源、校验当前逻辑结果，然后在不发布后继的情况下返回。写 open 会在可用时复用按 revision 为键的 preparation，否则执行同一套 preparation，再按有界分片编码同目录临时文件、在 Worker Thread 中校验、复查源修订，并在返回前以不覆盖方式发布当前后继。源保持逐字节不变。如果源在 preparation 后发生变化，该次写 open 会失败，已经返回给读方的逻辑历史不会被替换；后续写 open 会针对新的 revision 重新执行 preparation。后端在 memo 化前冻结已解码的 event graph，并在此时将其标记为 `shared-frozen`；每个嵌套对象和数组都会冻结，句柄读取和 slice 即使为空也保留该状态。只有尚未实体化的 pending 空日志报告 `detached`。`stat(id)` 与 `list()` 只选择并转换最高 generation 的 header，不读取事件行，也不启动迁移；快照携带所选文件的 `sizeBytes` 与尽力而为的修订号。当前格式修订号标识该文件；历史格式修订号还包含持久化根目录中所选文件的指纹，因此子日志变化会使缓存的逻辑事件失效。指纹只读取文件系统元数据；无关变化也会保守地使历史修订号失效。一次 `list()` 为其历史条目共用一个全库指纹。选择 `compression: 'none'` 后，日志是外部读取方可直接消费的换行分隔文本；压缩默认值必须经后端读取。
+
+历史正文准备通过 [V3→V4](../session-format-v3-to-v4/README.zh.md) 补齐父目录：从 header 找到候选直属子 Session，通过历史编解码器逐个读取其自身 descriptor，保留紧凑证据与来源修订。此过程不准备子目录，也不发布子后继。不可读或不支持的 header（包括损坏的 Zstandard header 帧）不参与发现，也不出现在 `list()` 中。直接访问损坏的压缩 header 仍会失败；header 的 I/O 错误与取消错误继续传播。子日志解码或 descriptor 字段失败会产生带子路径的警告；父目录没有完整条目时，通过 `subagent/catalog` 保留 header 身份信息。健康子项和已有父目录项仍可使用。打开损坏子 Session 时仍报告该子会话的错误。缺失、不支持或多个 descriptor 同样生成模式未知的目录项，不编造标签。已发布的未知条目仍可浏览；读取子历史时会重试实际日志，并从有效 descriptor 确定模式。准备返回、复用与发布前会重新检查成员集合及已检查来源的修订，也包括读取失败的子日志，使修复后的子日志能够使旧准备缓存失效。来源变化时只读打开重试一次，写打开拒绝发布。取消仍会中止操作。当前 V4 打开跳过发现，并在暴露事件前校验目录字段、唯一性及当前投递归属。
+
+历史格式的 `stat` 与 `list` 修订号需要与根目录 Session 数量成正比的元数据工作。首次正文准备扫描所有所选 header 并解码直属子正文；复用准备缓存仍扫描成员集合并检查修订。只读访问从不发布升级，因此冷进程与被淘汰的准备缓存会重复这些工作。当前 V4 正文读取和修订号避开历史全库扫描。见[实测成本与诊断命令](../../../.agents/notes/implemented/architecture/2026-08-31-released-session-format-migrations.zh.md#catalog-scan-measurements)。
 
 -----
 
@@ -91,7 +97,7 @@ kind: "package-reference"
 
 ### 设计理念
 
-该后端拥有自己完整的存储运行时（`src/storage.ts`）：`JsonlSessionHandle` 承载逐句柄修改链、带固定批处理窗口与 single-flight 排空的已路由实时事件缓冲、单调读取与幂等 close；一个 tracker 持有进程内单写者认领、teardown 清扫所遍历的打开句柄集合，以及后端自己的会话监听器所路由进的已创建但未实体化待定会话。历史正文读取共享每个 Session 唯一的一次 Decode/Migrate preparation，按 revision 为键的有界 memo 让紧接的观察到恢复交接复用该解析；backend 在 memo 化前只对每个 event graph 深度冻结一次，因此后续 handle read 无需复制或再次冻结。只有写 open 才发布准备好的后继。本包有意只暴露默认插件导出与配置类型——具体类不是具名导出，因此消费方只耦合 `ctx.sessionPersistence`，其可观察行为由共享 seam 测试套件（`runPersistenceContract`/`runLiveWritePathContract`）钉住。其变更令牌是尽力而为的文件修订值：device、inode、size 与纳秒时间戳标识一份日志，供 `stat`/`list`、在并发 append 撕裂读取时重试的稳定读取循环，以及发布前源检查使用。
+该后端拥有自己完整的存储运行时（`src/storage.ts`）：`JsonlSessionHandle` 承载逐句柄修改链、带固定批处理窗口与 single-flight 排空的已路由实时事件缓冲、单调读取与幂等 close；一个 tracker 持有进程内单写者认领、teardown 清扫所遍历的打开句柄集合，以及后端自己的会话监听器所路由进的已创建但未实体化待定会话。历史正文读取共享每个 Session 唯一的一次 Decode/Migrate preparation，按 revision 为键的有界 memo 让紧接的观察到恢复交接复用该解析；backend 在 memo 化前只对每个 event graph 深度冻结一次，因此后续 handle read 无需复制或再次冻结。只有写 open 才发布准备好的后继。本包有意只暴露默认插件导出与配置类型——具体类不是具名导出，因此消费方只耦合 `ctx.sessionPersistence`，其可观察行为由共享 seam 测试套件（`runPersistenceContract`/`runLiveWritePathContract`）钉住。物理修订号组合 device、inode、size 与纳秒时间戳，供准备缓存、稳定读取重试及发布检查使用。历史格式的公开修订号还加入所选路径排序后及其物理修订号的 SHA-256 指纹；锁文件与保留但未被选中的代际不参与计算。
 
 ### 物理编码
 
@@ -108,7 +114,7 @@ kind: "package-reference"
 | [`src/migration-verifier.ts`](src/migration-verifier.ts) | stage 与竞争 generation 校验的 Worker 生命周期 |
 | [`src/zstd.ts`](src/zstd.ts) | Zstandard 帧压缩、解码与帧扫描 |
 | [`src/win32.ts`](src/win32.ts) | Windows write-through 发布与目录创建 |
-| — | 不发布运行时不变式伴生入口；身份在存储层强制。 |
+| — | 不发布运行时不变式伴生入口；身份在存储层强制；持久化正确性依赖后端往返与崩溃尾部测试，本包不公开可持续观察的进程内关系。 |
 
 </details>
 
@@ -151,11 +157,11 @@ JSONL 存储不修改实时请求前缀。只有重建历史、当前 envelope �
 
 这些限制说明本后端何时不合适，或何时需要特别的运维注意。它们是当前包约束，不是任务积压。
 
-- **格式迁移保留已配置编码，且只支持 catalog 中的链**——本 build 把受支持的历史代迁移到当前格式；更改压缩需要独立根，保留的前任不提供自动 fallback 或 downgrade 支持。
+- **格式迁移保留已配置编码，且只支持 catalog 中的链**——本 build 把受支持的历史代迁移到当前格式；更改压缩需要独立根，保留的旧版本不提供自动 fallback 或 downgrade 支持。
 - **平铺文件存储布局不加载**——加载前使用独立根，或将预发布产物移入项目/会话目录布局。
 - **压缩文件不能直接按行读取**——使用后端加载；或在写入新根前选择 `compression: 'none'`，供外部行读取方使用。
 - **不删除会话文件**——日志在 `root` 下累积，直到外部移除；seam 无删除接口。
-- **每会话一个活动写入方**——写句柄认领在所属后端实例内排除第二个写入方，内核锁（`session.lock` 上的非阻塞 `flock(2)`；Windows 上为由该路径派生的命名内核信号量，零文件系统足迹）排除其他所有实例与进程；锁在写打开既有工件时立即获取，新建会话则仅在首次物化写入之前获取，因此未物化的会话不留任何文件系统足迹。崩溃持有者的锁随其进程消亡，会话立即可再写入，而活着但卡死的持有者会阻塞写入方直到其进程退出（POSIX 上删除锁文件即放弃该排他；释放本身从不删除它）。咨询式 `flock` 在部分网络文件系统（NFSv3）上不可靠，Windows 信号量名按登录会话隔离。
+- **每会话一个活动写入方**——写句柄认领在所属后端实例内排除第二个写入方，内核锁（`session.lock` 上的非阻塞 `flock(2)`；Windows 上为由该路径派生的命名内核信号量，零文件系统足迹）排除其他所有实例与进程；锁在以写模式打开既有产物时立即获取，新建会话则仅在首次实体化写入之前获取，因此未实体化的会话不留任何文件系统足迹。崩溃持有者的锁随其进程消亡，会话立即可再写入，而活着但卡死的持有者会阻塞写入方直到其进程退出（POSIX 上删除锁文件即放弃该排他；释放本身从不删除它）。咨询式 `flock` 在部分网络文件系统（NFSv3）上不可靠，Windows 信号量名按登录会话隔离。
 - **POSIX 实体化需要硬链接支持**——第一次 append 使用 `link()`，使同 id 竞态失败而不覆盖已提交日志；Windows 使用无替换 write-through rename。
 - **POSIX 写入需要匹配的预编译系统 addon**——[`node-addon-system`](../../../native/system/README.zh.md) 提供异步 flock，无须在用户侧编译。addon 缺失时拒绝写入所有权；Windows 保留其信号量实现。
 

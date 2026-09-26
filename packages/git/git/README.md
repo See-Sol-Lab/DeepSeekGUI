@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Git capability Service Definition (`ctx.git`) for the DeepSeek Harness (B4-P2 Git Read Model): repository identity, HEAD/branch/upstream, work trees, status, and diff summaries served through stable machine formats, plus the B4-P3 worktree lifecycle writes, the B4-P4 index/revert operations, and the B4-P5 guarded commit. Git owns the repository; the read model never writes, and the seam's only writes are the worktree lifecycle (`worktreeAdd`/`worktreeRemove`), the index operations (`applyIndexPatch`, `stageFile`, `unstageFile`, `revertFile`), and the guarded `commit` — no push, no clean, no `reset --hard` anywhere. The local implementation lives in [@deepseek-ai/dsh-git-local](../git-local/README.md), which executes the system git through the subprocess seam with exact executable + argv, never a shell string.
+Git capability Service Definition (`ctx.git`) for the DeepSeek Harness: repository identity, HEAD/branch/upstream, work trees, status, and diff summaries served through stable machine formats, plus the worktree lifecycle writes, the index/revert operations, and the guarded commit. Git owns the repository; the read model never writes, and the seam's only writes are `worktreeAdd`/`worktreeRemove`, `applyIndexPatch`/`stageFile`/`unstageFile`/`revertFile`, and the guarded `commit` — no push, no clean, no `reset --hard` anywhere. The local implementation, [@deepseek-ai/dsh-git-local](../git-local/README.md), executes the system git through the subprocess seam with an exact executable + argv, never a shell string.
 
 ## Table of Contents
 

@@ -1,6 +1,19 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-08-31-b3-p6-archived-sessions.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-31-b3-p6-archived-sessions.md
-2026-08-31-b3-p6-archived-sessions.md: d823585eb812af7f37c1493dc38bc353d233f95a
-2026-08-31-b3-p6-archived-sessions.zh.md: 340c941e5c86b9e75cbb8740f3c546ebaa28e6ad
+/agent-note-b3-p6-archived-sessions-unarchive-operation-and-current-archived-view:
+  en: 683ee0de45a965e5
+  zh: 72e84c79a661d75a
+/agent-note-b3-p6-archived-sessions-unarchive-operation-and-current-archived-view/problem:
+  en: 4f7651f76c8e2d4d
+  zh: 77c21fcb27af4b64
+/agent-note-b3-p6-archived-sessions-unarchive-operation-and-current-archived-view/decision:
+  en: fcc9de9cb880cdda
+  zh: cac15a4e291f498c
+/agent-note-b3-p6-archived-sessions-unarchive-operation-and-current-archived-view/alternatives-considered:
+  en: 78675345dd19940f
+  zh: 50b8ab0a554c1548
+/agent-note-b3-p6-archived-sessions-unarchive-operation-and-current-archived-view/consequences:
+  en: 55961e12558707df
+  zh: 25baa4c1fcbf3fb9

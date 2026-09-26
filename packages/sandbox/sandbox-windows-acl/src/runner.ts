@@ -11,7 +11,12 @@
  *   [node, runner.js, '--workspace', <dir>, '--temp', <dir>,
  *    '--mode', <read-only|workspace-write>,
  *    ['--write-sid', <S-1-4-…>,
- *     '--temp-write-sid', <S-1-4-…>], '--', <argv...>]
+ *     '--temp-write-sid', <S-1-4-…>],
+ *    ['--read-only', <dir>]..., '--', <argv...>]
+ *
+ * `--read-only` (DeepSeekGUI, repeatable): a directory strictly inside the
+ * workspace kept read-only when the runner owns the grant (agentless calls);
+ * with the seam's SID pair the seam applied it already.
  *
  * Modes:
  *  - workspace-write: the workspace and temp directories carry distinct
@@ -44,7 +49,8 @@
  * @module @deepseek-ai/dsh-sandbox-windows-acl/runner
  */
 
-import { existsSync, mkdtempSync, rmSync, statSync } from 'node:fs'
+import { SUBPROCESS_CONTROL_ENV, SUBPROCESS_CONTROL_FD } from '@deepseek-ai/dsh-subprocess/control'
+import { closeSync, existsSync, mkdtempSync, rmSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { anchorConsole, consoleAnchorPid } from './console-anchor.ts'
@@ -69,6 +75,7 @@ interface ParsedArgs {
   mode: 'read-only' | 'workspace-write'
   writeSid: string | undefined
   tempWriteSid: string | undefined
+  readOnly: string[]
   command: string
   args: string[]
 }
@@ -79,6 +86,7 @@ function parseArgs(raw: string[]): ParsedArgs {
   let mode: string | undefined
   let writeSid: string | undefined
   let parsedTempWriteSid: string | undefined
+  const readOnly: string[] = []
   let index = 0
   for (; index < raw.length; index++) {
     const token = raw[index]
@@ -95,6 +103,7 @@ function parseArgs(raw: string[]): ParsedArgs {
       case '--mode': mode = value; break
       case '--write-sid': writeSid = value; break
       case '--temp-write-sid': parsedTempWriteSid = value; break
+      case '--read-only': readOnly.push(value); break
       default: fail(`unknown argument: ${token}`)
     }
   }
@@ -104,7 +113,7 @@ function parseArgs(raw: string[]): ParsedArgs {
   const argv = raw.slice(index)
   const command = argv[0]
   if (command === undefined) fail('missing command after --')
-  return { workspace, temp, mode, writeSid, tempWriteSid: parsedTempWriteSid, command, args: argv.slice(1) }
+  return { workspace, temp, mode, writeSid, tempWriteSid: parsedTempWriteSid, readOnly, command, args: argv.slice(1) }
 }
 
 function requireDirectory(label: string, path: string): void {
@@ -177,6 +186,7 @@ async function main(): Promise<number> {
       ...writeSid === undefined ? {} : { writeSid },
       ...privateTempSid === undefined ? {} : { tempWriteSid: privateTempSid },
       manageDacls: !seamManaged,
+      ...parsed.readOnly.length === 0 ? {} : { readOnlyDirs: parsed.readOnly },
     })
     await sandbox.init()
     initialized = true
@@ -194,7 +204,9 @@ async function main(): Promise<number> {
       command: parsed.command,
       args: parsed.args,
       stdio: 'inherit',
+      ...process.env[SUBPROCESS_CONTROL_ENV] === 'pipe' ? { controlFileDescriptor: SUBPROCESS_CONTROL_FD } : {},
     })
+    if (process.env[SUBPROCESS_CONTROL_ENV] === 'pipe') closeSync(SUBPROCESS_CONTROL_FD)
     const result = await child.wait()
     return result.exitCode
   } finally {

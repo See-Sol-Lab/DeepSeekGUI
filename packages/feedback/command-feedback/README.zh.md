@@ -25,7 +25,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-用户可以直接在 Web 客户端中记录反馈：`/feedback` 命令随标准 `dsh` 基础组合交付，无需配置，可在任何对话中使用。自定义应用只需把命令注册表与本插件组合在一起，即可获得同样的命令。
+用户可以直接在 Web 客户端中记录反馈：`/feedback` 命令随标准 `dsh` 基础组合交付，无需配置，可在任何对话中使用。自定义应用必须把 Session 服务、命令注册表与本插件组合在一起，才能提供同样的命令。
 
 ### `/feedback` 命令
 
@@ -80,19 +80,19 @@ Web 客户端随附该命令。无头模式、ACP 自动化和 JSON-RPC 不提�
 
 ### 设计理念
 
-评价是会话日志中一个仅追加的事实，由事件而非产生它的触发方式拥有：反馈可能来自命令、弹窗或任何集成，因此事实绝不能依赖斜杠命令。命令自身的簿记不携带载荷，所以评价文本在日志中只存在于一个地方，且该事件绝不会浮出到模型。
+评价是会话日志中一个仅追加的事实，由事件而非产生它的触发方式拥有：反馈可能来自命令、弹窗或任何集成，因此事实绝不能依赖斜杠命令。命令自身的簿记不携带载荷，所以评价文本在日志中只存在于一个地方，且该事件绝不会呈现给模型。
 
 ### 评价如何被记录
 
-生产方去除文本空白，把空白文本记为缺省，并向会话日志写入一个事件，即使条目既无文本也无分类；`/feedback` 处理器自行拒绝空输入，其余部分是该生产方的薄包装，`sessionFeedback.record` Remote 则按 id 找到 live Session 后同样调用它，没有 live 持有者时回答 `session-not-found`。两条路径都不启动模型工作。写入是即时但未 flush 的：确认文本表示条目已到达日志，而不是已落盘。某个 harness home 首次接受的命令评价还会铸造确认文本所报告的匿名用户 id。精确的生产方约定见 [`src/index.ts`](src/index.ts)；事件载荷、分类表与 Remote 词汇见 [`src/types.ts`](src/types.ts)。
+生产方去除文本空白，把空白文本记为缺省，并向会话日志写入一个事件，即使条目既无文本也无分类；`/feedback` 处理器自行拒绝空输入，其余部分是该生产方的薄包装层；`sessionFeedback.record` Remote 则按 id 找到 live Session 后同样调用它，没有 live 持有者时回答 `session-not-found`。两条路径都不启动模型工作。写入是即时但未 flush 的：确认文本表示条目已到达日志，而不是已落盘。某个 harness home 首次接受的命令评价还会创建确认文本所报告的匿名用户 id。精确的生产方约定见 [`src/index.ts`](src/index.ts)；事件载荷、分类表与 Remote 词汇见 [`src/types.ts`](src/types.ts)。
 
-### 源码地图
+### 源码索引
 
 | 文件 | 职责 |
 |---|---|
 | [`src/index.ts`](src/index.ts) | 插件入口：`recordFeedback` 生产方、`sessionFeedback` Remote 服务、`/feedback` 命令注册 |
 | [`src/types.ts`](src/types.ts) | `feedback/record` 事件声明、分类表，以及 Remote 请求与结果类型 |
-| — | 不发布运行时不变式伴生入口；每个事件都是独立的仅追加事实。 |
+| — | 未发布配套的运行时不变式；每个 `feedback/record` 都是独立的仅追加事实，不涉及跨事件关系或与可变数据的关系。 |
 
 </details>
 
@@ -107,7 +107,7 @@ Web 客户端随附该命令。无头模式、ACP 自动化和 JSON-RPC 不提�
 - [会话持久化子系统](../../../docs/subsystems/persistence.zh.md)——追加事件如何持久化、flush 屏障的含义。
 - [匿名用户身份](../../identity/anonymous-user-id/README.zh.md)——确认文本报告的 id。
 - [ui-message-feedback](../../client/ui-message-feedback/README.zh.md)——通过 `sessionFeedback` Remote 记录的 Web 反馈弹窗。
-- [反馈包映射](../README.zh.md)——仅写入日志的采集与逐消息反馈并存的组。
+- [反馈包索引](../README.zh.md)——展示仅写入日志的采集与逐消息反馈在包中的并列位置。
 
 -----
 
@@ -140,7 +140,7 @@ Web 客户端随附该命令。无头模式、ACP 自动化和 JSON-RPC 不提�
 - **Remote 只服务 live Session**——没有 live 持有者的 Session，`sessionFeedback.record` 回答 `session-not-found`；弹窗打开期间 Session 退役时，Web 弹窗会报告该失败。
 - **不支持修改或撤回**——会话日志是仅追加的，本包也不新增 tombstone，因此错误的条目会一直保留在记录中，只能由后续条目取代。
 - **没有显式持久化屏障**——确认文本紧随追加而非 flush，因此紧临崩溃前记录的条目可能与其他未 flush 的尾部一同丢失。需要该保证的消费方可自行等待 `ctx.sessions.flush(session)`。
-- **新会话上没有可见的确认**——Web 转录只在会话激活后渲染命令行，因此在仍为空白的新会话上输入 `/feedback <text>` 会记录事件但不会显示确认行；弹窗的 toast 不依赖转录。
+- **新会话上没有可见的确认**——Web transcript（文本记录）只在会话激活后渲染命令行，因此在仍为空白的新会话上输入 `/feedback <text>` 会记录事件但不会显示确认行；弹窗的 toast 不依赖文本记录。
 - **随附的产品入口中只有 Web 使用此命令**——无头模式、ACP 自动化和 JSON-RPC 不提供命令适配器，因此 `/feedback` 在那里不可用。
 
 <a id="dev-note"></a>

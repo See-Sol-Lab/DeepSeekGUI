@@ -7,6 +7,13 @@
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { createUserMessage, BlockAssembler } from '@deepseek-ai/dsh-llm'
+import type { ContextFormed } from '@deepseek-ai/dsh-llm'
+declare module '@deepseek-ai/dsh-llm' {
+  interface MessageSourceMap {
+    'dsh-session-title-llm': { kind: 'dsh-session-title-llm' } & ContextFormed
+  }
+}
+
 import type { FinishReason, GenerateOptions, Message } from '@deepseek-ai/dsh-llm'
 import { deadline, MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import { deepFreeze } from '@deepseek-ai/dsh-util-values'
@@ -17,7 +24,7 @@ import {
 } from '@deepseek-ai/dsh-session-title'
 import type {
   SessionTitleAutomaticMode,
-  SessionTitleModelProvenance,
+  SessionTitleModelIdentity,
   SessionTitleProviderRequest,
   SessionTitleProviderResult,
   SessionTitleUserMessage,
@@ -30,7 +37,7 @@ export interface SessionTitleLlmRequestEventData {
   /** Exact human `user/message` seqs represented in `messages`. */
   readonly messageSeqs: SessionSeq[]
   /** Exact auxiliary LLM route. */
-  readonly route: SessionTitleModelProvenance
+  readonly route: SessionTitleModelIdentity
   /** Exact auxiliary system prompt. */
   readonly system: string
   /** Exact auxiliary message list. */
@@ -174,7 +181,7 @@ export function registerSessionTitleLlmProvider(
 function resolveRoute(
   config: ResolvedSessionTitleLlmConfig,
   request: SessionTitleProviderRequest,
-): SessionTitleModelProvenance {
+): SessionTitleModelIdentity {
   if (config.provider !== undefined && config.model !== undefined) {
     return { provider: config.provider, model: config.model }
   }
@@ -247,7 +254,7 @@ export async function generateSessionTitleWithLlm(
   const route = resolveRoute(config, request)
   const messages: Message[] = [createUserMessage({
     content: [{ type: 'text', text: framedInput }],
-    source: { kind: 'plugin', plugin: 'dsh-session-title-llm' },
+    source: { kind: 'dsh-session-title-llm' },
   })]
   const system = systemPrompt(config)
   using callDeadline = deadline(request.signal, config.timeoutMs, SESSION_TITLE_TIMEOUT_CODE)

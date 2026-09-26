@@ -21,7 +21,7 @@ import {
   PLATFORM_MODULES,
   PRELOADED_CLIENT_EXTERNALS,
 } from '../../../packages/client/web/src/platform.ts'
-import { clientBuildEnvironmentDefines } from '../../../scripts/client-build-environment.ts'
+import { clientBuildEnvironmentDefines, repositoryVersion } from '../../../scripts/client-build-environment.ts'
 
 /** Plugin id stamped into the __ModuleLoader__.load handoff. */
 const ID = '@see-sol-lab/deepseekgui-workbench'
@@ -63,7 +63,10 @@ export default [
       alwaysBundle: (specifier: string) => !EXTERNALS.has(specifier),
     },
     define: {
-      ...clientBuildEnvironmentDefines(process.env),
+      // The welcome overlay reports the client version on sign-in, as the official
+      // account UI does; a plain `build:deepseekgui` carries no DSH_CLIENT_VERSION,
+      // so it comes from the repository version (the official build's source).
+      ...clientBuildEnvironmentDefines({ DSH_CLIENT_VERSION: repositoryVersion(join(PLUGIN_DIR, '../../..')), ...process.env }),
       'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV ?? 'production'),
       'import.meta.env.MODE': JSON.stringify(process.env.NODE_ENV ?? 'production'),
       'import.meta.env': JSON.stringify({ MODE: process.env.NODE_ENV ?? 'production' }),

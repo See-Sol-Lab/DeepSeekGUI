@@ -32,7 +32,7 @@ const settled = (over?: Partial<ToolResultNode>): ToolResultNode => ({
 
 /** A running call slice. */
 const running = (name = 'git_status', argsRaw = '{}'): ToolCallBlock => ({
-  callId: 'c1', name, argsRaw, turn: 1, step: 1, time: 1_000, subCalls: [],
+  phase: 'start', callId: 'c1', name, argsRaw, turn: 1, step: 1, time: 1_000, subCalls: [],
 } as unknown as ToolCallBlock)
 
 const block = (node: ToolResultNode): ToolCallBlock => node as unknown as ToolCallBlock

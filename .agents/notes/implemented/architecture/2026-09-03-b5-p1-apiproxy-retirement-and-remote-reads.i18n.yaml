@@ -1,6 +1,22 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-09-03-b5-p1-apiproxy-retirement-and-remote-reads.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-09-03-b5-p1-apiproxy-retirement-and-remote-reads.md
-2026-09-03-b5-p1-apiproxy-retirement-and-remote-reads.md: a94301946b70b35198c29b41419e96d68ceae447
-2026-09-03-b5-p1-apiproxy-retirement-and-remote-reads.zh.md: 6f5b7ed3efad9ba960021bafc64c80406775a04c
+/agent-note-b5-p1-apiproxy-retirement-and-official-remote-reads-on-the-desktop:
+  en: 4745f6e63d491f3d
+  zh: b2d63631daac4a32
+/agent-note-b5-p1-apiproxy-retirement-and-official-remote-reads-on-the-desktop/problem:
+  en: abf31cd11b2c2d36
+  zh: 7f98d103b2af72fb
+/agent-note-b5-p1-apiproxy-retirement-and-official-remote-reads-on-the-desktop/decision:
+  en: ff8c4d64cdfcaac7
+  zh: 134710d2072b9c6a
+/agent-note-b5-p1-apiproxy-retirement-and-official-remote-reads-on-the-desktop/alternatives-considered:
+  en: 8c3dab69c8dc6169
+  zh: 87e69d229bd653a9
+/agent-note-b5-p1-apiproxy-retirement-and-official-remote-reads-on-the-desktop/verification:
+  en: e0d9b1c47f6d2833
+  zh: 395ee15cc42faa0e
+/agent-note-b5-p1-apiproxy-retirement-and-official-remote-reads-on-the-desktop/consequences:
+  en: e0df0871b7061cee
+  zh: 1b74c47b49621a25

@@ -25,7 +25,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-把本包挂进携带 `webServer`、`connection` 与 `subprocess` 的组合，通常与其浏览器表面 [`dsh-client-ui-open-in-app`](../../client/ui-open-in-app/README.zh.md) 并排；只要主机解析出至少一个已安装的目录应用，这对包就会在 Web 会话头部放上 "Open In..." 分体按钮。
+把本包挂进携带 `webServer`、`connection` 与 `subprocess` 的组合，通常与其浏览器表面 [`dsh-client-ui-open-in-app`](../../client/ui-open-in-app/README.zh.md) 并排；只要主机解析出目录中至少一个已安装的应用，这对包就会在 Web 会话头部放上 "Open In..." 分体按钮。
 
 ### 何时选择
 
@@ -51,11 +51,11 @@ kind: "package-reference"
 
 ### 目录及其解析方式
 
-目录是一份固定白名单，覆盖编辑器与 IDE（Cursor、VS Code 与 Insiders、Windsurf、Zed、Sublime Text、Xcode、Android Studio，以及 JetBrains 系 IntelliJ IDEA、PyCharm、WebStorm、PhpStorm、GoLand、Rider、RustRover）、Git GUI（Fork、Sourcetree、GitHub Desktop、Tower、GitKraken、SmartGit、Sublime Merge）、终端（Ghostty、Warp、iTerm2、kitty、Terminal、Windows Terminal、Git Bash、GNOME Terminal、Konsole）与各平台文件管理器（Finder、文件资源管理器、`xdg-open`）。每个条目按平台声明按序尝试的启动器来源，且每个来源产出的都是**已验证的启动器**——本机实际持有的构件——绝不是一条裸的安装记录：
+目录是一份固定白名单，覆盖编辑器与 IDE（Cursor、VS Code 与 Insiders、Windsurf、Zed、Sublime Text、Xcode、Android Studio，以及 JetBrains 系 IntelliJ IDEA、PyCharm、WebStorm、PhpStorm、GoLand、Rider、RustRover）、Git GUI（Fork、Sourcetree、GitHub Desktop、Tower、GitKraken、SmartGit、Sublime Merge）、终端（Ghostty、Warp、iTerm2、kitty、Terminal、Windows Terminal、Git Bash、GNOME Terminal、Konsole）与各平台文件管理器（Finder、文件资源管理器、`xdg-open`）。每个条目按平台声明按序尝试的启动器来源，且每个来源产出的都是**已验证的启动器**——本机实际持有的产物——绝不是一条裸的安装记录：
 
 - **macOS** 在已知应用目录（`/Applications`、`~/Applications`）中查找条目的 bundle 拼写，启动 `open -a <解析出的 bundle>`；Xcode 跟随 `xcode-select -p`，因此能找到 Beta 或改名的安装。不做 Launch Services 查询，也不扫描磁盘。
 - **Windows** 依次读取 `App Paths` 注册表键、Uninstall 记录（仅当它们能证明磁盘上存在可执行文件时才采用）、已知安装路径，以及采用版本化安装目录的应用中最新的目录。GitHub Desktop 会同时解析版本化可执行文件与随包提供的 `cli.js`，不经命令 shell 调用受支持的 `github open <path>` 行为。注册表读取按批进行，每次解析每个根只跑一条 `reg.exe query`。
-- **Linux 与 Windows 的 CLI 名称**经组合的 subprocess 能力在进程内解析（PATH/PATHEXT stat，无 shell、无 `which`）；CLI 不在 PATH 上的 Linux GUI 条目回退到其 XDG desktop 条目验证过的 `TryExec`/`Exec` 可执行文件，且只有主机声明了 display server 时才提供 `xdg-open` 文件管理器条目。
+- **Linux 与 Windows 的 CLI（命令行界面）名称**经组合的 subprocess 能力在进程内解析（PATH/PATHEXT stat，无 shell、无 `which`）；CLI 不在 PATH 上的 Linux GUI 条目回退到其 XDG desktop 条目验证过的 `TryExec`/`Exec` 可执行文件，且只有主机声明了 display server 时才提供 `xdg-open` 文件管理器条目。
 
 ### 预期行为
 
@@ -71,6 +71,8 @@ kind: "package-reference"
 
 <a id="understand-the-implementation"></a>
 ## 理解实现
+
+Linux 桌面文件字段和图标使用共享的 [native-command](../../util/native-command/README.zh.md) 工具。目录打开器来自本包的已安装应用列表，文件打开器来自操作系统的文件关联。
 
 <details>
 <summary>实现内幕——点击展开</summary>
@@ -99,9 +101,9 @@ kind: "package-reference"
 
 无。本包为人打开主机应用，不触及任何提示词、消息、schema、流或工具结果。
 
-#### KV 缓存影响
+#### KV Cache 影响
 
-无；本包从不组装或发送 provider 请求。
+无；本包从不组装或发送提供方请求。
 
 ## 已知限制与延后工作
 
@@ -122,4 +124,4 @@ kind: "package-reference"
 
 </details>
 
-**运行时不变量：** 不发布 companion。本包经三条无状态路由提供一趟主机解析的结果；路由注册已由各自的 HMR 安全测试证明可处置，不存在可能分叉的独立观测。
+**运行时不变式：** 不发布伴生入口。本包经三条无状态路由提供一趟主机解析的结果；路由注册已由各自的 HMR（热模块替换）安全测试证明可处置，不存在可能分叉的独立观测。

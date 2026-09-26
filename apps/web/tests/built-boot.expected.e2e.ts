@@ -4,7 +4,7 @@
 // reach a surface only the built bundles expose; this one asserts that the
 // graph assembles at all — staged activation across the immediately tier and
 // the inject layers, per-plugin CSS injection, and a rendered journey reaching
-// chat content from the keyless fixture Connection RPC.
+// chat content from the keyless RemoteMock scenario.
 //
 // Component behavior remains owned by per-package suites (SlotTestRuntime
 // benches over src). This smoke additionally pins the resident interaction
@@ -91,8 +91,9 @@ it('boots the built plugin graph and renders a fixture session end to end', asyn
   expect(waitingRow.querySelector('[data-state="warning"]')).not.toBeNull()
   expect(waitingRow.querySelector('[data-state="ongoing"]')).toBeNull()
   within(waitingRow).getByText('Waiting for answer')
+  within(waitingRow).getByText('Answer')
 
-  // Opening a session reaches chat content through the fixture transport.
+  // Opening a session reaches chat content through the RemoteMock transport.
   fireEvent.click(waitingTitle)
   await waitFor(() => {
     expect(document.querySelector('[data-sample="bash"]')).not.toBeNull()
@@ -101,9 +102,14 @@ it('boots the built plugin graph and renders a fixture session end to end', asyn
   // Skip the resident fixture's three questions, then resolve its approval so
   // the ordinary composer bar (which owns ContextMeter) resumes.
   for (let index = 0; index < 3; index += 1) {
-    fireEvent.click(await screen.findByRole('button', { name: 'Skip this question' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Skip' }))
   }
-  fireEvent.click(await screen.findByRole('button', { name: 'Allow once' }))
+  const allowOnce = await screen.findByRole('button', { name: 'Allow once' })
+  await waitFor(() => {
+    within(waitingRow).getByText('Waiting for approval')
+    within(waitingRow).getByText('Approval')
+  })
+  fireEvent.click(allowOnce)
 
   // The fixture mirrors all three token-meter projections, so the assembled
   // ContextMeter reaches its composition panel instead of only the occupancy
@@ -115,24 +121,27 @@ it('boots the built plugin graph and renders a fixture session end to end', asyn
   within(contextPanel).getByText('Tool definitions')
   within(contextPanel).getByText('Messages')
 
-  // The write/edit turns render a real diff card through the assembled graph
-  // (the keyed FileMutationRow composing ToolRow + DiffBlock), not just the
-  // fixture's raw text. The card is collapsed by default, so expand each edit/
-  // write row first. The write turn's `hello fixture\n` proves the terminator
-  // rule end to end: a trailing newline terminates its line, so the footer reads
-  // `+1` (not a phantom `+2`) and one distinct file. The `+ ` prefix is a CSS
-  // ::before, so it is absent from textContent — assert on the line body and the
-  // footer.
-  const mutationRows = [...document.querySelectorAll('[data-variant="write"],[data-variant="edit"]')]
+  // The built ToolRow and DiffBlock share the write fixture's trailing-newline
+  // semantics: `hello fixture\n` contributes one addition. Counts belong to the
+  // tool row; the diff's line markers are CSS pseudo-elements, absent from textContent.
+  const mutationRows = [...document.querySelectorAll<HTMLElement>('[data-variant="write"],[data-variant="edit"]')]
   expect(mutationRows.length).toBeGreaterThan(0)
+  const writeRow = mutationRows.find(row => row.getAttribute('data-variant') === 'write'
+    && row.textContent?.includes('new-demo.txt'))
+  if (writeRow === undefined) throw new Error('fixture write row missing')
+  expect(within(writeRow).getAllByText('+1 -0', { exact: true })).toHaveLength(1)
+  expect(writeRow.querySelector('[data-diff]')).toBeNull()
   for (const row of mutationRows) {
     const toggle = row.querySelector('[data-expandable]')
     if (toggle !== null) act(() => { fireEvent.click(toggle) })
   }
   const diffCards = [...document.querySelectorAll('[data-diff]')]
   expect(diffCards.length).toBeGreaterThan(0)
-  const footers = diffCards.map(card => card.textContent ?? '')
-  expect(footers.some(text => text.includes('hello fixture') && text.includes('+1 -0 · 1 file'))).toBe(true)
+  const writeDiff = writeRow.querySelector<HTMLElement>('[data-diff]')
+  if (writeDiff === null) throw new Error('expanded fixture write diff missing')
+  within(writeDiff).getByText('hello fixture', { exact: true })
+  expect(within(writeRow).getAllByText('+1 -0', { exact: true })).toHaveLength(1)
+  expect(writeDiff.textContent).not.toContain('+1 -0')
 
   // The web render intent reaches the assembled boot graph: the fixture's
   // web_search / web_fetch turns render their keyed WebRow cards, proving the
@@ -162,7 +171,7 @@ it('boots the built plugin graph and renders a fixture session end to end', asyn
 })
 
 it('boots without ui-chat and does not select another conversation view implicitly', async () => {
-  mountAssembledApp('?fixture', { exclude: ['@deepseek-ai/dsh-client-ui-chat'] })
+  mountAssembledApp({ exclude: ['@deepseek-ai/dsh-client-ui-chat'] })
 
   const tree = await screen.findByRole('tree', { name: 'Sessions' }, { timeout: 10_000 })
   const boot = Reflect.get(window, '__DSH_BOOT__') as { entries: Array<{ id: string }> } | undefined

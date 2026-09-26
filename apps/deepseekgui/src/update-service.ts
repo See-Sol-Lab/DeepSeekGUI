@@ -120,13 +120,32 @@ export interface UpdateAsset {
 export interface UpdateManifest {
   /** latest DeepSeekGUI app version（stable）。 */
   latestVersion: string
-  /** 给用户看的必要 release note 摘要（纯文本）。 */
+  /** 给用户看的 release notes（发布页正文的 Markdown 原样；展示规则见 release-notes 模块）。 */
   releaseNotes: string
   assets: UpdateAsset[]
 }
 
-/** Release notes 展示上限（字符）：feed 是外部输入，绝不无界进面板。 */
-export const UPDATE_RELEASE_NOTES_MAX = 4_000
+/**
+ * Release notes 展示上限（字符）：feed 是外部输入，绝不无界进面板。
+ * 实际发布说明是中英双语全文（v1.1.1 为 12k 字符），界面只展示当前语言那
+ * 一段，所以上限按"双语全文"而不是"一段摘要"定；超出仍截断，绝不整段丢弃。
+ */
+export const UPDATE_RELEASE_NOTES_MAX = 32_000
+
+/** 公开发布页地址前缀：与 scripts/generate-update-manifest.ts 的 tag 约定（`v` + app 版本）一致。 */
+export const RELEASE_PAGE_URL_PREFIX = 'https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v'
+
+/**
+ * 「查看完整 Release」的目标页。只有内置公开通道有已知的发布页规则；私有
+ * feed 的发布页在哪我们不知道，就不猜。
+ * @param feedUrl - 生效的更新通道；null = 未配置。
+ * @param version - manifest 声明的最新版本；null = 当前没有可用更新。
+ * @returns 发布页 URL，或 null（不显示入口）。
+ */
+export function releasePageUrlFor(feedUrl: string | null, version: string | null): string | null {
+  if (feedUrl !== DEFAULT_UPDATE_FEED_URL || version === null || !isVersionShape(version)) return null
+  return `${RELEASE_PAGE_URL_PREFIX}${version}`
+}
 
 /**
  * 按当前平台挑选可安装资产。
@@ -197,6 +216,21 @@ export function shouldAutoDownloadUpdate(input: {
  */
 export const DEFAULT_UPDATE_FEED_URL
   = 'https://github.com/See-Sol-Lab/DeepSeekGUI/releases/latest/download/update-manifest.json'
+
+/**
+ * 官网镜像通道（2026-09-15 用户定）：内置 GitHub 通道**网络失败**（连不上 /
+ * 超时）时自动改抓的第二 manifest——面向没有代理、连不上 GitHub 的用户。
+ * 只救网络失败：GitHub 答复了"已是最新"或 manifest 语义错误都不回落——
+ * 前者是权威答案，后者换镜像只会掩盖坏文件。用户显式配置过 feed 覆盖时
+ * 同样不回落（绝不拿别的来源冒充他指定的那个）。发布时由
+ * generate-update-manifest 同步产出 `update-manifest.website.json`，与
+ * 安装包一起上传官网。
+ */
+export const FALLBACK_UPDATE_FEED_URL
+  = 'https://www.ailover-atlas.com/deepseekgui/releases/update-manifest.json'
+
+/** 回落通道命中时「新功能」的落点：官网下载页（GitHub 对该用户多半不可达）。 */
+export const FALLBACK_RELEASE_PAGE_URL = 'https://www.ailover-atlas.com/deepseekgui/download/'
 
 /**
  * 解析更新通道：没有覆盖配置就用内置公开通道；有配置就必须合法。
@@ -360,11 +394,17 @@ export function verifyDigest(expected: string, actual: string): DigestVerdict {
 /** 下载大小上限（字节）：超出即中止并清理 partial。 */
 export const UPDATE_SIZE_LIMIT = 512 * 1024 * 1024
 
-/** 下载中止/失败时的明确错误。 */
-class UpdateDownloadError extends Error {
-  constructor(message: string) {
+/**
+ * 下载中止/失败时的明确错误。`network` 区分两种命运：连不上/挂死/中断
+ * （true——回落通道可救）与服务器已答复的状态码、跳转形状等（false——
+ * 服务器活着，回落只会掩盖事实）。
+ */
+export class UpdateDownloadError extends Error {
+  readonly network: boolean
+  constructor(message: string, network = false) {
     super(message)
     this.name = 'UpdateDownloadError'
+    this.network = network
   }
 }
 
@@ -490,7 +530,7 @@ async function attemptDownload(
     const armIdleTimeout = (): void => {
       clearTimeout(idleTimer)
       idleTimer = setTimeout(() => {
-        fail(new UpdateDownloadError(zh ? '更新服务器长时间未响应，已停止下载' : 'The update server stopped responding; the download was stopped'))
+        fail(new UpdateDownloadError(zh ? '更新服务器长时间未响应，已停止下载' : 'The update server stopped responding; the download was stopped', true))
       }, 30_000)
     }
     armIdleTimeout()
@@ -539,10 +579,10 @@ async function attemptDownload(
         response.on('error', (error: unknown) => {
           fail(new UpdateDownloadError(zh
             ? `下载中断: ${String(error instanceof Error ? error.message : error)}`
-            : `The download was interrupted: ${String(error instanceof Error ? error.message : error)}`))
+            : `The download was interrupted: ${String(error instanceof Error ? error.message : error)}`, true))
         })
         response.on('close', () => {
-          if (!settled) fail(new UpdateDownloadError(zh ? '下载连接提前关闭' : 'The download connection closed before completion'))
+          if (!settled) fail(new UpdateDownloadError(zh ? '下载连接提前关闭' : 'The download connection closed before completion', true))
         })
       })
     } catch (error) {
@@ -554,7 +594,7 @@ async function attemptDownload(
     request.on('error', (error: unknown) => {
       fail(new UpdateDownloadError(zh
         ? `无法连接更新服务器: ${String(error instanceof Error ? error.message : error)}`
-        : `Could not connect to the update server: ${String(error instanceof Error ? error.message : error)}`))
+        : `Could not connect to the update server: ${String(error instanceof Error ? error.message : error)}`, true))
     })
     signal.addEventListener('abort', onAbort, { once: true })
     if (signal.aborted) onAbort()

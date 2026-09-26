@@ -16,6 +16,8 @@ DeepSeekGUI keeps its application state and Managed Harness Home under the Windo
 | Update cache | `%APPDATA%\DeepSeekGUI\updates` | At most one verified installer record and its file. |
 | Global memory | Inside the Managed Harness Home | Cross-project preferences edited in Settings. |
 | Project memory | `<folder-name>.memory.md` in the selected workspace | Project facts maintained by the assistant; part of your project files. |
+| Memory entries | `storages/deepseekgui_memory` inside the Managed Harness Home | One JSON file per entry (and per forgotten entry) plus the memory path setting, when entry memory is on ([Memory](memory.md)). |
+| Skill library | `deepseekgui/skills` and `storages/deepseekgui_skills` inside the Managed Harness Home | Installed skill packages with their manifests, and each project folder's selection. |
 
 Windows resolves the real application-data directory through its Known Folder API. The table uses `%APPDATA%` as the familiar default notation.
 
@@ -79,6 +81,37 @@ DeepSeekGUI starts its embedded browser panel on the first browser operation. Co
 ## Check for Updates reports no update
 
 The installed version is already the newest published one. This does not alter the installed application. You can also download a release manually from GitHub.
+
+## Programs you run yourself fail in a project used with Sandbox (known issue)
+
+In Sandbox mode, the first time the Windows sandbox grants write access to a project folder it leaves three settings on that folder permanently: a write grant for the sandbox, a "deny delete child" entry, and a **Low integrity label**. This is the design of upstream DSH 0.1.7; closing DeepSeekGUI does not remove them.
+
+A side effect of the label is that programs **you** later start from that folder also run at Low integrity, even from an ordinary terminal. Typical signs:
+
+- an Electron app in the project exits at once with `0x80000003` and no output;
+- a Python virtual environment, `uv`, or a program built in the project gets "Access is denied" when writing to your profile or a cache.
+
+If the same program runs fine after copying it to another folder, this is almost certainly the cause. To check (use your project's path):
+
+```powershell
+icacls "D:\my-project" | Select-String "Mandatory"
+```
+
+`Low Mandatory Level` in the output means the folder is labeled. Once no DeepSeekGUI task is running in that project, run these lines in your own PowerShell to restore it (replace `S-1-4-…` with the identifier the previous command shows):
+
+```powershell
+$root = "D:\my-project"
+$acl = (Get-Item $root).GetAccessControl('Access')
+$acl.PurgeAccessRules([Security.Principal.SecurityIdentifier]'S-1-4-…')
+$everyone = [Security.Principal.SecurityIdentifier]'S-1-1-0'
+foreach ($r in @($acl.GetAccessRules($true, $false, [Security.Principal.SecurityIdentifier]))) {
+  if ($r.AccessControlType -eq 'Deny' -and $r.IdentityReference -eq $everyone) { [void]$acl.RemoveAccessRuleSpecific($r) }
+}
+(Get-Item $root).SetAccessControl($acl)
+icacls $root /setintegritylevel '(OI)(CI)M'
+```
+
+The settings come back the next time a Sandbox command runs in that project. If you often run programs from the project yourself, use Full Access for it. Upstream tracking: [deepseek-harness#7709](https://github.com/deepseek-ai/deepseek-harness/discussions/7709).
 
 ## Export diagnostics without the GUI
 

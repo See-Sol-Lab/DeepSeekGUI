@@ -1,6 +1,31 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-09-01-b4-p3-task-worktree-lifecycle.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-01-b4-p3-task-worktree-lifecycle.md
-2026-09-01-b4-p3-task-worktree-lifecycle.md: 59b24bb1f0f4bc8e079c3423ea24e9269ade9b67
-2026-09-01-b4-p3-task-worktree-lifecycle.zh.md: f4c195818bd7a41f03af8e5ec4b40b9836758ac7
+/agent-note-b4-p3-local-worktree-task-lifecycle-three-honest-work-modes-with-an-explicit-managed-worktree-transaction:
+  en: 4a54391912dfce61
+  zh: b450146df7788335
+/agent-note-b4-p3-local-worktree-task-lifecycle-three-honest-work-modes-with-an-explicit-managed-worktree-transaction/problem:
+  en: ba6627246933e00c
+  zh: 1dbbbe7da2518f84
+/agent-note-b4-p3-local-worktree-task-lifecycle-three-honest-work-modes-with-an-explicit-managed-worktree-transaction/decision:
+  en: a15c7c13f167e5ac
+  zh: 63bcc2ef60c2f344
+/agent-note-b4-p3-local-worktree-task-lifecycle-three-honest-work-modes-with-an-explicit-managed-worktree-transaction/decision/the-git-seam-gains-the-only-writes-it-will-ever-offer:
+  en: a7537c820e19d354
+  zh: c0f8905fbe00d38c
+/agent-note-b4-p3-local-worktree-task-lifecycle-three-honest-work-modes-with-an-explicit-managed-worktree-transaction/decision/taskregistry-three-honest-modes-one-explicit-transaction:
+  en: 7c83f800848aacc7
+  zh: 2a273d1ed4ea5dec
+/agent-note-b4-p3-local-worktree-task-lifecycle-three-honest-work-modes-with-an-explicit-managed-worktree-transaction/decision/the-wire-domain-and-the-workbench-surface:
+  en: ab19d13fd2a9d172
+  zh: 9657bf10270e5def
+/agent-note-b4-p3-local-worktree-task-lifecycle-three-honest-work-modes-with-an-explicit-managed-worktree-transaction/verification:
+  en: 5c7595e67da15fed
+  zh: 41d285f473f5e560
+/agent-note-b4-p3-local-worktree-task-lifecycle-three-honest-work-modes-with-an-explicit-managed-worktree-transaction/alternatives-considered:
+  en: 2a3275cca360ee6f
+  zh: e259805a7b229be5
+/agent-note-b4-p3-local-worktree-task-lifecycle-three-honest-work-modes-with-an-explicit-managed-worktree-transaction/consequences:
+  en: 23500697fadd6abf
+  zh: 198217fc6483a65b

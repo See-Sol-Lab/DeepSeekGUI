@@ -186,5 +186,3 @@ Exact-string `cwd` equality is deliberately conservative; symlink-aware or canon
 </details>
 
 **Runtime invariant:** No companion is published. This read-only model adapter owns no event or mutable data relationship beyond the registries that already validate registration.
-
-Exact lookups distinguish a deleted Session from an unknown ID after workspace authorization. Plain title/ID searches can include minimal deletion metadata; erased message text does not participate in search.

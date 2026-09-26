@@ -1,6 +1,19 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-08-16-deepseekgui-b2-p1-delivery-identity.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-08-16-deepseekgui-b2-p1-delivery-identity.md
-2026-08-16-deepseekgui-b2-p1-delivery-identity.md: 99c6f3ba32ed82df525ace98fafd75dcc0cf75c9
-2026-08-16-deepseekgui-b2-p1-delivery-identity.zh.md: 0b31408a6299d61ceeb965432aef04e4f6aa3780
+/agent-note-deepseekgui-desktop-delivery-identity-ci-lane-and-windows-parity-matrix:
+  en: 019ca0a19ac959e0
+  zh: eadc56d698286f39
+/agent-note-deepseekgui-desktop-delivery-identity-ci-lane-and-windows-parity-matrix/problem:
+  en: f60da1a3d369b178
+  zh: d01b9c1397339043
+/agent-note-deepseekgui-desktop-delivery-identity-ci-lane-and-windows-parity-matrix/decision:
+  en: f39cd8c8f93ab420
+  zh: be63cb162b7a55ab
+/agent-note-deepseekgui-desktop-delivery-identity-ci-lane-and-windows-parity-matrix/alternatives-considered:
+  en: d445ae13a5802296
+  zh: 3c3457a66abeac40
+/agent-note-deepseekgui-desktop-delivery-identity-ci-lane-and-windows-parity-matrix/consequences:
+  en: 729abe8e5876ce7d
+  zh: f5f3dd7f2e218779

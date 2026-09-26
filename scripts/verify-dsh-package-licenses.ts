@@ -1,5 +1,7 @@
 /**
- * Enforce the MIT license declaration for repository-owned DSH npm packages.
+ * Enforce the MIT license declaration for repository-owned DSH npm packages,
+ * except the listed DeepSeekGUI product Host packages, which declare the
+ * product license.
  * @module scripts/verify-dsh-package-licenses
  */
 
@@ -9,11 +11,23 @@ import { resolve, sep } from 'node:path'
 const ROOT = resolve(import.meta.dirname, '..')
 const DSH_PACKAGE_NAME = /^@deepseek-ai\/dsh(?:-|$)/
 
+/**
+ * DeepSeekGUI's original product Host packages (see DEEPSEEKGUI-LICENSE.md):
+ * they keep the dsh name the Cordis loader resolves, but are not upstream
+ * code, so each declares the product license file instead of MIT. The list is
+ * exact — any other dsh package still has to declare MIT.
+ */
+const PRODUCT_LICENSED_PACKAGES: ReadonlyMap<string, string> = new Map([
+  ['@deepseek-ai/dsh-skill-manager', 'SEE LICENSE IN LICENSE'],
+  ['@deepseek-ai/dsh-workbench-inspector', 'SEE LICENSE IN LICENSE'],
+  ['@deepseek-ai/dsh-workbench-memory', 'SEE LICENSE IN LICENSE'],
+])
+
 /** Result of checking every DSH package reachable through the root workspace list. */
 export interface DshPackageLicenseReport {
   /** Number of DSH package manifests checked. */
   packageCount: number
-  /** Repository-relative diagnostics for non-MIT declarations. */
+  /** Repository-relative diagnostics for declarations outside the license policy. */
   failures: string[]
 }
 
@@ -64,10 +78,11 @@ export function inspectDshPackageLicenses(root: string): DshPackageLicenseReport
     if (typeof name !== 'string' || !DSH_PACKAGE_NAME.test(name)) continue
 
     packageCount++
-    if (manifest.license !== 'MIT') {
+    const expected = PRODUCT_LICENSED_PACKAGES.get(name) ?? 'MIT'
+    if (manifest.license !== expected) {
       const normalizedFile = file.split(sep).join('/')
       failures.push(
-        `${normalizedFile}: ${name} must declare "license": "MIT"; found ${printable(manifest.license)}.`,
+        `${normalizedFile}: ${name} must declare "license": ${JSON.stringify(expected)}; found ${printable(manifest.license)}.`,
       )
     }
   }
@@ -78,12 +93,12 @@ export function inspectDshPackageLicenses(root: string): DshPackageLicenseReport
 if (process.argv[1] && import.meta.filename === resolve(process.argv[1])) {
   const report = inspectDshPackageLicenses(ROOT)
   if (report.failures.length > 0) {
-    process.stderr.write('verify-dsh-package-licenses: non-MIT DSH package declarations found:\n')
+    process.stderr.write('verify-dsh-package-licenses: DSH package license declarations out of policy:\n')
     for (const failure of report.failures) process.stderr.write(`  ${failure}\n`)
     process.exitCode = 1
   } else {
     process.stdout.write(
-      `verify-dsh-package-licenses: ${String(report.packageCount)} DSH package(s) checked; all declare MIT.\n`,
+      `verify-dsh-package-licenses: ${String(report.packageCount)} DSH package(s) checked; all declare MIT or, for the listed product Host packages, the product license.\n`,
     )
   }
 }

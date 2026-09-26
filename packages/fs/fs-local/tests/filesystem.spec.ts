@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { constants as bufferConstants } from 'node:buffer'
 import { mkdir, mkdtemp, readFile, realpath, rm, stat, symlink, unlink, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, parse, relative } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
 import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local'
@@ -167,6 +167,17 @@ describe('stat', () => {
 })
 
 describe('lstat', () => {
+  it.skipIf(process.platform !== 'win32')('uses the same native drive-relative paths as resolve', async () => {
+    await writeFile(join(dir, 'created.txt'), 'native')
+    const drive = parse(dir).root.slice(0, 2)
+    for (const cwd of [dir, `${drive}${relative(process.cwd(), dir)}`]) {
+      for (const path of ['created.txt', `${drive}created.txt`]) {
+        const target = await fs.resolve(path, { cwd })
+        expect(await fs.lstat(path, { cwd })).toEqual(await fs.stat(target))
+      }
+    }
+  })
+
   it('reports path metadata without following the final symlink component', async () => {
     await writeFile(join(dir, 'real.txt'), 'hello')
     await symlink(join(dir, 'real.txt'), join(dir, 'link.txt'))
@@ -314,7 +325,7 @@ describe('readByteRange', () => {
 
   it('reads a window from the middle of a file larger than the window', async () => {
     await writeFile(join(dir, 'ramp.bin'), ramp)
-    const window = await fs.readByteRange(await fs.resolve('ramp.bin'), { offset: 100, length: 4 })
+    const window = await fs.readByteRange(await fs.resolve('ramp.bin'), { offset: 100, length: 4 }, new AbortController().signal)
     expect([...window]).toEqual([100, 101, 102, 103])
   })
 

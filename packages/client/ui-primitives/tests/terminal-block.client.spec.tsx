@@ -89,13 +89,48 @@ describe('TerminalBlock prompt label', () => {
 })
 
 describe('TerminalBlock states', () => {
-  it('running shows the command line only: no output, no placeholder, no copy', () => {
-    const view = render(<TerminalBlock command="sleep 5" running output="partial" />)
+  it('running with no output shows the command line only: no output box, no placeholder, no copy', () => {
+    const view = render(<TerminalBlock command="sleep 5" running />)
     expect(view.getByText('sleep 5')).toBeTruthy()
-    expect(view.queryByText('partial')).toBeNull()
+    expect(outputLines(view.container)).toEqual([])
     expect(view.queryByText('无输出')).toBeNull()
     expect(view.queryByRole('button')).toBeNull()
     expect(view.container.firstElementChild?.getAttribute('data-running')).toBe('')
+    // Banner-only: no body, so no banner divider either.
+    expect(view.container.firstElementChild?.getAttribute('data-body')).toBeNull()
+  })
+
+  it('copyText overrides the copy payload and keeps the control before any output', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    const view = render(<TerminalBlock command="npm run build --verbose" running copyText="npm run build --verbose" />)
+    // No output yet, but the command is already copyable.
+    const button = view.getByRole('button', { name: '复制' })
+    await act(async () => { fireEvent.click(button) })
+    expect(writeText).toHaveBeenCalledWith('npm run build --verbose')
+  })
+
+  it('omits the run-state dot and its assistive label when the host carries the state', () => {
+    const view = render(<TerminalBlock command="sleep 5" running output="partial" runStateDot={false} />)
+    expect(view.container.querySelector('[class*="runState"]')).toBeNull()
+    expect(view.queryByText('运行中')).toBeNull()
+  })
+
+  it('running with supplied output streams the live text without a default copy control', () => {
+    const view = render(<TerminalBlock command="sleep 5" running output="partial" />)
+    expect(view.getByText('partial')).toBeTruthy()
+    expect(view.queryByText('无输出')).toBeNull()
+    expect(view.queryByRole('button', { name: '复制' })).toBeNull()
+    expect(view.container.firstElementChild?.getAttribute('data-running')).toBe('')
+    // Live output renders a body, so the banner divider returns.
+    expect(view.container.firstElementChild?.getAttribute('data-body')).toBe('')
+  })
+
+  it('running with an empty live stream draws neither output nor placeholder', () => {
+    const view = render(<TerminalBlock command="tail -f log" running output="" />)
+    expect(outputLines(view.container)).toEqual([])
+    expect(view.queryByText('无输出')).toBeNull()
+    expect(view.queryByRole('button')).toBeNull()
   })
 
   it('running still shows a settled-looking status pill when one is supplied', () => {
@@ -184,6 +219,12 @@ describe('TerminalBlock status pill', () => {
   it('renders the exit-code pill for a non-zero exit', () => {
     render(<TerminalBlock command="false" output="a" exitCode={1} />)
     expect(screen.getByText('退出码 1')).toBeTruthy()
+  })
+
+  it('renders the no-exit-code pill and the error dot for a command that settled without one', () => {
+    const view = render(<TerminalBlock command="pnpm add x" output="spawn pnpm ENOENT" exitCode={null} />)
+    expect(view.getByText('未正常退出')).toBeTruthy()
+    expect(runStateOf(view.container)).toEqual({ state: 'error', label: '失败' })
   })
 
   it('renders the signal pill, which outranks the exit code', () => {

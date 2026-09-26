@@ -4,7 +4,7 @@
   "description": "Linux arm64 system binaries: static Landlock launcher and glibc/musl Node-API flock addons",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/deepseek-harness/deepseek-harness.git",
+    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
     "directory": "native/system/packages/linux-arm64"
   },
   "os": [

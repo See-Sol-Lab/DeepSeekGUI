@@ -13,7 +13,7 @@
 
 import { Context } from '@deepseek-ai/cordis'
 import type { Loader } from '@deepseek-ai/cordis-plugin-loader'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import type {
   CordisDynamicPackageId, CordisDynamicPluginId, CordisDynamicPluginRunId, SessionId,
 } from '@deepseek-ai/dsh-api-remotes/client'
@@ -52,7 +52,7 @@ interface Bench {
   invalidated: string[]
   removed: string[]
   created: string[]
-  invoke: ReturnType<typeof vi.fn>
+  invoke: ReturnType<typeof vi.fn<() => Promise<unknown>>>
   /** Render failures the runner sent upstream, in order. */
   reported: {
     agentId: SessionId
@@ -61,7 +61,7 @@ interface Bench {
     failure: DynamicCordisRenderFailure
   }[]
   /**
-   * Report one entry crash the way the renderer's boundary does: the runner
+   * Report one Slot entry or Factory crash the way the renderer's boundary does: the runner
    * subscribed through the supervision seam, and this calls what it registered.
    */
   crash: (slot: string, entry: unknown, error: unknown, abdicated?: boolean) => void
@@ -103,15 +103,15 @@ async function boot(): Promise<Bench> {
       return Promise.resolve(entryId)
     },
     resolve: (entryId: string) => fibers.get(entryId) ?? { fiber: undefined },
-    remove: async (entryId: string) => {
+    remove: (entryId: string) => {
       removed.push(entryId)
       const entry = fibers.get(entryId)
       fibers.delete(entryId)
-      await (entry?.fiber as { dispose(): Promise<void> } | undefined)?.dispose()
+      void (entry?.fiber as { dispose(): Promise<void> } | undefined)?.dispose()
     },
   } as unknown as Loader
 
-  const invoke = vi.fn(() => Promise.resolve(null))
+  const invoke = vi.fn<() => Promise<unknown>>(() => Promise.resolve(null))
   const reported: Bench['reported'] = []
   // The crash seam is stood in so a test can report an entry failure without a
   // React render, exactly as the renderer's boundary would; registrations still
@@ -298,6 +298,26 @@ describe('failure stages', () => {
 })
 
 describe('retract', () => {
+  it('waits for plugin cleanup before invalidating its module factory', async () => {
+    const bench = await boot()
+    const started = Promise.withResolvers<undefined>()
+    const release = Promise.withResolvers<undefined>()
+    onTestFinished(() => { release.resolve(undefined) })
+    bench.invoke.mockImplementation(() => {
+      started.resolve(undefined)
+      return release.promise
+    })
+    await bench.runner.load(half({ code: 'return { apply: (ctx) => ctx.effect(() => () => host.call("cleanup", null)) }' }))
+    bench.runner.retract(PLUGIN, RUN)
+    await started.promise
+    await bench.settle()
+    expect(bench.removed).toEqual(['entry-1'])
+    expect(bench.invalidated).toEqual(['dyn/dyn-1'])
+    release.resolve(undefined)
+    await bench.settle()
+    expect(bench.invalidated).toEqual(['dyn/dyn-1', 'dyn/dyn-1'])
+  })
+
   it('unloads at the named revision', async () => {
     const bench = await boot()
     await bench.runner.load(half())
@@ -362,6 +382,10 @@ describe('render failures', () => {
     inject: ['slots'],
     apply(ctx) { ctx.slots.register({ name: 'root' }, () => null) },
   }`
+  const FACTORY_CONTRIBUTOR = `return {
+    inject: ['slots'],
+    apply(ctx) { ctx.slots.registerFactory({ name: 'dynamic.factory', scope: 'root' }, () => null) },
+  }`
 
   it('reports a crash of an entry it seated, under the session the run was for', async () => {
     const bench = await boot()
@@ -391,11 +415,28 @@ describe('render failures', () => {
     expect(bench.reported[0]?.failure.abdicated).toBe(false)
   })
 
+  it('reports a crash of a Factory definition it seated without retiring it', async () => {
+    const bench = await boot()
+    await bench.runner.load(half({ code: FACTORY_CONTRIBUTOR }))
+    const core = (bench.slots as unknown as {
+      _core: { factory(name: string): unknown }
+    })._core
+    const definition = core.factory('dynamic.factory')
+    bench.crash('factory:dynamic.factory', definition, new Error('factory boom'), false)
+
+    expect(bench.reported[0]).toMatchObject({
+      failure: {
+        slot: 'factory:dynamic.factory',
+        message: 'your component in Factory "dynamic.factory" crashed while React rendered it: factory boom',
+        abdicated: false,
+      },
+    })
+  })
+
   it('ignores a crash of an entry no dynamic package seated', async () => {
     const bench = await boot()
     await bench.runner.load(half({ code: CONTRIBUTOR }))
-    // Factory UI crashing is not this runner's business, and neither is an entry
-    // whose component cannot even be indexed by identity.
+    // An entry whose component was not claimed by a dynamic package is not this runner's business.
     bench.crash('root', { component: () => null }, new Error('boom'))
     bench.crash('root', { component: 'not-a-component' }, new Error('boom'))
     bench.crash('root', { component: null }, new Error('boom'))

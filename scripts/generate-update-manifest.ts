@@ -46,6 +46,17 @@ const SUMS_PATH = join(DIST_DIR, 'SHA256SUMS.txt')
 /** Output path; upload this file as a release asset under this exact name. */
 const OUTPUT_PATH = join(DIST_DIR, 'update-manifest.json')
 
+/**
+ * Website twin: same facts, asset URLs pointing at the official site's own
+ * installer copies. Uploaded to the site's download folder together with the
+ * installers, it serves clients that cannot reach GitHub (the product's
+ * fallback channel tries it only after a network failure on the built-in
+ * GitHub channel).
+ */
+const WEBSITE_OUTPUT_PATH = join(DIST_DIR, 'update-manifest.website.json')
+/** 官网安装包目录约定（实测 v1.1.1 布局）：releases/v<版本>/<文件名>。 */
+const WEBSITE_RELEASES_BASE = 'https://www.ailover-atlas.com/deepseekgui/releases/'
+
 /** Stop with a message aimed at whoever is cutting the release. */
 function fail(message: string): never {
   console.error(`generate-update-manifest: ${message}`)
@@ -134,7 +145,22 @@ function main(): void {
   }
 
   writeFileSync(OUTPUT_PATH, text)
+
+  // Website twin (fallback channel): identical facts, site-hosted asset URLs.
+  const websiteManifest = {
+    ...manifest,
+    assets: manifest.assets.map(asset => ({ ...asset, url: `${WEBSITE_RELEASES_BASE}${tagFor(version)}/${asset.filename}` })),
+  }
+  const websiteText = `${JSON.stringify(websiteManifest, null, 2)}
+`
+  try {
+    parseUpdateManifest(websiteText)
+  } catch (error) {
+    fail(`generated website manifest fails the client parser: ${String(error instanceof Error ? error.message : error)}`)
+  }
+  writeFileSync(WEBSITE_OUTPUT_PATH, websiteText)
   console.log(`generate-update-manifest: wrote ${OUTPUT_PATH}`)
+  console.log(`generate-update-manifest: wrote ${WEBSITE_OUTPUT_PATH} (upload as ${WEBSITE_RELEASES_BASE}update-manifest.json, installers under ${WEBSITE_RELEASES_BASE}${tagFor(version)}/)`)
   console.log(`  version  ${version}`)
   for (const asset of assets) console.log(`  asset    ${asset.filename} (${String(Math.round(asset.size / 1024 / 1024))} MB)`)
   console.log(`  tag      ${tagFor(version)} — the release must be published under this exact tag`)

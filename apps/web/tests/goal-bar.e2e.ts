@@ -1,18 +1,19 @@
-// Keyless assembled-browser coverage for the goal bar over the shipped Web
-// bundles and the fixture Connection RPC. The command creates a real projected
-// goal in the fixture session; the golden pins the active strip, while the
-// clear gesture proves the acknowledged tombstone leaves neither stale chrome
-// nor a duplicate-mutation error.
+// Keyless browser coverage for the goal bar over the shipped Web composition.
+// The command creates a real projected goal in a real Host session. The
+// goldens pin the active and disarmed strips, while the clear gesture proves
+// the acknowledged tombstone leaves neither stale chrome nor a
+// duplicate-mutation error.
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
 import type { Browser, Page } from 'playwright'
 import { chromium } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it, onTestFailed } from 'vitest'
+import type {} from '@deepseek-ai/dsh-goal'
 import {
   assertFixtureInventory, captureStableAria, compareOrRefreshGolden,
   launchWebScaffold, watchConsole, webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
-import { newEnglishPage, saveFailureShot } from './support.ts'
+import { connectFreshWorkspace, expectTooltipOnTop, newEnglishPage, saveFailureShot } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('./expected/goal-bar', import.meta.url))
 const ACTIVE_EXPECTED = join(SNAPSHOT_DIR, 'active.expected.md')
@@ -27,14 +28,13 @@ describe('web e2e: goal bar clear convergence', () => {
   let tripwire: ReturnType<typeof watchConsole>
 
   beforeAll(async () => {
-    scaffold = await launchWebScaffold({ extraOverlayPath: OVERLAY, welcomeNoticePending: true })
+    scaffold = await launchWebScaffold({ extraOverlayPath: OVERLAY })
     browser = await chromium.launch()
     page = await newEnglishPage(browser)
     tripwire = watchConsole(page)
-    const login = await page.context().request.get(scaffold.authenticatedUrl, { maxRedirects: 0 })
-    expect(login.status()).toBe(303)
-    await page.goto(`${scaffold.baseUrl}?fixture`, { waitUntil: 'load' })
+    await page.goto(scaffold.authenticatedUrl, { waitUntil: 'load' })
     await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })
+    await connectFreshWorkspace(page, scaffold.workspaceCwd)
   }, 120_000)
 
   afterAll(async () => {
@@ -44,8 +44,6 @@ describe('web e2e: goal bar clear convergence', () => {
 
   it('renders one active goal and clears it without exposing a stale error', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-goal-bar-clear'))
-    // Startup reuses the fixture workspace's blank session, keeping this
-    // command independent of alpha's running replay and pending question.
     const input = page.locator('[data-composer-input][data-placeholder="Describe what you want to build, / commands, @ files or sessions"]')
     await input.waitFor({ timeout: 10_000 })
     await input.fill('/goal guard rapid clear clicks')
@@ -53,15 +51,45 @@ describe('web e2e: goal bar clear convergence', () => {
 
     const bar = page.locator('[data-goal-bar]')
     await bar.waitFor({ timeout: 10_000 })
-    await expect.poll(() => bar.getByRole('button', { name: 'Pause goal' }).count(), {
+    const pause = bar.getByRole('button', { name: 'Pause goal' })
+    await expect.poll(() => pause.count(), {
       timeout: 10_000,
     }).toBe(1)
+    await pause.hover()
+    const pauseTooltip = page.getByRole('tooltip', { name: 'Pause goal', exact: true })
+    await pauseTooltip.waitFor()
+    // The strip rides directly above the input card, which paints later; the
+    // bubble must escape the strip's stacking context instead of landing under it.
+    await expectTooltipOnTop(pauseTooltip)
+    const tooltipGeometry = await page.evaluate(() => {
+      const element = document.querySelector<HTMLElement>('[role="tooltip"]')
+      if (element === null) return null
+      const tooltip = element.getBoundingClientRect()
+      return {
+        declaredLeft: Number.parseFloat(element.style.left),
+        declaredTop: Number.parseFloat(element.style.top),
+        tooltipCenter: tooltip.left + tooltip.width / 2,
+        tooltipTop: tooltip.top,
+        left: tooltip.left,
+        right: tooltip.right,
+        viewportWidth: window.innerWidth,
+        visibility: element.style.visibility,
+      }
+    })
+    expect(tooltipGeometry).not.toBeNull()
+    expect(Math.abs(tooltipGeometry!.tooltipCenter - tooltipGeometry!.declaredLeft)).toBeLessThan(2)
+    expect(Math.abs(tooltipGeometry!.tooltipTop - tooltipGeometry!.declaredTop)).toBeLessThan(2)
+    expect(tooltipGeometry!.visibility).toBe('visible')
+    expect(tooltipGeometry!.left).toBeGreaterThanOrEqual(12)
+    expect(tooltipGeometry!.right).toBeLessThanOrEqual(tooltipGeometry!.viewportWidth - 12)
+    await page.mouse.move(0, 0)
+    await pauseTooltip.waitFor({ state: 'hidden' })
     const snapshot = await captureStableAria(page, '[data-goal-bar]', scaffold.workspaceCwd)
     await compareOrRefreshGolden(ACTIVE_EXPECTED, snapshot, MODE)
 
-    await page.evaluate(() => {
-      (globalThis as unknown as { __fxTiming?: { disarmOnlyGoal(): void } }).__fxTiming?.disarmOnlyGoal()
-    })
+    const agents = scaffold.ctx.agents.list()
+    expect(agents).toHaveLength(1)
+    scaffold.ctx.goals.disarm(agents[0]!)
     await expect.poll(() => bar.getByRole('button', { name: 'Resume goal' }).count(), {
       timeout: 10_000,
     }).toBe(1)

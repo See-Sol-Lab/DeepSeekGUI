@@ -86,7 +86,7 @@ export const zh = {
   'markdown.copy': '复制',
   'markdown.copied': '已复制',
   'markdown.footnotes': '脚注',
-  // Row provenance annotation.
+  // Row annotation: tool name and time.
   'row.atTime': '{tool} · {time} · seq {seq}',
 } as const
 

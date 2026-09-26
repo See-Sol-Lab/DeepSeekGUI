@@ -45,10 +45,12 @@ export interface ControlModelSnapshot {
    * remember the nonce so one request never navigates twice.
    */
   navigateRequest?: { sessionId: string; nonce: number } | null
-  /** First-run guide visibility (B6-P5); absent from older desktops = hidden. */
-  firstRun?: { pending: boolean } | null
   /** Desktop browser pane state (B3-11); `open` drives the Sidebar exclusion (#13). */
   browserPane?: { present: boolean; open: boolean }
+  /** The active Harness home path (B7-P9: the legacy global memory editor names the file). */
+  dshHome?: string
+  /** The legacy `<home>/memory.md` text, bounded; null when unreadable (B7-P9 legacy editor). */
+  globalMemory?: string | null
 }
 
 /**

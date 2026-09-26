@@ -1,6 +1,22 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-09-03-b5-p2-overlay-relocation-and-token-alignment.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-09-03-b5-p2-overlay-relocation-and-token-alignment.md
-2026-09-03-b5-p2-overlay-relocation-and-token-alignment.md: 8d12c435be18fdb97b931303f12e017e5d999c56
-2026-09-03-b5-p2-overlay-relocation-and-token-alignment.zh.md: 1977c72b2f63d5aaaa8fff20276d22e60d30671b
+/agent-note-b5-p2-launcher-overlay-relocation-and-one-shot-token-alignment:
+  en: f2e71623e3605f9d
+  zh: 316eea31a4859117
+/agent-note-b5-p2-launcher-overlay-relocation-and-one-shot-token-alignment/problem:
+  en: ab9e78bbafa537b0
+  zh: 4b2f3b37cbb033bd
+/agent-note-b5-p2-launcher-overlay-relocation-and-one-shot-token-alignment/decision:
+  en: daf5161cb03ede66
+  zh: 78019c0512907d31
+/agent-note-b5-p2-launcher-overlay-relocation-and-one-shot-token-alignment/alternatives-considered:
+  en: 3a42cd84d1032960
+  zh: 297cd884862760d1
+/agent-note-b5-p2-launcher-overlay-relocation-and-one-shot-token-alignment/verification:
+  en: 31004c94f7805270
+  zh: e20384378a701293
+/agent-note-b5-p2-launcher-overlay-relocation-and-one-shot-token-alignment/consequences:
+  en: eaf1a43fd3396a37
+  zh: 5b3671cfdb9c0bb9

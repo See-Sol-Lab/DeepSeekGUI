@@ -47,7 +47,7 @@ type ContextBreakdownState = z.infer<typeof contextBreakdownStateSchema>
  */
 export const contextBreakdownProjectionDefinition = {
   key: 'contextBreakdown',
-  stateVersion: 4,
+  stateVersion: 5,
   stateSchema: contextBreakdownStateSchema,
   init: (): ContextBreakdownState => ({
     nodes: [],

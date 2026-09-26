@@ -97,9 +97,8 @@ export interface SessionDirsResult {
    * An absent root is a readable answer — the home has no sessions. A root that
    * throws is not: the count that follows is zero because nothing could be
    * seen, not because nothing is there. Callers that persist a decision from
-   * the count must refuse to decide on `false`; see `resolveFirstRunState`,
-   * where an unreadable sweep would otherwise mark an existing user as new,
-   * permanently.
+   * the count must refuse to decide on `false`: an unreadable sweep would
+   * otherwise mark an existing user as new, permanently.
    */
   readable: boolean
 }

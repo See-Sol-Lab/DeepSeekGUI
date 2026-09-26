@@ -37,13 +37,13 @@ kind: "package-library"
 
 ### 捕获内容
 
-捕获以两种模式之一运行。`live` 捕获在追加时跟随会话事件、在挂载时回放已存活会话并记录生命周期标记；`on-demand` 捕获只在后端通过 `captureSession(session, throughSeq?)` 请求前缀时读取权威会话日志。协调器选项决定是否包含存储历史。每条权威会话事件都按顺序映射为一条 ledger 记录。`assistant/message` 或 `assistant/attempt` 记录会携带完整的嵌入式紧凑 stream，包括失败和重试输出。每条 ledger 记录还携带 `session.id`、`session.format_version`、数值事件身份、可选 header 事实与预先映射的严重级别（`tool/result.isError`、`turn/end` 的错误原因与 `agent-error` 映射为 `error`；其余为 `info`）。
+捕获以两种模式之一运行。`live` 捕获在追加时跟随会话事件、在挂载时回放已存活会话并记录生命周期标记；`on-demand` 捕获只在后端通过 `captureSession(session, throughSeq?)` 请求前缀时读取权威会话日志。协调器选项决定是否包含存储历史。每条权威会话事件都按顺序映射为一条 ledger 记录。`assistant/message` 或 `assistant/attempt` 记录会携带完整的嵌入式紧凑流，包括失败和重试输出。每条 ledger 记录还携带 `session.id`、`session.format_version`、数值型事件标识、可选 header 事实与预先映射的严重级别（`tool/result.isError`、`turn/end` 的错误原因与 `agent-error` 映射为 `error`；其余为 `info`）。
 
 ### 共享披露
 
 <a id="the-sharing-disclosure"></a>
 
-每个后端通过 `sharing` 披露部署模式：`full`、`feedback-only` 或 `disabled`。后端还可限制符合条件的 Session。该属性不是投递回执；交接是非阻塞入队，批处理、重试与丢失策略属于后端 SDK。
+每个后端通过 `sharing` 披露部署模式：`full`、`feedback-only` 或 `disabled`。后端还可限制符合条件的会话。该属性不是投递回执；交接是非阻塞入队，批处理、重试与丢失策略属于后端 SDK。
 
 ### 脱敏记录
 
@@ -74,11 +74,11 @@ seam 建立在一个边界之上：harness 的职责止于 `emit()`。完整事�
 
 ### 捕获流程
 
-实时捕获通过组合 fiber 的 effect 注册 Session 事件、刷新提示、关闭标记与 agent/error 观察器。按需捕获只注册释放 effect，并按历史策略读取请求的权威日志前缀。同步处理器隔离失败，避免影响 agent loop 或其他监听器。
+实时捕获通过组合 fiber 的 effect 注册 Session 事件、刷新提示、关闭标记与 agent/error 观察器。按需捕获只注册释放 effect，并按历史策略读取请求的权威日志前缀。同步处理器隔离失败，避免影响 agent loop（智能体循环）或其他监听器。
 
 ### handoff 游标
 
-模块作用域的 `WeakMap<Session, seq>` 记录已交接而非已投递的最高序号。重新收养同一对象时从该游标之后继续。捕获通常从 `firstLiveSeq` 开始；显式 `includeHistory: true` 从未交接对象的 seq 0 开始，包含恢复或分叉历史。后端负责捕获授权。存储的历史本身不授权捕获；OTel 后端等待新的显式反馈。接收方按 `(session.id, session.format_version, event.seq)` 对重复记录去重。
+模块级 `WeakMap<Session, seq>` 记录已经移交的最高序号，而不是已送达的最高序号。再次接管同一对象时从该游标之后继续。采集从 `firstLifecycleSeq` 开始：新 fork 包含子会话自有的标记与 fork 结束事件；恢复的 Session 排除已存储前缀，包括先前的子会话轮次。显式 `includeHistory: true` 会让尚未移交的对象从 seq 0 开始，包括恢复或 fork 历史。Backend 负责采集授权；已有存储历史本身不构成授权，OTel backend 等待新的显式反馈。接收方通过 `(session.id, session.format_version, event.seq)` 对重复记录去重。
 
 </details>
 
@@ -126,4 +126,4 @@ seam 建立在一个边界之上：harness 的职责止于 `emit()`。完整事�
 
 </details>
 
-**运行时不变式：** 不发布伴生入口。全部输出都是权威事件流之外的同步 backend handoff，capture 端不追加 Session 事件，因此没有独立事件或数据关系。
+**运行时不变式：** 不发布伴生入口。本包的全部输出都是后端交接，即在所有权威事件流之外同步调用 `emit()`；捕获侧不追加会话事件，因此不存在可供独立 companion 观察的事件与数据关系。

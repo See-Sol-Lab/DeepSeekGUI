@@ -13,6 +13,8 @@ import {
   isSafeAssetUrl,
   isVersionShape,
   parseUpdateManifest,
+  releasePageUrlFor,
+  RELEASE_PAGE_URL_PREFIX,
   resolveUpdateFeed,
   sanitizeAssetFilename,
   selectPlatformAsset,
@@ -54,6 +56,22 @@ describe('resolveUpdateFeed（V1 内置公开通道 + 用户覆盖）', () => {
     expect(resolveUpdateFeed('{"feedUrl":123}')).toBeNull()
     expect(resolveUpdateFeed('not json at all')).toBeNull()
     expect(resolveUpdateFeed('{}')).toBeNull()
+  })
+})
+
+describe('releasePageUrlFor（B7-P2「查看完整 Release」）', () => {
+  it('内置公开通道 + 合法版本 → 已知的 GitHub 发布页（tag = v + 版本）', () => {
+    expect(releasePageUrlFor(DEFAULT_UPDATE_FEED_URL, '1.2.0')).toBe(`${RELEASE_PAGE_URL_PREFIX}1.2.0`)
+    expect(new URL(RELEASE_PAGE_URL_PREFIX).origin).toBe(new URL(DEFAULT_UPDATE_FEED_URL).origin)
+    expect(RELEASE_PAGE_URL_PREFIX).toContain('/releases/tag/v')
+  })
+
+  it('私有 feed、未配置、没有版本或版本非法 → null（面板不显示入口，不猜）', () => {
+    expect(releasePageUrlFor('https://example.test/m.json', '1.2.0')).toBeNull()
+    expect(releasePageUrlFor(null, '1.2.0')).toBeNull()
+    expect(releasePageUrlFor(DEFAULT_UPDATE_FEED_URL, null)).toBeNull()
+    expect(releasePageUrlFor(DEFAULT_UPDATE_FEED_URL, '../evil')).toBeNull()
+    expect(releasePageUrlFor(DEFAULT_UPDATE_FEED_URL, '1.2')).toBeNull()
   })
 })
 

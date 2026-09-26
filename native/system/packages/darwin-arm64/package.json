@@ -4,7 +4,7 @@
   "description": "Prebuilt POSIX flock Node-API binding for macOS arm64",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/deepseek-harness/deepseek-harness.git",
+    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
     "directory": "native/system/packages/darwin-arm64"
   },
   "os": [

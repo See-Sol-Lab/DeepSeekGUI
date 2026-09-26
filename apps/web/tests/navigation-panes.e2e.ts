@@ -24,8 +24,11 @@ import { expandOwningTurnProcess, newEnglishPage, saveFailureShot } from './supp
 const SNAPSHOT_DIR = fileURLToPath(new URL('../../../snapshots/web/navigation-panes', import.meta.url))
 const SEED = join(SNAPSHOT_DIR, 'session.v3.jsonl')
 const TRAJECTORY_EXPECTED = join(SNAPSHOT_DIR, 'trajectory.expected.md')
+const TIMING_EXPECTED = join(SNAPSHOT_DIR, 'timing.expected.md')
 const SEARCH_EXPECTED = join(SNAPSHOT_DIR, 'search-results.expected.md')
 const TERMINAL_EXPECTED = join(SNAPSHOT_DIR, 'terminal-card.expected.md')
+const CODE_CARD_DIR = fileURLToPath(new URL('./expected/navigation-panes', import.meta.url))
+const CODE_CARD_EXPECTED = join(CODE_CARD_DIR, 'code-card.expected.md')
 const MODE = webSnapshotMode()
 const SEED_ID = 'navigation-panes-web-e2e'
 const EXPORTED_LOG_FILE = `session.v${SESSION_FORMAT_VERSION}.jsonl`
@@ -61,7 +64,7 @@ async function ensureSeedOpen(page: Page): Promise<void> {
   // Search is a collapsed header action; expand it so the input is actionable.
   const searchButton = page.getByRole('button', { name: 'Search sessions' })
   if (await searchButton.getAttribute('aria-expanded') !== 'true') await searchButton.click()
-  const search = page.getByPlaceholder('Search sessions', { exact: false })
+  const search = page.getByPlaceholder('Search session names', { exact: false })
   if (await chat.count() === 0) {
     await search.fill('WATERFALL')
     const result = page.getByRole('tree', { name: 'Search results' }).getByRole('treeitem')
@@ -97,7 +100,8 @@ describe('web e2e: navigation & panes over a rich seeded session', () => {
       const raw = await readFile(SEED, 'utf8')
       expect(fixtureUserPrompts(raw), 'seed fixture must carry exactly the two drive prompts')
         .toEqual([PROMPT_TURN1, PROMPT_TURN2])
-      await seedSession(scaffold, raw, SEED_ID)
+      // The inspector's calendar date must not depend on the day the test runs.
+      await seedSession(scaffold, raw, SEED_ID, undefined, { createdAt: Date.UTC(2026, 0, 1) })
     }
     browser = await chromium.launch()
   }, 120_000)
@@ -186,7 +190,7 @@ describe('web e2e: navigation & panes over a rich seeded session', () => {
     // Search is a collapsed header action; expand it so the input is actionable.
     const searchButton = page.getByRole('button', { name: 'Search sessions' })
     if (await searchButton.getAttribute('aria-expanded') !== 'true') await searchButton.click()
-    const search = page.getByPlaceholder('Search sessions', { exact: false })
+    const search = page.getByPlaceholder('Search session names', { exact: false })
     // The cold row has not been opened, so only the persisted log can satisfy
     // this query. First search lazily reconciles the SQLite content index.
     await search.fill('zzzqx-no-such-session')
@@ -215,6 +219,28 @@ describe('web e2e: navigation & panes over a rich seeded session', () => {
     await expect.poll(() => page.getByText('FIRST_DONE', { exact: true }).count(), { timeout: 15_000 }).toBeGreaterThanOrEqual(1)
     await expect.poll(() => page.getByRole('heading', { name: 'Navigation Summary' }).count(), { timeout: 15_000 }).toBe(1)
   }, 90_000)
+
+  it.skipIf(MODE === 'record')('renders recorded Markdown with icon tooltips and switchable wrapping', async () => {
+    onTestFailed(() => saveFailureShot(page, 'web-e2e-navigation-code-card'))
+    await ensureSeedOpen(page)
+    const selector = '.md-code-block:has-text("echo WATERFALL")'
+    const block = page.locator(selector)
+    await block.waitFor({ timeout: 15_000 })
+    await compareOrRefreshGolden(CODE_CARD_EXPECTED, await captureStableAria(page, selector, scaffold.workspaceCwd), MODE)
+    const code = block.locator('pre')
+    const source = await code.textContent()
+    const copy = block.getByRole('button', { name: 'Copy', exact: true })
+    await copy.hover()
+    await page.getByRole('tooltip', { name: 'Copy', exact: true }).waitFor()
+    const unwrap = block.getByRole('button', { name: 'Wrap lines', exact: true })
+    await unwrap.hover()
+    await page.getByRole('tooltip', { name: 'Do not wrap lines', exact: true }).waitFor()
+    await unwrap.click()
+    await expect.poll(() => code.evaluate(element => getComputedStyle(element).whiteSpace)).toBe('pre')
+    await block.getByRole('button', { name: 'Wrap lines', exact: true }).click()
+    await expect.poll(() => code.evaluate(element => getComputedStyle(element).whiteSpace)).toBe('pre-wrap')
+    expect(await code.textContent()).toBe(source)
+  }, 60_000)
 
   it.skipIf(MODE === 'record')('renders the trajectory ledger and opens its local record inspector', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-navigation-trajectory'))
@@ -264,11 +290,28 @@ describe('web e2e: navigation & panes over a rich seeded session', () => {
     await page.evaluate(() => { document.body.removeAttribute('data-ds-dark-theme') })
     await page.getByRole('tab', { name: 'Result' }).click()
     await expect.poll(() => page.getByText('NAVIGATION_OK', { exact: false }).count(), { timeout: 10_000 }).toBeGreaterThanOrEqual(1)
-    expect(await page.locator('[data-timeline-span="message"][data-assistant-timing="true"]').count()).toBe(0)
+    expect(await page.locator('[data-timeline-span="message"][data-assistant-timing="true"]').count()).toBeGreaterThan(0)
     const snapshot = (await captureStableAria(page, '[class*="viewArea"]', scaffold.workspaceCwd))
       .split(SEED_ID).join('{{seededId}}')
     await compareOrRefreshGolden(TRAJECTORY_EXPECTED, snapshot, MODE)
     await details.getByRole('button', { name: 'Close details' }).click()
+  }, 60_000)
+
+  it.skipIf(MODE === 'record')('restores Assistant timing from recorded history', async () => {
+    onTestFailed(() => saveFailureShot(page, 'web-e2e-navigation-timing'))
+    await ensureSeedOpen(page)
+    await page.getByRole('tab', { name: 'Trajectory' }).click()
+    await page.getByRole('button', { name: 'Request #1', exact: true }).click()
+    const details = page.getByRole('complementary', { name: 'Event details' })
+    await details.getByRole('tab', { name: 'Timing', exact: true }).click()
+    const panel = details.getByRole('tabpanel', { name: 'Timing' })
+    for (const metric of ['TTFT', 'Generation', 'Throughput']) {
+      const value = panel.getByText(metric, { exact: true }).locator('..').locator('dd')
+      await expect.poll(() => value.textContent()).toMatch(/^\d/)
+    }
+    expect(await panel.getByText('First token unavailable', { exact: true }).count()).toBe(0)
+    const snapshot = await captureStableAria(page, '#trajectory-detail-panel', scaffold.workspaceCwd)
+    await compareOrRefreshGolden(TIMING_EXPECTED, snapshot, MODE)
   }, 60_000)
 
   it.skipIf(MODE === 'record')('downloads through the Session Header and /export with one dialog', async () => {
@@ -335,7 +378,7 @@ describe('web e2e: navigation & panes over a rich seeded session', () => {
       const input = page.locator('[data-composer-input]').first()
       const slashDownloadPromise = page.waitForEvent('download', { timeout: 30_000 })
       await input.fill('/export')
-      await page.getByRole('option', { name: /export/u }).waitFor({ timeout: 10_000 })
+      await page.getByRole('option', { name: /^Export/u }).waitFor({ timeout: 10_000 })
       await input.press('Enter')
       const slashDownload = await slashDownloadPromise
       expect(slashDownload.suggestedFilename()).toBe(download.suggestedFilename())
@@ -502,9 +545,10 @@ describe('web e2e: navigation & panes over a rich seeded session', () => {
   }, 60_000)
 
   it.skipIf(MODE === 'record')('keeps the recorded fixture inventory exact', async () => {
+    await assertFixtureInventory(CODE_CARD_DIR, ['code-card.expected.md'])
     await assertFixtureInventory(SNAPSHOT_DIR, [
       'session.v3.jsonl', 'search-results.expected.md', 'trajectory.expected.md',
-      'terminal-card.expected.md',
+      'terminal-card.expected.md', 'timing.expected.md',
     ])
   })
 })

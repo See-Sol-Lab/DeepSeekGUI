@@ -65,10 +65,18 @@ export function useRead<T>(
   return { ...state, refresh: () => setGeneration(value => value + 1) }
 }
 
+/**
+ * Class every shared-style button carries. Inline styles cannot express
+ * hover or focus, so the material lives in skin.ts under this class: the
+ * inline rule reads the `--dsg-btn-*` variables the class (and its :hover)
+ * sets, with the plain hairline as the fallback when the skin is absent.
+ */
+export const BUTTON_CLASS = 'dsg-btn'
 export const button: React.CSSProperties = {
   font: 'inherit', fontSize: 12, lineHeight: '18px', padding: '3px 10px', cursor: 'pointer',
-  color: 'var(--dsw-alias-label-secondary)', background: 'transparent',
-  border: '1px solid var(--dsw-alias-label-caption)', borderRadius: 6,
+  color: 'var(--dsw-alias-label-secondary)', background: 'var(--dsg-btn-bg, transparent)',
+  border: '1px solid var(--dsg-btn-border, var(--dsw-alias-border-l3))', borderRadius: 8,
+  transition: 'background-color 150ms ease, border-color 150ms ease',
 }
 export const caption: React.CSSProperties = { fontSize: 12, lineHeight: '18px', color: 'var(--dsw-alias-label-caption)' }
 export const sectionTitle: React.CSSProperties = { fontSize: 13, lineHeight: '20px', fontWeight: 600, color: 'var(--dsw-alias-label-primary)', marginTop: 8 }
@@ -81,11 +89,17 @@ export const mono: React.CSSProperties = { fontFamily: 'var(--ds-font-family-cod
  */
 export const view: React.CSSProperties = {
   display: 'flex', flexDirection: 'column', gap: 8, padding: '12px 0', boxSizing: 'border-box',
+  // 住户 2026-09-22：对话以外的标签页里，官方 composer 是绝对定位的浮层
+  // （overlay 形态），内容滚到底就跑到卡片后面，从半透明的卡片里透出来。
+  // 底部留出 composer 的高度（官方把它写在滚动容器的 --dsh-composer-height
+  // 上）；skin.ts 只在 overlay 形态下把这个变量设起来，sticky 形态下留白
+  // 仍是 12px，不会多出一段空白。
+  paddingBottom: 'var(--deepseekgui-view-bottom-inset, 12px)',
   width: '100%', maxWidth: 'var(--dsh-chat-content-width, 920px)', margin: '0 auto',
   fontSize: 14, lineHeight: '22px', color: 'var(--dsw-alias-label-primary)',
 }
 
-/** Short clock text for provenance rows; empty for a missing time. */
+/** Short clock text for the tool-and-time rows; empty for a missing time. */
 export function clock(ms: number): string {
   if (!Number.isFinite(ms) || ms <= 0) return ''
   return new Date(ms).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
@@ -122,7 +136,7 @@ export function Toolbar({ t, refresh, children }: {
   return (
     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
       {children}
-      <button type="button" style={button} onClick={refresh}>{t('common.refresh')}</button>
+      <button type="button" className={BUTTON_CLASS} style={button} onClick={refresh}>{t('common.refresh')}</button>
     </div>
   )
 }

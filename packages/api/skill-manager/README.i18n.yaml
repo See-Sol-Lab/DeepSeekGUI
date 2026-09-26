@@ -1,0 +1,43 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/api/skill-manager/README.md
+/:
+  en: 51b1d3201ea8f481
+  zh: c4d06b48e5c2dc02
+/deepseek-ai-dsh-skill-manager:
+  en: ae3be564bc41b221
+  zh: bdf5a4b3a5d9d8bf
+/deepseek-ai-dsh-skill-manager/summary:
+  en: 32df338615d11b0b
+  zh: 5ee1511da71de419
+/deepseek-ai-dsh-skill-manager/table-of-contents:
+  en: e6747830a09a09aa
+  zh: 648ff29a73d5d0eb
+/deepseek-ai-dsh-skill-manager/use-this-package:
+  en: 30fe46ec8a64cc80
+  zh: ccebc4884a5732b2
+/deepseek-ai-dsh-skill-manager/use-this-package/project-selection:
+  en: 61103caf8e27f4f0
+  zh: 95119279de3300e3
+/deepseek-ai-dsh-skill-manager/use-this-package/the-managed-provider:
+  en: 2f893232e5ee9403
+  zh: c0f7fd64bbda8b03
+/deepseek-ai-dsh-skill-manager/understand-the-implementation:
+  en: b48df69ed5dcd87d
+  zh: de65cbb81e4c5580
+/deepseek-ai-dsh-skill-manager/further-exploration:
+  en: 325c63ef59983b25
+  zh: ec4b1ea8972f7713
+/deepseek-ai-dsh-skill-manager/model-experience:
+  en: a1b3a60c969c4fe4
+  zh: 795d3fd6a6d770df
+/deepseek-ai-dsh-skill-manager/model-experience/kv-cache-effect:
+  en: 06bb527bee6c0aa7
+  zh: f4fdbf1e133f6064
+/deepseek-ai-dsh-skill-manager/known-limitations-and-deferred-work:
+  en: ab1af21da05296b2
+  zh: e974502deb426f21
+/deepseek-ai-dsh-skill-manager/known-limitations-and-deferred-work/dev-note:
+  en: 0a1253c6f7b5e8b9
+  zh: 9f56528562c7c914

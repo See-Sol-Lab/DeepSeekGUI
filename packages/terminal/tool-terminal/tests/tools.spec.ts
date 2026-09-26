@@ -8,13 +8,14 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { renderToolsSdk } from '@deepseek-ai/dsh-tools'
 import type { ToolSdkSchema } from '@deepseek-ai/dsh-tools/src/ts-types.ts'
 import TerminalSessionService, { TerminalSessionId } from '@deepseek-ai/dsh-terminal'
-import type { TerminalBackend, TerminalBackendSession, TerminalSendOperation, TerminalSendRequest, TerminalSessionStatus, TerminalSignal } from '@deepseek-ai/dsh-terminal'
+import type { TerminalBackend, TerminalBackendSession, TerminalSendOperation, TerminalSendRead, TerminalSendRequest, TerminalSessionStatus, TerminalSignal } from '@deepseek-ai/dsh-terminal'
 import LocalJobRegistry from '@deepseek-ai/dsh-jobs-local'
-import * as ToolTasks from '@deepseek-ai/dsh-tool-jobs'
+import * as ToolJobs from '@deepseek-ai/dsh-tool-jobs'
 import * as ToolPty from '@deepseek-ai/dsh-tool-terminal'
+import { sendSource } from '../src/background.ts'
 import { unsupportedInbox } from '@deepseek-ai/dsh-agent-loop-testkit'
 
-function fakeAgent(ctx: Context, rawId: string): Agent {
+async function fakeAgent(ctx: Context, rawId: string): Promise<Agent> {
   const scope = ctx.plugin(() => {})
   const id = SessionId(rawId)
   const session = Session.create(id)
@@ -27,7 +28,7 @@ function fakeAgent(ctx: Context, rawId: string): Agent {
     runMaintenance: job => job(new AbortController().signal),
     whenIdle: () => Promise.resolve(),
   }
-  ctx.agents.register(agent)
+  await ctx.agents.register(agent)
   return agent
 }
 
@@ -55,7 +56,11 @@ class StubSession implements TerminalBackendSession {
     }))
     const operation: TerminalSendOperation = {
       done,
-      readOutput: () => ({ delta: this.delta, truncated: this.deltaTruncated }),
+      readOutput: () => {
+        const delta = this.delta
+        this.delta = ''
+        return { delta, truncated: this.deltaTruncated }
+      },
       cancel: () => {
         if (cancelled) return false
         cancelled = true
@@ -114,9 +119,9 @@ async function setupBase(jobs: boolean) {
   ctx.terminals.registerBackend(stub.backend)
   if (jobs) {
     await ctx.plugin(LocalJobRegistry)
-    await ctx.plugin(ToolTasks)
+    await ctx.plugin(ToolJobs)
   }
-  return { ctx, stub, agent: fakeAgent(ctx, jobs ? 'with-tasks' : 'foreground') }
+  return { ctx, stub, agent: await fakeAgent(ctx, jobs ? 'with-tasks' : 'foreground') }
 }
 
 let callNumber = 0
@@ -400,6 +405,19 @@ describe('tool-terminal foreground API', () => {
     const result = await call(ctx, 'terminal_list', {}, agent)
     expect(result.isError).toBe(true)
     expect(result.content).toEqual([])
+  })
+})
+
+describe('sendSource', () => {
+  it('reads nothing before the send starts and counts delivered bytes afterwards', () => {
+    const reads: TerminalSendRead[] = [{ delta: '界', truncated: false }, { delta: '', truncated: true }]
+    const send: { operation?: TerminalSendOperation } = {}
+    const source = sendSource(() => send.operation)
+    expect(source.read(0)).toEqual({ text: '', nextOffset: 0, lossy: false })
+    send.operation = { readOutput: () => reads.shift()!, cancel: () => false, done: new Promise(() => {}) }
+    expect(source.read(0)).toEqual({ text: '界', nextOffset: 3, lossy: false })
+    // A truncated delta carries the same marker the foreground read shows.
+    expect(source.read(3)).toEqual({ text: '[output truncated]', nextOffset: 21, lossy: false })
   })
 })
 

@@ -13,16 +13,23 @@
 # driven); the grouping is for readers.
 
 - insert:
+    - id: tool-plugin-manager
+      name: '@deepseek-ai/dsh-plugin-manager/tools'
+      disabled: true
+
+    - id: plugin-manager
+      name: '@deepseek-ai/dsh-plugin-manager'
+      disabled: !!js "!ctx.get('profileContext')"
+
     - id: timer
       name: '@deepseek-ai/cordis-plugin-timer'
 
-    # Module reload is opt-in per profile. `patchReload: live` config watching
-    # uses the launcher's watch-only fallback and does not require this row.
+    # Profile configuration reloads by default; module roots are opt-in.
     - id: hmr
-      name: '@deepseek-ai/cordis-plugin-hmr'
-      disabled: true
+      name: '@deepseek-ai/dsh-hmr'
+      disabled: !!js "!ctx.get('profileContext')"
       config:
-        root: ['.']
+        root: []
 
     - id: llm
       name: '@deepseek-ai/dsh-llm'
@@ -84,16 +91,29 @@
     - id: llm-retry
       name: '@deepseek-ai/dsh-llm-retry'
 
-    # User-settings document (`$DSH_HOME/settings.yaml`, hot-reloaded): a
-    # `llm-deepseek:` or `llm-pi-ai:` section there overrides the adapter entries
-    # below without a restart, and is what the web Models page writes.
+    # Live Config forms persist through the active profile patch.
+
+    # Live configuration forms persist through the launcher's profile.
+    - id: config-editor
+      name: '@deepseek-ai/dsh-config-editor'
+      disabled: !!js "!ctx.get('profileContext')"
+
     - id: settings
-      name: '@deepseek-ai/dsh-settings-file'
+      name: '@deepseek-ai/dsh-settings'
+      disabled: !!js "!ctx.get('profileContext')"
 
     # Credential sources: inherited environment over the managed
     # `$DSH_HOME/.credentials.yaml`, with project and user `.env` fallbacks.
     # Adapters resolve references per request; the Models page writes only the
     # managed document, which is never materialized into the process environment.
+    - id: authorization
+      name: '@deepseek-ai/dsh-authorization'
+
+    - id: deepseek-account
+      name: '@deepseek-ai/dsh-deepseek-account-platform'
+      config:
+        desktopPlatform: !!js "ctx.get('profileContext')?.name === 'desktop' && ['darwin', 'win32'].includes(process.platform) ? process.platform : null"
+
     - id: credentials
       name: '@deepseek-ai/dsh-credentials-local'
 
@@ -366,8 +386,11 @@
         toolName: subagent_fork
         backgroundMode: one-shot
 
-    - id: workflow-worker-thread
-      name: '@deepseek-ai/dsh-workflow-worker-thread'
+    - id: ptc-runtime
+      name: '@deepseek-ai/dsh-ptc-runtime-node'
+
+    - id: workflow-ptc
+      name: '@deepseek-ai/dsh-workflow-ptc'
       config:
         provider: spawn
 
@@ -383,7 +406,7 @@
     - id: spill-policy
       name: '@deepseek-ai/dsh-spill-policy'
       config:
-        maxInlineBytes: 50000
+        maxInlineTokens: 12500
 
     # Durability checkpoints before each model request and top-level dispatch.
     - id: session-checkpoint-policy
@@ -398,6 +421,11 @@
         headChars: 4096
         tailChars: 1024
 
+    # When an image-capable route rejects a request as over its image budget,
+    # replace the oldest images with placeholders on the surface and retry.
+    - id: image-offload
+      name: '@deepseek-ai/dsh-compaction-image-offload'
+
     - id: tool-todo
       name: '@deepseek-ai/dsh-tool-todo'
       config:
@@ -408,9 +436,16 @@
     - id: tool-goal
       name: '@deepseek-ai/dsh-tool-goal'
 
-    # Fresh-agent Ralph iteration over a build-time-fixed script.
+    # Fresh-agent Ralph iteration over a build-time-fixed script. Off by
+    # default: the tool description restricts `ralph` to runs the human
+    # explicitly asked for, and completion is a worker self-report, not an
+    # independent evaluation. An overlay row restores it for a base-backed
+    # profile (`$DSH_HOME/cordis.patch.yml`, or a `--patch <file>`):
+    #   - id: tool-ralph
+    #     disabled: false
     - id: tool-ralph
       name: '@deepseek-ai/dsh-tool-ralph'
+      disabled: true
       config:
         subagentProvider: spawn
         maxRounds: 64
@@ -427,7 +462,7 @@
     # preset; products with a stricter network policy override tool-web. DeepSeek
     # search resolves the same DEEPSEEK_API_KEY
     # credential the Models page manages for chat, at each search; its Messages
-    # endpoint is separate from the chat-completions endpoint, so it takes its own
+    # endpoint is configured independently from the model route, so it takes its own
     # base-URL override. Anonymous fetch accepts only public HTTP(S) destinations,
     # resolves and validates every destination, and pins every actual connection.
     # Search is a full auxiliary model request with server-side retrieval, so this
@@ -452,6 +487,9 @@
       config:
         fetch: true
         searchTimeoutMs: 60000
+
+    - id: mcp-resources
+      name: '@deepseek-ai/dsh-mcp-resources'
 
     # ── rows every mode mounts, whose values each overlay may state ──────────────
 
@@ -484,4 +522,7 @@
     # key coming from the credential store below. Thinking defaults are a deployment
     # choice.
     - id: llm-deepseek
-      name: '@deepseek-ai/dsh-llm-deepseek'
+      name: '@deepseek-ai/dsh-llm-deepseek-api-key'
+
+    - id: llm-deepseek-account
+      name: '@deepseek-ai/dsh-llm-deepseek-account'

@@ -1,6 +1,13 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for pull-request.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/subsystems/pull-request.md
-pull-request.md: 0884ade05dba72fc0bc2844cd0a126010c2feec2
-pull-request.zh.md: 5cd80424d42cf1d25ab76fb68d22975a04da6884
+/pull-request:
+  en: e2bd34e91822ced0
+  zh: 1c767ba8ff31ae22
+/pull-request/the-type-vocabulary:
+  en: be9dc9f4a1a15b48
+  zh: 70d7eb58c8f25887
+/pull-request/semantics:
+  en: d0f1e420829dd84d
+  zh: 8d71a4ca120621c4

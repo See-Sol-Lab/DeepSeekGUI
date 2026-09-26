@@ -4,7 +4,11 @@
 export const zh = {
   tab: '插件列表',
   loading: '正在读取插件…',
+  clientSyncing: '正在同步本页面的插件…',
+  clientSyncFailed: '本页面的插件未能完成同步；服务端的启用状态保持不变。',
+  clientSyncRetry: '重试本页面同步',
   error: '暂时无法读取插件。',
+  metadataError: '包元信息错误：{error}',
   retry: '重试',
   search: '搜索插件',
   empty: '暂无插件。',
@@ -47,7 +51,11 @@ export type PluginInventoryLocaleKey = keyof typeof zh
 export const en = {
   tab: 'Plugin list',
   loading: 'Reading plugins…',
+  clientSyncing: 'Syncing plugins on this page…',
+  clientSyncFailed: 'Some plugins could not sync on this page. Host enablement is unchanged.',
+  clientSyncRetry: 'Retry this page',
   error: 'Plugins are temporarily unavailable.',
+  metadataError: 'Package metadata error: {error}',
   retry: 'Retry',
   search: 'Search plugins',
   empty: 'No plugins are available.',

@@ -1,6 +1,34 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for permissions.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/user/deepseekgui/permissions.md
-permissions.md: f97f439f0b1f581900c763009621a26ebad4bdec
-permissions.zh.md: f65595705baf7818a3fdc3217d8557c99e4ca35c
+/permissions-and-approvals:
+  en: d4a8f0c9822750a4
+  zh: 7c0ff6e1e3a696c2
+/permissions-and-approvals/permission-modes:
+  en: b1c4ec424ade1f9b
+  zh: 6ee30ef41608b53d
+/permissions-and-approvals/permission-modes/sandbox:
+  en: 39b1e4c612f29a3d
+  zh: be8ac8c90e9d3122
+/permissions-and-approvals/permission-modes/full-access:
+  en: cffe0e2f37f52121
+  zh: 9f0a654fb9204bfd
+/permissions-and-approvals/permission-modes/read-only-and-custom:
+  en: 2f262aa6a59f4d87
+  zh: e5a47a813c51fc83
+/permissions-and-approvals/approvals:
+  en: 24af5de505878c4e
+  zh: 6038d9ad25a9babb
+/permissions-and-approvals/managed-and-existing-homes:
+  en: 87cbea9dd19b08e4
+  zh: f5cf76c1f0142246
+/permissions-and-approvals/browser-permissions:
+  en: f2f8ca4770fd8dac
+  zh: e80494d58faa949e
+/permissions-and-approvals/when-permission-controls-are-unavailable:
+  en: a0562a318b678356
+  zh: 97e9e2496fe9517a
+/permissions-and-approvals/related-guides:
+  en: a3cf247d42669121
+  zh: 814dca3c601c8cfc

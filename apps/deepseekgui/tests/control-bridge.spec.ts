@@ -29,18 +29,22 @@ async function bridge(over: Partial<ControlBridgeDeps> = {}) {
   const env: NodeJS.ProcessEnv = {}
   const runCommand = vi.fn(async (_command: Parameters<ControlBridgeDeps['runCommand']>[0]) => {})
   const handlePaneRequest = vi.fn(async (_body: Record<string, unknown>) => ({ status: 200, body: { ok: true } }))
+  const handleAccountFrame = vi.fn((_body: Record<string, unknown>) => ({ status: 200, body: { ok: true } }))
+  const handlePlatformRequest = vi.fn(async (_body: Record<string, unknown>) => ({ status: 200, body: { ok: true } }))
   const deps: ControlBridgeDeps = {
     appOrigin: 'http://127.0.0.1:3080',
     buildModel: () => MODEL,
     runCommand,
     redact: text => text.replace(/sk-[a-z]+/gu, '<redacted>'),
     handlePaneRequest,
+    handleAccountFrame,
+    handlePlatformRequest,
     env,
     ...over,
   }
   const started = await startControlBridge(deps)
   open = started
-  return { started, env, runCommand, handlePaneRequest }
+  return { started, env, runCommand, handlePaneRequest, handleAccountFrame, handlePlatformRequest }
 }
 
 /** 往桥上发一次请求。 */
@@ -103,6 +107,39 @@ describe('startControlBridge — 两把钥匙', () => {
     expect(env.DEEPSEEKGUI_BROWSER_BRIDGE).toBe(`127.0.0.1:${String(started.port)}#${started.paneToken}`)
     // 命令凭证只随页面 URL 下发，任何进子进程的东西里都不能有它。
     expect(JSON.stringify(env)).not.toContain(started.controlToken)
+  })
+})
+
+describe('startControlBridge — 账号与平台页', () => {
+  it('account 通道只认自己的钥匙，地址写进环境，命令凭证不进去', async () => {
+    const { started, env, handleAccountFrame, runCommand } = await bridge()
+    expect(new Set([started.controlToken, started.paneToken, started.accountToken]).size).toBe(3)
+    expect(env.DEEPSEEKGUI_ACCOUNT_BRIDGE).toBe(`127.0.0.1:${String(started.port)}#${started.accountToken}`)
+    expect(JSON.stringify(env)).not.toContain(started.controlToken)
+    const frame = { view: { status: 'signed-out', attempt: null }, session: null }
+    for (const token of [started.controlToken, started.paneToken, 'wrong']) {
+      expect((await call(started, '/control/account', { method: 'POST', token, body: frame })).status).toBe(404)
+    }
+    expect(handleAccountFrame).not.toHaveBeenCalled()
+    expect((await call(started, '/control/account', { method: 'POST', token: started.accountToken, body: frame })).status).toBe(200)
+    expect(handleAccountFrame).toHaveBeenCalledWith(frame)
+    // account 凭证同样进子进程：它开不了命令门，也读不了模型。
+    expect((await call(started, '/control/command', {
+      method: 'POST', token: started.accountToken, body: { command: { type: 'quit' } },
+    })).status).toBe(404)
+    expect((await call(started, '/control/model', { token: started.accountToken })).status).toBe(404)
+    expect(runCommand).not.toHaveBeenCalled()
+  })
+
+  it('平台页请求走页面自己的命令凭证；子进程拿到的两把钥匙都开不了', async () => {
+    const { started, handlePlatformRequest } = await bridge()
+    const request = { type: 'close' }
+    for (const token of [started.paneToken, started.accountToken]) {
+      expect((await call(started, '/control/platform', { method: 'POST', token, body: request })).status).toBe(404)
+    }
+    expect(handlePlatformRequest).not.toHaveBeenCalled()
+    expect((await call(started, '/control/platform', { method: 'POST', token: started.controlToken, body: request })).status).toBe(200)
+    expect(handlePlatformRequest).toHaveBeenCalledWith(request)
   })
 })
 

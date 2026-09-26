@@ -5,8 +5,9 @@
 // react 与官方服务。手写产物，不接打包器；改动前对照
 // packages/client/ui-settings 的 slot 契约（settings.section）。
 //
-// 职责：在官方设置页注册两个 DeepSeekGUI 分区——「Harness（桌面）」与
-// 「插件管理（本地）」。分区内一切动作经本机回环控制桥（main 的
+// 职责：在官方设置页注册 DeepSeekGUI 的分区（Harness（桌面）、BUG 诊断与
+// 反馈、用量与余额）。「插件管理（本地）」已于 2026-09-23 撤掉（住户定）：官方
+// 插件页够用，我们随包的插件改在那里的「DeepSeekGUI 内置」组里显示。分区内一切动作经本机回环控制桥（main 的
 // /control/model、/control/command）回到与 Chrome 菜单同一个命令出口，
 // 没有第二事实源。页面 URL 没有控制桥参数（外部浏览器打开 3080）时，
 // 插件什么都不注册——那里没有桌面可控。
@@ -28,7 +29,6 @@ window.__ModuleLoader__.load({
     var STRINGS = {
       zh: {
         'nav.harness': 'Harness（桌面）',
-        'nav.plugins': '插件管理（本地）',
         'browser.toggle': '浏览器面板',
         'bridge.error': '无法连接 DeepSeekGUI 桌面控制通道：',
         'bridge.loading': '正在读取桌面状态…',
@@ -73,58 +73,39 @@ window.__ModuleLoader__.load({
         'recovery.stage': '失败阶段',
         'recovery.message': '失败消息',
         'recovery.recovered-to': '恢复目标',
-        'plugins.action': '操作',
-        'plugins.action.add': '安装插件',
-        'plugins.action.remove': '移除插件',
-        'plugins.action.update': '更新插件',
-        'plugins.action.install': '安装 / 修复依赖',
-        'plugins.spec.hint': '在下面输入插件包名，点「执行」即可安装：',
-        'plugins.spec.market': '建议优先安装插件市场 dsh-plugin，装好后就能在图形界面里浏览全部插件，不必再手打包名。',
-        'plugins.spec.limits': '也可以填本地插件文件夹的完整路径。不支持 ^1.0.0 这类范围写法；本地路径不能带空格。',
-        'plugins.spec.placeholder': '插件包名，如 dsh-plugin',
-        'plugins.run': '执行',
-        'plugins.cancel': '取消',
-        'plugins.verify-note': '写入前会弹出目标确认；发现、浏览与刷新不写入任何内容。',
-        'plugins.step.running': '运行中',
-        'plugins.step.post-check': '验证结果中',
-        'plugins.step.done': '完成',
-        'plugins.step.failed': '失败',
-        'plugins.step.cancelled': '已取消',
-        'plugins.output': '输出',
-        'plugins.handoff': '插件变更已完成，需要重启 Harness 才会进入新的 Loader composition。',
-        'plugins.restart-now': '立即重启',
-        'plugins.later': '稍后',
-        'plugins.installed': '已安装依赖',
-        'plugins.loaded': '已进入 Loader',
-        'plugins.empty': '（空）',
-        'plugins.inventory-none': '（尚未发现任何 profile，请先在 Harness 分区刷新）',
         // B3-13：随包内置插件的只读来源投影（launcher overlay 层真实事实）。
-        'plugins.builtin.title': 'DeepSeekGUI 随包内置',
-        'plugins.builtin.tag': '已内置',
-        'plugins.builtin.locked': '（不可卸载：卸载会导致 DeepSeekGUI 无法工作）',
-        'plugins.builtin.spec-hint': '该插件已随 DeepSeekGUI 内置，无需安装。',
-        'plugins.recovery.pending': '上一次插件变更正在等待重启验证。',
-        'plugins.recovery.needed': '插件变更导致 Harness 启动失败。',
-        'plugins.recovery.drift': '插件变更后 Profile 文件被外部修改；自动恢复已停止。',
-        'plugins.recovery.recovered': '上一次插件变更导致启动失败，已自动恢复之前的配置。',
-        'plugins.recovery.restore': '恢复之前的插件配置',
-        'plugins.recovery.abandon': '放弃恢复（保留当前状态）',
-        'plugins.recovery.open-profile': '打开 Profile 文件夹',
         'nav.feedback': 'BUG 诊断与反馈',
         // D5-c（莉莉丝 2026-09-06）：全局记忆从会话头部搬进设置页。
         // D20 文案（莉莉丝 2026-09-06）：先讲用途，文件名与位置收进次要信息。
-        'nav.memory': '全局记忆',
-        'memory.intro': '让助手在不同项目中了解你的背景，减少重复介绍。可以记录你的称呼、背景、工作习惯或常用工具，以及希望助手了解的信息。',
-        'memory.placeholder': '例如：\n我是一名小说作者，也会制作演示文稿。\n我熟悉 Python，前端开发经验较少。',
-        'memory.note': '由你编辑和保存，助手只读取。保存后的内容将在新会话中使用。',
-        'memory.save': '保存更改',
-        'memory.saved': '已保存',
-        'memory.open': '在文件管理器中显示',
-        'memory.unreadable': '当前读不到这个文件（可能超过大小上限），为避免覆盖原文，这里不提供保存。',
-        'memory.project-note': '仅与项目有关的信息，请在会话顶部的「记忆」面板中管理。',
-        'memory.location': '文件位置',
-        'memory.agents.note': 'AGENTS.md 是你给助手定的协作规矩（沟通方式、做事习惯），每次对话都会读取；不改也能正常使用。',
-        'memory.agents.open': '打开 AGENTS.md',
+        // B7-P3「用量与余额」：账户口径（开放平台登录态取官方数据），不做本地统计。
+        'usage.balance': '余额',
+        'usage.total-cost': '累计消费',
+        'usage.bonus': '赠金',
+        'usage.period.today': '今天',
+        'usage.period.7d': '7 天',
+        'usage.period.30d': '30 天',
+        'usage.stat.cost': '消费金额',
+        'usage.stat.requests': '请求数',
+        'usage.stat.tokens': 'Token 总数',
+        'usage.stat.cache': '缓存命中率',
+        'usage.heatmap.title': '最近 60 天',
+        'usage.heatmap.tokens': 'Token',
+        'usage.heatmap.less': '少',
+        'usage.heatmap.more': '多',
+        'usage.refresh': '刷新',
+        'usage.refreshing': '刷新中…',
+        'usage.fetched-at': '上次刷新',
+        'usage.loading': '正在读取账户数据…',
+        'usage.signed-out': '账号登录信息已失效，重新登录后即可展示用量。',
+        'usage.unavailable.network': '暂时连不上开放平台，稍后再试。',
+        'usage.unavailable.timeout': '读取账户数据超时，稍后再试。',
+        'usage.unavailable.format': '开放平台的数据格式变了，本页暂时读不出来；官网页面照常可看。',
+        'usage.unavailable.no-session': '暂时拿不到账号登录信息，稍后再试。',
+        'usage.open-official': '打开官方用量页',
+        'usage.more': '更多详情跳转官网查看',
+        'usage.no-data': '—',
+        // 住户 2026-09-23：三项官方上报默认关，在这里写明。
+        'fb.privacy': '对话记录保存在本机。DeepSeekGUI 默认关闭了官方的三项数据上报：随请求附带会话日志、点赞点踩时上传整段会话、随请求附带插件清单。',
         'fb.prompt': '遇到了什么问题？',
         'fb.placeholder': '描述你遇到的问题（保存没反应、启动失败、界面卡住……）。先说出来，发送之后 AI 会帮你排查和整理。',
         'fb.send': '发送给 AI 排查',
@@ -162,7 +143,6 @@ window.__ModuleLoader__.load({
       },
       en: {
         'nav.harness': 'Harness (Desktop)',
-        'nav.plugins': 'Plugins (Local)',
         'browser.toggle': 'Browser Panel',
         'bridge.error': 'Could not reach the DeepSeekGUI desktop control channel: ',
         'bridge.loading': 'Loading desktop state…',
@@ -207,56 +187,35 @@ window.__ModuleLoader__.load({
         'recovery.stage': 'Stage',
         'recovery.message': 'Message',
         'recovery.recovered-to': 'Recovered to',
-        'plugins.action': 'Action',
-        'plugins.action.add': 'Add plugin',
-        'plugins.action.remove': 'Remove plugin',
-        'plugins.action.update': 'Update plugin',
-        'plugins.action.install': 'Install / repair dependencies',
-        'plugins.spec.hint': 'Enter the plugin package name below, then click Run:',
-        'plugins.spec.market': 'Tip: install the plugin marketplace dsh-plugin first, then browse every plugin from its UI instead of typing package names.',
-        'plugins.spec.limits': 'A full path to a local plugin folder also works. Range specs such as ^1.0.0 are not supported, and local paths must not contain spaces.',
-        'plugins.spec.placeholder': 'package name, e.g. dsh-plugin',
-        'plugins.run': 'Run',
-        'plugins.cancel': 'Cancel',
-        'plugins.verify-note': 'A target confirmation is shown before any write. Discovery and browsing never write.',
-        'plugins.step.running': 'Running',
-        'plugins.step.post-check': 'Verifying',
-        'plugins.step.done': 'Done',
-        'plugins.step.failed': 'Failed',
-        'plugins.step.cancelled': 'Cancelled',
-        'plugins.output': 'Output',
-        'plugins.handoff': 'Plugin change complete; restart Harness to enter the new Loader composition.',
-        'plugins.restart-now': 'Restart now',
-        'plugins.later': 'Later',
-        'plugins.installed': 'Installed dependencies',
-        'plugins.loaded': 'in Loader',
-        'plugins.empty': '(empty)',
-        'plugins.inventory-none': '(no profiles discovered — refresh in the Harness section first)',
         // B3-13：随包内置插件的只读来源投影（launcher overlay 层真实事实）。
-        'plugins.builtin.title': 'Built into DeepSeekGUI',
-        'plugins.builtin.tag': 'built-in',
-        'plugins.builtin.locked': '(cannot be removed: DeepSeekGUI stops working without it)',
-        'plugins.builtin.spec-hint': 'This plugin is already built into DeepSeekGUI; no installation needed.',
-        'plugins.recovery.pending': 'The last plugin change is waiting for restart verification.',
-        'plugins.recovery.needed': 'A plugin change broke the Harness boot.',
-        'plugins.recovery.drift': 'Profile files changed externally after the plugin change; auto-recovery stopped.',
-        'plugins.recovery.recovered': 'The last plugin change failed to boot; the previous configuration was restored.',
-        'plugins.recovery.restore': 'Restore previous plugin configuration',
-        'plugins.recovery.abandon': 'Abandon recovery (keep current state)',
-        'plugins.recovery.open-profile': 'Open profile folder',
         'nav.feedback': 'Bug Report & Diagnostics',
-        'nav.memory': 'Global memory',
-        'memory.intro': 'Lets the assistant know your background across projects, so you repeat yourself less. Record how to address you, your background, working habits or usual tools, and anything else the assistant should know.',
-        'memory.placeholder': 'For example:\nI write novels and also make slide decks.\nI know Python well and have little front-end experience.',
-        'memory.note': 'You edit and save it; the assistant only reads it. Saved content is used in new sessions.',
-        'memory.save': 'Save changes',
-        'memory.saved': 'Saved',
-        'memory.open': 'Show in file manager',
-        'memory.unreadable': 'The file cannot be read right now (it may exceed the size limit); saving is disabled so the original is never overwritten.',
-        'memory.project-note': 'Information that belongs to one project is managed in the "Memory" panel at the top of the session.',
-        'memory.location': 'File location',
-        'memory.agents.note': 'AGENTS.md holds the collaboration rules you set for the assistant (how to communicate, how to work); it is read in every conversation and works fine unchanged.',
-        'memory.agents.open': 'Open AGENTS.md',
+        'usage.balance': 'Balance',
+        'usage.total-cost': 'Total spent',
+        'usage.bonus': 'Bonus',
+        'usage.period.today': 'Today',
+        'usage.period.7d': '7 days',
+        'usage.period.30d': '30 days',
+        'usage.stat.cost': 'Spent',
+        'usage.stat.requests': 'Requests',
+        'usage.stat.tokens': 'Total tokens',
+        'usage.stat.cache': 'Cache hit rate',
+        'usage.heatmap.title': 'Last 60 days',
+        'usage.heatmap.tokens': 'tokens',
+        'usage.heatmap.less': 'Less',
+        'usage.heatmap.more': 'More',
+        'usage.refresh': 'Refresh',
+        'usage.refreshing': 'Refreshing…',
+        'usage.fetched-at': 'Last refreshed',
+        'usage.loading': 'Reading account data…',
+        'usage.signed-out': 'The account sign-in is no longer valid. Sign in again to see usage.',
+        'usage.unavailable.network': 'The open platform is unreachable right now. Try again later.',
+        'usage.unavailable.timeout': 'Reading account data timed out. Try again later.',
+        'usage.unavailable.format': 'The open platform changed its data format, so this page cannot read it for now. The official page still works.',
+        'usage.unavailable.no-session': 'The account sign-in is not available right now. Try again later.',
+        'usage.open-official': 'Open the official usage page',
+        'usage.more': 'See more details on the official site',
+        'usage.no-data': '—',
+        'fb.privacy': 'Conversations are stored on this computer. DeepSeekGUI turns off three official data uploads by default: the session log attached to requests, whole-session upload on thumbs up or down, and the plugin list attached to requests.',
         'fb.prompt': 'What went wrong?',
         'fb.placeholder': 'Describe the problem you hit (save did nothing, launch failed, UI froze…). Say it first — after you send, the AI will triage and draft it for you.',
         'fb.send': 'Send to AI triage',
@@ -563,157 +522,6 @@ window.__ModuleLoader__.load({
       }
     }
 
-    // ---- 分区二：插件管理（本地） ----
-
-    function makePluginsSection(bridge) {
-      return function PluginsSection(props) {
-        var t = props.t
-        var d = useDesktopModel(bridge)
-        var specState = React.useState('')
-        var spec = specState[0]; var setSpec = specState[1]
-        var actionState = React.useState('add')
-        var action = actionState[0]; var setAction = actionState[1]
-        var pending = notReady(d, t)
-        if (pending !== null) return pending
-        var m = d.model
-        var pm = m.pluginManager
-        var busy = d.busy
-        var names = pm.profiles.map(function (entry) { return entry.name })
-        // 单 profile 现状（住户定）：目标区整块不显示，写操作永远落在
-        // active profile；多 profile 的目标选择等 B3 Workbench 一并回来。
-        var effectiveTarget = names.indexOf(m.activeProfile) >= 0 ? m.activeProfile : names[0]
-        var needsSpec = action !== 'install'
-        // 忙碌判据必须与 main 的 requestPluginOperation 一致：只有**运行中 /
-        // 验证中**挡住新请求，终态（done/failed/cancelled）允许发起下一次
-        // （main 的原话：「终态允许开始下一次操作（先清掉旧视图）」）。
-        // 写成 `operation === null` 会把「这一轮里操作过一次」也算成忙——
-        // 装完一个插件想再装或删第二个时，执行钮是灰的，只能重启 DeepSeekGUI。
-        // P8-D39 迁移时收严了这个条件；同一段里取消钮用的判据反而是对的。
-        // 2026-08-24 由 plugin-manager 的 remove 步骤抓出（60 秒等满，执行钮
-        // 始终禁用）。
-        var opBusy = pm.operation !== null
-          && (pm.operation.step === 'running' || pm.operation.step === 'post-check')
-        // B3-13：add 输入内置包名时不提供执行入口——只读提示，禁止重复安装。
-        var builtinSpec = action === 'add'
-          && pm.builtin.indexOf(spec.trim()) >= 0
-        var canRun = !busy && !opBusy && !builtinSpec && effectiveTarget !== undefined && (!needsSpec || spec.trim() !== '')
-
-        var opBlock = null
-        if (pm.operation !== null) {
-          var op = pm.operation
-          var running = op.step === 'running' || op.step === 'post-check'
-          opBlock = h('div', { style: S.group },
-            h('div', { style: S.row, 'data-deepseekgui': 'plugin-operation' },
-              h('span', null, t('plugins.action.' + op.action) + ' · ' + op.profile + (op.spec === null ? '' : ' · ' + op.spec)),
-              h('span', { style: S.note }, t('plugins.step.' + op.step)),
-              running ? btn({ testId: 'plugin-op-cancel', disabled: busy, onClick: function () { d.run({ type: 'plugin-op-cancel' }) } }, t('plugins.cancel')) : null),
-            op.message !== null ? h('div', { style: S.note }, op.message) : null,
-            op.postCheck !== null ? h('div', { style: S.note }, op.postCheck.evidence) : null,
-            op.output.length > 0 ? h('pre', { style: S.output, 'data-deepseekgui': 'plugin-operation-output' }, op.output.join('\n')) : null)
-        }
-
-        var handoff = null
-        if (pm.handoffPending) {
-          handoff = h('div', { style: S.group },
-            h('div', { style: S.note }, t('plugins.handoff')),
-            h('div', { style: S.row },
-              btn({ testId: 'plugin-handoff-restart', disabled: busy, onClick: function () { d.run({ type: 'plugin-handoff-restart' }) } }, t('plugins.restart-now')),
-              btn({ testId: 'plugin-handoff-later', disabled: busy, onClick: function () { d.run({ type: 'plugin-handoff-later' }) } }, t('plugins.later'))))
-        }
-
-        var recovery = null
-        if (pm.recovery !== null) {
-          var recoveryKey = pm.recovery.state === 'drift' ? 'plugins.recovery.drift'
-            : pm.recovery.state === 'recovery-needed' ? 'plugins.recovery.needed'
-              : pm.recovery.state === 'recovered' ? 'plugins.recovery.recovered' : 'plugins.recovery.pending'
-          recovery = h('div', { style: S.group, 'data-deepseekgui': 'plugin-recovery-block' },
-            h('div', { style: S.error }, t(recoveryKey) + '（' + pm.recovery.profile + '）'),
-            pm.recovery.failure !== null ? h('div', { style: S.note }, pm.recovery.failure) : null,
-            h('div', { style: Object.assign({}, S.row, { flexWrap: 'wrap' }) },
-              // Restore 只在 recovery-needed 时给。drift 意味着白名单文件被
-              // 外部改过，快照已经不能安全覆盖回去——后端 runRecoveryRestore
-              // 也正是这么 fail closed 的（state !== 'recovery-needed' 直接
-              // return）。UI 再摆一个点了毫无反应的按钮，用户只会以为坏了。
-              // P8-D39 把恢复区从 chrome 面板搬进设置页时漏掉了这个条件，
-              // 2026-08-24 六套件跑齐时由 S10b 抓出来。
-              pm.recovery.state === 'recovery-needed'
-                ? btn({ testId: 'plugin-recovery-restore', disabled: busy, onClick: function () { d.run({ type: 'plugin-recovery-restore' }) } }, t('plugins.recovery.restore'))
-                : null,
-              btn({ testId: 'plugin-recovery-abandon', disabled: busy, onClick: function () { d.run({ type: 'plugin-recovery-abandon' }) } }, t('plugins.recovery.abandon')),
-              btn({ testId: 'plugin-recovery-open-profile', disabled: busy, onClick: function () { d.run({ type: 'plugin-recovery-open-profile' }) } }, t('plugins.recovery.open-profile'))))
-        }
-
-        var inventory
-        if (pm.profiles.length === 0) {
-          inventory = h('div', { style: S.note }, t('plugins.inventory-none'))
-        } else {
-          inventory = pm.profiles.map(function (entry) {
-            var deps = entry.inventory.dependencies
-            return h('div', { style: S.group, key: entry.name, 'data-deepseekgui': 'plugin-inventory-' + entry.name },
-              h('div', { style: S.title }, entry.name + (entry.name === m.activeProfile ? ' ✓' : '')),
-              entry.inventory.manifestError !== null ? h('div', { style: S.error }, entry.inventory.manifestError) : null,
-              deps.length === 0
-                ? h('div', { style: S.note }, t('plugins.empty'))
-                : deps.map(function (dep) {
-                  return h('div', { style: S.row, key: dep.name },
-                    h('span', { style: S.value }, dep.name + (dep.spec ? ' @ ' + dep.spec : '')),
-                    // B3-13：与内置同名的依赖标记"已内置"（真实来源在随包 overlay 层）。
-                    dep.builtin === true ? h('span', { style: S.note }, t('plugins.builtin.tag')) : null,
-                    dep.inBundles === true ? h('span', { style: S.note }, t('plugins.loaded')) : null)
-                }))
-          })
-        }
-
-        // B3-13：随包内置插件的只读来源投影——launcher overlay 层的真实
-        // 事实，不是 profile 清单，也不提供任何安装/移除入口。
-        var builtinBlock = pm.builtin.length === 0
-          ? null
-          : h('div', { style: S.group, 'data-deepseekgui': 'plugin-builtin' },
-            h('div', { style: S.title }, t('plugins.builtin.title')),
-            pm.builtin.map(function (name) {
-              // 2026-09-06 验收：随包插件被手动卸载会让 GUI 起不来，红字明示。
-              return h('div', { style: S.row, key: name },
-                h('span', { style: S.value }, name),
-                h('span', { style: S.note }, t('plugins.builtin.tag')),
-                h('span', { style: { color: 'var(--dsw-alias-state-error-primary)', fontSize: '12px', lineHeight: '18px' } }, t('plugins.builtin.locked')))
-            }))
-
-        var actions = ['add', 'remove', 'update', 'install']
-        return h('div', { style: S.section },
-          d.error !== null ? h('div', { style: S.error }, t('bridge.error'), d.error) : null,
-          pm.error !== null ? h('div', { style: S.error }, pm.error) : null,
-          labeled(t, 'plugins.action', h('div', { style: Object.assign({}, S.row, { flexWrap: 'wrap' }) },
-            actions.map(function (id) {
-              return btn({ key: id, testId: 'plugin-action-' + id, active: action === id, disabled: busy, onClick: function () { setAction(id) } }, t('plugins.action.' + id))
-            }))),
-          needsSpec
-            ? h('div', { style: S.group },
-              h('div', { style: S.note }, t('plugins.spec.hint')),
-              h('input', {
-                style: S.input, 'data-deepseekgui': 'plugin-spec', value: spec, placeholder: t('plugins.spec.placeholder'),
-                onChange: function (event) { setSpec(event.target.value) },
-              }),
-              // B3-13：内置包名给出明确提示，且执行钮已禁用（见 canRun）。
-              builtinSpec ? h('div', { style: S.note }, t('plugins.builtin.spec-hint')) : null,
-              // 住户 2026-08-27 定的「矛盾转移」：与其在这里教用户 pnpm 的写法，
-              // 不如引导他装一次插件市场——装完既学会了这个输入框，也从此有了
-              // 图形化的插件浏览界面，不用再回来手打包名。
-              action === 'add' && !builtinSpec ? h('div', { style: S.note }, t('plugins.spec.market')) : null,
-              h('div', { style: S.note }, t('plugins.spec.limits')))
-            : null,
-          h('div', { style: S.row },
-            btn({ testId: 'plugin-run', disabled: !canRun, onClick: function () {
-              d.run({ type: 'plugin-op-request', action: action, profile: effectiveTarget, spec: needsSpec ? spec.trim() : null })
-            } }, t('plugins.run'))),
-          h('div', { style: S.note, 'data-deepseekgui': 'plugin-verify-note' }, t('plugins.verify-note')),
-          opBlock,
-          handoff,
-          recovery,
-          builtinBlock,
-          labeled(t, 'plugins.installed', h('div', { style: S.group }, inventory)))
-      }
-    }
-
     // ---- 分区三：BUG 诊断与反馈（chrome 面板移植；命令与 main 同一出口） ----
 
     function makeFeedbackSection(bridge) {
@@ -758,6 +566,7 @@ window.__ModuleLoader__.load({
 
         return h('div', { style: S.section },
           d.error !== null ? h('div', { style: S.error }, t('bridge.error'), d.error) : null,
+          h('div', { style: S.note, 'data-deepseekgui': 'feedback-privacy' }, t('fb.privacy')),
           h('div', { style: S.group },
             h('div', { style: S.title }, t('fb.prompt')),
             h('textarea', {
@@ -856,92 +665,176 @@ window.__ModuleLoader__.load({
       }
     }
 
-    // ---- 分区四：记忆（全局）（D5-c，莉莉丝 2026-09-06） ----
+    // ---- 分区四：记忆（全局） ----
     //
-    // 全局 memory.md 的编辑起点来自控制模型的 globalMemory（main 每次构建
-    // 模型时有界读一次盘）；保存走封闭的 save-global-memory 命令（main 原子
-    // 写盘，不经 agent 权限门）。读不到时（null）禁用保存，绝不用截断内容
-    // 覆盖原文件。项目记忆不在这里：它在会话页顶部的「记忆」标签。
+    // B7-P9 起由 workbench 插件的 TS 客户端注册同 id（deepseekgui-memory，
+    // order 43）的分区：条目记忆、模式切换、旧文件编辑与导入都在那边。
+    // 这里不再注册，避免同一 id 两份。
 
-    function makeMemorySection(bridge) {
-      return function MemorySection(props) {
+    // ---- 分区五：用量与余额（B7-P3） ----
+    //
+    // 账户口径：数据来自开放平台在内置浏览器里的登录态（main 在那个
+    // session 的隐藏页面里取、聚合后放进模型），本页只画聚合值，不做本地
+    // 统计。刷新只有三个触发点：挂载本页（这里）、GUI 冷启动（main）、
+    // 手动🔄；限频与陈旧结果丢弃在 main。金额是十进制字符串，只截不算。
+
+    /** 十进制字符串按小数位截断（不四舍五入——余额宁可少显示一分，不多显示）。 */
+    function truncateDecimal(text, places) {
+      var dot = text.indexOf('.')
+      if (dot === -1) return places > 0 ? text + '.' + '0'.repeat(places) : text
+      var fraction = text.slice(dot + 1, dot + 1 + places)
+      while (fraction.length < places) fraction += '0'
+      return text.slice(0, dot) + (places > 0 ? '.' + fraction : '')
+    }
+
+    var CURRENCY_SYMBOL = { CNY: '¥', USD: '$' }
+
+    /** 一笔金额的显示：符号 + 两位小数（截断）；未知币种前置代码。 */
+    function moneyText(money) {
+      var symbol = CURRENCY_SYMBOL[money.currency]
+      var amount = truncateDecimal(money.amount, 2)
+      return symbol === undefined ? money.currency + ' ' + amount : symbol + amount
+    }
+
+    function moneyList(list, empty) {
+      if (list.length === 0) return empty
+      return list.map(moneyText).join(' · ')
+    }
+
+    function integerText(value) {
+      return value.toLocaleString()
+    }
+
+    function rateText(rate, empty) {
+      if (rate === null || rate === undefined) return empty
+      return (Math.round(rate * 1000) / 10).toFixed(1) + '%'
+    }
+
+    /** 热力图色阶：0 为底色，其余按与最大值的比例落进四档。 */
+    var HEAT_LEVELS = ['transparent', 'rgba(77,107,254,0.22)', 'rgba(77,107,254,0.45)', 'rgba(77,107,254,0.7)', 'rgba(77,107,254,1)']
+    function heatLevel(tokens, max) {
+      if (tokens <= 0 || max <= 0) return 0
+      return Math.max(1, Math.min(4, Math.ceil((tokens / max) * 4)))
+    }
+
+    function makeUsageSection(bridge) {
+      return function UsageSection(props) {
         var t = props.t
         var d = useDesktopModel(bridge)
-        var draftState = React.useState(null)
-        var draft = draftState[0]; var setDraft = draftState[1]
-        var savedState = React.useState(false)
-        var saved = savedState[0]; var setSaved = savedState[1]
-        var editing = React.useRef(null)
+        var periodState = React.useState('30d')
+        var period = periodState[0]; var setPeriod = periodState[1]
+        // 挂载即刷新（三个触发点之一）；main 会限频，这里不判断。
+        React.useEffect(function () { d.run({ type: 'usage-refresh', trigger: 'open' }) }, [])
         var pending = notReady(d, t)
         if (pending !== null) return pending
-        var current = d.model.globalMemory
-        var unreadable = current === null || current === undefined
-        var value = draft === null ? (unreadable ? '' : current) : draft
-        var dirty = draft !== null && draft !== current
-        // D20 排版（莉莉丝 2026-09-06）：用途 → 编辑框（空时浅色示例占位，
-        // 占位只属于 UI，不写进文件）→ 一行说明 → 保存/已保存 + 右侧次要入口
-        // → 项目记忆一句 → 文件位置 → AGENTS.md 一行说明 + 打开按钮。
-        var sep = '\\'
-        var home = typeof d.model.dshHome === 'string' ? d.model.dshHome : ''
-        if (home.indexOf('/') !== -1 && home.indexOf('\\') === -1) sep = '/'
-        var readingText = { fontSize: '13px', lineHeight: '20px', color: 'var(--dsw-alias-label-secondary)' }
-        return h('div', { style: S.section },
-          h('div', { style: readingText }, t('memory.intro')),
-          unreadable ? h('div', { style: S.warnBox }, t('memory.unreadable')) : null,
+        var u = d.model.usage
+        var data = u.data
+        var loading = u.status === 'loading'
+        var refreshDisabled = loading || u.cooling || d.busy
+        var bigNumber = { fontSize: '26px', lineHeight: '34px', fontWeight: 600, fontVariantNumeric: 'tabular-nums', overflowWrap: 'anywhere' }
+        var card = {
+          flex: '1 1 0', minWidth: 0, padding: '12px 14px', borderRadius: '12px',
+          border: '1px solid var(--dsw-alias-border-l1)', display: 'flex', flexDirection: 'column', gap: '4px',
+        }
+        var statCard = Object.assign({}, card, { padding: '10px 12px' })
+        var statNumber = { fontSize: '18px', lineHeight: '26px', fontWeight: 600, fontVariantNumeric: 'tabular-nums', overflowWrap: 'anywhere' }
+
+        var header = h('div', { style: Object.assign({}, S.row, { justifyContent: 'space-between', flexWrap: 'wrap' }) },
+          h('span', { style: S.note, 'data-deepseekgui': 'usage-fetched-at' },
+            loading ? t('usage.refreshing')
+              : u.fetchedAt !== null ? t('usage.fetched-at') + t('format.colon') + new Date(u.fetchedAt).toLocaleString() : ''),
+          btn({ testId: 'usage-refresh', disabled: refreshDisabled, onClick: function () { d.run({ type: 'usage-refresh', trigger: 'manual' }) } },
+            loading ? t('usage.refreshing') : '🔄 ' + t('usage.refresh')))
+
+        var footer = h('div', { style: Object.assign({}, S.row, { justifyContent: 'flex-end' }) },
+          h('button', {
+            type: 'button',
+            style: Object.assign({}, S.button, { border: 'none', padding: '2px 4px', fontSize: '12px', color: 'var(--dsw-alias-label-tertiary)' }),
+            'data-deepseekgui': 'usage-more',
+            onClick: function () { d.run({ type: 'open-external-link', url: u.usagePageUrl }) },
+          }, t('usage.more') + ' ↗'))
+
+        if (u.status === 'signed-out') {
+          // 2026-09-25 起登录走官方账号：这块只在官方账号页（已登录）下面出现，
+          // 这里还收到 signed-out 只可能是平台拒了令牌——请用户在上方重新登录。
+          return h('div', { style: S.section },
+            header,
+            h('div', { style: S.group, 'data-deepseekgui': 'usage-signed-out' }, t('usage.signed-out')),
+            footer)
+        }
+        if (u.status === 'unavailable') {
+          var reasonKey = 'usage.unavailable.' + (u.reason === null ? 'network' : u.reason)
+          return h('div', { style: S.section },
+            header,
+            h('div', { style: S.group, 'data-deepseekgui': 'usage-unavailable' },
+              h('div', {}, t(reasonKey)),
+              h('div', { style: S.row },
+                btn({ testId: 'usage-open-official', onClick: function () { d.run({ type: 'open-external-link', url: u.usagePageUrl }) } }, t('usage.open-official')))),
+            footer)
+        }
+        if (data === null) {
+          return h('div', { style: S.section }, header, h('div', { style: S.note, 'data-deepseekgui': 'usage-loading' }, t('usage.loading')), footer)
+        }
+
+        var slice = period === 'today' ? data.today : period === '7d' ? data.days7 : data.days30
+        var empty = t('usage.no-data')
+        var max = 0
+        data.heatmap.forEach(function (day) { if (day.tokens > max) max = day.tokens })
+        var periods = [['today', 'usage.period.today'], ['7d', 'usage.period.7d'], ['30d', 'usage.period.30d']]
+
+        return h('div', { style: Object.assign({}, S.section, loading ? { opacity: 0.7 } : null), 'data-deepseekgui': 'usage-ready' },
+          header,
+          // 第一行：余额 | 累计消费。
+          h('div', { style: Object.assign({}, S.row, { alignItems: 'stretch' }) },
+            h('div', { style: card, 'data-deepseekgui': 'usage-balance' },
+              h('div', { style: S.title }, t('usage.balance')),
+              h('div', { style: bigNumber }, moneyList(data.balances, empty)),
+              data.bonus.length > 0
+                ? h('div', { style: S.note, 'data-deepseekgui': 'usage-bonus' }, t('usage.bonus') + t('format.colon') + moneyList(data.bonus, empty))
+                : null),
+            h('div', { style: card, 'data-deepseekgui': 'usage-total-cost' },
+              h('div', { style: S.title }, t('usage.total-cost')),
+              h('div', { style: bigNumber }, moneyList(data.totalCosts, empty)))),
+          // 时段切换：本地切片，不重复请求。
           h('div', { style: S.group },
-            h('textarea', {
-              rows: 10,
-              value: value,
-              disabled: unreadable,
-              placeholder: t('memory.placeholder'),
-              'aria-label': t('nav.memory'),
-              onChange: function (event) {
-                if (draft === null) editing.current = { home: home, expected: current }
-                setDraft(event.target.value); setSaved(false)
-              },
-              style: Object.assign({}, S.input, {
-                width: '100%', boxSizing: 'border-box', resize: 'vertical', lineHeight: '22px', padding: '10px 12px',
-                background: 'var(--dsw-alias-bg-layer-2)',
-              }),
-            }),
-            h('div', { style: readingText }, t('memory.note'))),
-          h('div', { style: Object.assign({}, S.row, { flexWrap: 'wrap' }) },
-            h('button', {
-              type: 'button',
-              style: Object.assign({}, S.button, (unreadable || !dirty || d.busy) ? S.buttonDisabled : null),
-              disabled: unreadable || !dirty || d.busy,
-              onClick: function () {
-                var submitted = value
-                d.run({ type: 'save-global-memory', content: submitted, home: editing.current.home, expected: editing.current.expected }).then(function (ok) {
-                  setSaved(ok)
-                  if (ok) {
-                    editing.current.expected = submitted
-                    setDraft(function (latest) { return latest === submitted ? null : latest })
-                  }
-                })
-              },
-            }, t('memory.save')),
-            saved ? h('span', { style: S.note }, t('memory.saved')) : null,
-            d.error !== null ? h('span', { style: S.error }, d.error) : null,
-            h('span', { style: { flex: '1 1 auto' } }),
-            h('button', {
-              type: 'button',
-              style: S.button,
-              onClick: function () { d.run({ type: 'open-memory', which: 'global' }) },
-            }, t('memory.open'))),
-          h('div', { style: S.group },
-            h('div', { style: readingText }, t('memory.project-note')),
-            home !== '' ? h('div', { style: Object.assign({}, S.note, { overflowWrap: 'anywhere' }) },
-              t('memory.location'), t('format.colon'), home + sep + 'memory.md') : null),
-          h('div', { style: S.group },
-            h('div', { style: readingText }, t('memory.agents.note')),
             h('div', { style: S.row },
-              h('button', {
-                type: 'button',
-                style: S.button,
-                onClick: function () { d.run({ type: 'open-memory', which: 'global-agents' }) },
-              }, t('memory.agents.open')),
-              home !== '' ? h('span', { style: Object.assign({}, S.note, { overflowWrap: 'anywhere' }) }, home + sep + 'AGENTS.md') : null)))
+              periods.map(function (entry) {
+                return btn({
+                  key: entry[0], testId: 'usage-period-' + entry[0], active: period === entry[0],
+                  onClick: function () { setPeriod(entry[0]) },
+                }, t(entry[1]))
+              })),
+            h('div', { style: Object.assign({}, S.row, { alignItems: 'stretch' }), 'data-deepseekgui': 'usage-stats' },
+              h('div', { style: statCard }, h('div', { style: S.title }, t('usage.stat.cost')), h('div', { style: statNumber, 'data-deepseekgui': 'usage-stat-cost' }, moneyList(slice.costs, empty))),
+              h('div', { style: statCard }, h('div', { style: S.title }, t('usage.stat.requests')), h('div', { style: statNumber, 'data-deepseekgui': 'usage-stat-requests' }, integerText(slice.requests))),
+              h('div', { style: statCard }, h('div', { style: S.title }, t('usage.stat.tokens')), h('div', { style: statNumber, 'data-deepseekgui': 'usage-stat-tokens' }, integerText(slice.tokens))),
+              h('div', { style: statCard }, h('div', { style: S.title }, t('usage.stat.cache')), h('div', { style: statNumber, 'data-deepseekgui': 'usage-stat-cache' }, rateText(slice.cacheHitRate, empty))))),
+          // 60 天热力图：12 × 5，每格一天，最早在左上。
+          h('div', { style: S.group },
+            h('div', { style: S.title }, t('usage.heatmap.title')),
+            h('div', {
+              style: { display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: '5px', maxWidth: '420px' },
+              'data-deepseekgui': 'usage-heatmap',
+            }, data.heatmap.map(function (day) {
+              var level = heatLevel(day.tokens, max)
+              return h('div', {
+                key: day.date,
+                title: day.date + ' · ' + integerText(day.tokens) + ' ' + t('usage.heatmap.tokens'),
+                'data-level': String(level),
+                style: {
+                  aspectRatio: '1 / 1', borderRadius: '5px',
+                  border: '1px solid var(--dsw-alias-border-l1)',
+                  background: HEAT_LEVELS[level],
+                },
+              })
+            })),
+            h('div', { style: Object.assign({}, S.row, { justifyContent: 'flex-end', gap: '4px' }) },
+              h('span', { style: S.note }, t('usage.heatmap.less')),
+              HEAT_LEVELS.map(function (color, index) {
+                return h('span', { key: index, style: { width: '12px', height: '12px', borderRadius: '3px', border: '1px solid var(--dsw-alias-border-l1)', background: color } })
+              }),
+              h('span', { style: S.note }, t('usage.heatmap.more')))),
+          footer)
       }
     }
 
@@ -951,14 +844,11 @@ window.__ModuleLoader__.load({
       ctx.effect(function () { return ctx.locale.register(NS, STRINGS) }, 'deepseekgui-settings: dictionaries')
       var t = ctx.locale.bind(NS)
       var HarnessSection = makeHarnessSection(bridge)
-      var PluginsSection = makePluginsSection(bridge)
       var FeedbackSection = makeFeedbackSection(bridge)
-      var MemorySection = makeMemorySection(bridge)
-      // 四个分区只差 id / order / 文案键 / 组件；注入顺序保持原样，显示顺序由 order 定。
+      var UsageSection = makeUsageSection(bridge)
+      // 两个分区只差 id / order / 文案键 / 组件；显示顺序由 order 定（记忆分区归 workbench 插件）。
       var sections = [
-        ['deepseekgui-memory', 43, 'nav.memory', MemorySection],
         ['deepseekgui-harness', 40, 'nav.harness', HarnessSection],
-        ['deepseekgui-plugins', 41, 'nav.plugins', PluginsSection],
         ['deepseekgui-feedback', 42, 'nav.feedback', FeedbackSection],
       ]
       sections.forEach(function (entry) {
@@ -971,6 +861,15 @@ window.__ModuleLoader__.load({
             locale: NS,
           }, entry[3])
         })
+      })
+      // 用量与余额（住户 2026-09-25）：登录改走官方账号后，用量格子并进官方「账号与余额」页，
+      // 挂在余额卡片下面（ui-settings-account 的 settings.account.footer），不再单独占一个分区。
+      ctx.slots.inject('settings.account.footer', function () {
+        return ctx.slots.register({
+          name: 'settings.account.footer',
+          id: 'deepseekgui-usage',
+          locale: NS,
+        }, UsageSection)
       })
       // 浏览器面板开关：会话头部 utilities（Session log 同排，B3-11 返工）。
       var BrowserPaneButton = makeBrowserPaneButton(bridge, t)

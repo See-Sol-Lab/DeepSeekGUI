@@ -1,13 +1,19 @@
 /**
- * DeepSeekGUI memory — host half (B5-P7, two flat files ruling).
+ * DeepSeekGUI guide and legacy memory — host half (B5-P7 two flat files;
+ * B7-P7 split).
  *
- * Two flat files, nothing else:
- * - `<DSH home>/memory.md` — cross-project user preferences and corrections.
- *   Model read-only; the desktop writes it on user edits from the GUI panel.
- * - `<project cwd>/memory.md` — facts about this project, written by the
- *   model with ordinary fs tools under the official workspace-write
- *   semantics (no new permission face, no backdoor, never full-access by
- *   default).
+ * Two contexts now:
+ * - `deepseekgui:guide` — the product guide (where the model runs, tools,
+ *   paths, diagnostics, language), always injected.
+ * - `deepseekgui:memory` — the legacy memory: the two-file contract plus the
+ *   files' text, `<DSH home>/memory.md` and `<project cwd>/<folder>.memory.md`.
+ *   Injected only while the memory service (`@deepseek-ai/dsh-workbench-memory`)
+ *   reports `injection: 'markdown'` — or is absent; once the migration
+ *   switches to `entries`, this section yields nothing and the memory
+ *   service's own guide and per-step recall take over, and when enhanced
+ *   memory is switched `off` it yields nothing as well (no silent fallback
+ *   to the files), so one path is live at a time and the two never form a
+ *   second source of truth.
  *
  * The first assembly for a loaded Session captures both files. Subsequent
  * steps reuse that text until the Session is unloaded. Official context
@@ -31,11 +37,17 @@ import type { Context } from '@deepseek-ai/cordis'
 // A pure function from a type-only module: no Context augmentation crosses over.
 import { projectMemoryFileName } from '@deepseek-ai/dsh-workbench-inspector/types'
 
-/** Context section name owned by this plugin. */
+/** Legacy memory context section name owned by this plugin. */
 const MEMORY_SECTION_NAME = 'deepseekgui:memory'
+
+/** Product guide context section name owned by this plugin. */
+const GUIDE_SECTION_NAME = 'deepseekgui:guide'
 
 /** Sort position: after every contributed guidance section. */
 const MEMORY_SECTION_ORDER = 1_000_000
+
+/** The guide sits right before the memory section. */
+const GUIDE_SECTION_ORDER = MEMORY_SECTION_ORDER - 1
 
 /**
  * Per-file cap (bytes) protecting the assembly from runaway files. 64 KB
@@ -93,20 +105,34 @@ export function readMemoryFile(path: string, cap = MEMORY_FILE_CAP): MemoryFileV
 }
 
 /**
- * The DeepSeekGUI guide injected with the memory texts (D20, 2026-09-06):
- * where the model is running, how the DeepSeekGUI tools are meant to be
- * used, how to write paths, and the memory contract. It is the product's
- * fixed "house rules" — no user-facing entry, shipped and upgraded with the
- * package — and the user's own AGENTS.md files (loaded by the official
- * agent-instructions plugin) arrive after it, so the user's rules win.
+ * The DeepSeekGUI product guide (D20, 2026-09-06): where the model is
+ * running, how the DeepSeekGUI tools are meant to be used, how to write
+ * paths, diagnostics, language. It is the product's fixed "house rules" — no
+ * user-facing entry, shipped and upgraded with the package — and the user's
+ * own AGENTS.md files (loaded by the official agent-instructions plugin)
+ * arrive after it, so the user's rules win.
  *
  * The text ships as `assets/deepseekgui-guide.md` beside the plugin: it is
  * content, not code, so wording changes need no recompile. A missing asset is
  * a broken package, so the read throws rather than injecting a silent blank.
  * @returns The guide, trimmed of the trailing newline.
  */
+export function productGuide(): string {
+  return readAsset('deepseekgui-guide.md')
+}
+
+/**
+ * The legacy two-file memory contract (B5-P7), injected with the file texts
+ * while the memory path is `markdown`. Ships as
+ * `assets/deepseekgui-memory-files.md`.
+ * @returns The contract, trimmed of the trailing newline.
+ */
 export function memoryContract(): string {
-  const asset = fileURLToPath(new URL('../assets/deepseekgui-guide.md', import.meta.url))
+  return readAsset('deepseekgui-memory-files.md')
+}
+
+function readAsset(name: string): string {
+  const asset = fileURLToPath(new URL(`../assets/${name}`, import.meta.url))
   return readFileSync(asset, 'utf8').trimEnd()
 }
 
@@ -159,12 +185,34 @@ function dshHomeOf(env: Record<string, string | undefined> = process.env as Reco
 }
 
 /**
- * Register the memory context contribution in the plugin scope.
+ * Which memory path is live: the memory service's injection mode when the
+ * service is mounted — `markdown` (the legacy files), `entries` (the
+ * service's own guide and recall), or `off` (enhanced memory switched off:
+ * nothing at all, no fallback to the files) — else `markdown` (a
+ * composition without the service has only the legacy files).
+ * @param ctx - plugin host context.
+ * @returns `markdown`, `entries` or `off`.
+ */
+export function injectionModeOf(ctx: Context): 'markdown' | 'entries' | 'off' {
+  const memory = (ctx as unknown as { get(name: string): unknown }).get('workbenchMemory') as { injectionMode?: () => unknown } | undefined
+  const mode = memory?.injectionMode?.()
+  return mode === 'entries' || mode === 'off' ? mode : 'markdown'
+}
+
+/**
+ * Register the product guide and the legacy memory context in the plugin
+ * scope. The guide is static; the memory section is a variable resolved at
+ * every assembly, empty while the entries path is live.
  * @param ctx - plugin host context.
  */
 export function registerMemoryContext(ctx: Context): void {
   const systemPrompt = (ctx as unknown as { systemPrompt: SystemPromptSeam }).systemPrompt
   const captured = new WeakMap<object, string>()
+  const guide: Parameters<SystemPromptSeam['context']>[0] = {
+    name: GUIDE_SECTION_NAME,
+    order: GUIDE_SECTION_ORDER,
+    text: productGuide(),
+  }
   const provider: Parameters<SystemPromptSeam['context']>[0] = {
     name: MEMORY_SECTION_NAME,
     order: MEMORY_SECTION_ORDER,
@@ -172,6 +220,10 @@ export function registerMemoryContext(ctx: Context): void {
   }
   ctx.effect(() => {
     const disposeVariable = systemPrompt.variable('deepseekgui_memory', (context) => {
+      // Entries mode: the memory service's guide and recall carry memory; off:
+      // nothing carries it. Either way the legacy files stay on disk untouched
+      // and out of the prompt.
+      if (injectionModeOf(ctx) !== 'markdown') return ''
       // A bare assemble (tests/diagnostics) has no agent; and without a home
       // or a session cwd there is nothing to anchor memory to.
       const home = dshHomeOf()
@@ -185,7 +237,8 @@ export function registerMemoryContext(ctx: Context): void {
       }
       return text
     })
+    const disposeGuide = systemPrompt.context(guide)
     const dispose = systemPrompt.context(provider)
-    return () => { dispose(); disposeVariable() }
-  }, 'deepseekgui: memory context')
+    return () => { dispose(); disposeGuide(); disposeVariable() }
+  }, 'deepseekgui: guide and memory contexts')
 }

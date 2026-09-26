@@ -69,9 +69,20 @@ export interface ApprovalRequestEvent {
   readonly callId?: ToolCallId
   /** Human-readable reason supplied by the asker. */
   readonly reason?: string
+  /**
+   * DeepSeekGUI: what the action would touch that a person must weigh — the
+   * approval renders as a red warning when any is present (see
+   * `@deepseek-ai/dsh-sandbox` protected zones for the meaning of each).
+   */
+  readonly danger?: readonly ApprovalDanger[]
+  /** Localized presentation only; never persisted in approval audit events. */
+  readonly displayReason?: { readonly en: string; readonly [locale: string]: string }
   /** Cancellation lifetime of the pending request. */
   readonly signal?: AbortSignal
 }
+
+/** Safety concerns an approval can carry; mirrors the sandbox's `SafetyConcern`. */
+export type ApprovalDanger = 'system' | 'apps' | 'gui' | 'elevated' | 'git'
 
 declare module '@deepseek-ai/cordis' {
   interface Events {

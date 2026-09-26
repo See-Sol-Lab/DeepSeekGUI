@@ -25,7 +25,7 @@ The current Windows host and official Web parity suite remain useful foundations
 - Expose arbitrary DSH profiles, real user Cordis plugin execution, and native memory, compaction, and hook composition.
 - Make every model-visible input reconstructable from Harness session events and show its source in Runtime Lens.
 - Publish reproducible DeepSeek benchmarks for recipes, tools, context, compaction, memory, and agent strategies.
-- Provide context ledger, memory provenance, compaction editor, hook graph, replay, forks, and A/B experiments without hiding product-owned state.
+- Provide context ledger, each memory's source session and entry, compaction editor, hook graph, replay, forks, and A/B experiments without hiding product-owned state.
 
 
 ## Engineering rules

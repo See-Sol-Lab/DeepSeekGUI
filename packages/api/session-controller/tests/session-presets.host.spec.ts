@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
 import type { Agent, AgentFactory } from '@deepseek-ai/dsh-agent'
-import { agentPresetProjectionDefinition } from '@deepseek-ai/dsh-agent-presets'
+import { agentPresetProjectionDefinition } from '@deepseek-ai/dsh-agent-preset-registry'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import type { Session } from '@deepseek-ai/dsh-session'
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
@@ -29,7 +29,6 @@ function roster(ids: readonly string[]): unknown {
   const presetOf = (id: string): object => ({
     id,
     trust: 'system',
-    path: `/presets/${id}/agent.cordis.yml`,
   })
   return {
     defaultId: ids[0],
@@ -68,8 +67,8 @@ async function harness(presets?: readonly string[]) {
       const agent = stubAgent(session)
       ;(agent as { ctx?: Context }).ctx = ctx
       await options.setup?.(ctx, agent)
-      const unregister = ctx.agents.register(agent)
-      return { agent, dispose: () => { unregister(); return Promise.resolve() } }
+      const unregister = await ctx.agents.register(agent)
+      return { agent, dispose: async () => { await unregister() } }
     },
     async resume() {
       throw new Error('test harness has no persisted sessions')

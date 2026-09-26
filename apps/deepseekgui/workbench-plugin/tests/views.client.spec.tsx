@@ -14,7 +14,9 @@ import { overlappingPaths } from '../src/client/views/WorktreeView.tsx'
 import { MemoryView } from '../src/client/views/MemoryView.tsx'
 import type { InspectorRemote } from '../src/client/views/shared.tsx'
 import type { ControlBridgeClient } from '../src/client/bridge.ts'
+import type { MemoryRemote } from '../src/client/memory/model.ts'
 import { zh } from '../src/client/locales-inspector.ts'
+import { zh as memoryZh } from '../src/client/locales-memory.ts'
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals() })
 
@@ -42,6 +44,34 @@ function fakeInspector(over: Partial<Record<keyof InspectorRemote, (...args: nev
 const bridgeStub = (): ControlBridgeClient => ({ model: vi.fn(), run: vi.fn(async () => ({} as never)) })
 const submitInstruction = vi.fn(async () => true)
 const noChat = (() => undefined) as never
+
+const tm = ((key: keyof typeof memoryZh, params?: Record<string, string | number>) => {
+  let text: string = memoryZh[key]
+  for (const [name, value] of Object.entries(params ?? {})) text = text.replaceAll(`{${name}}`, String(value))
+  return text
+}) as never
+
+/** A fake of the memory namespace in the given mode, with no entries. */
+function fakeMemory(injection: 'markdown' | 'entries' | 'off' = 'markdown'): MemoryRemote {
+  return {
+    status: vi.fn(async () => ok({ injection, active: 0, forgotten: 0, globalFile: 'E:\\home\\memory.md' })),
+    projectScope: vi.fn(async () => ok({ kind: 'project', projectKey: 'k-repo', path: 'E:\\repo' })),
+    list: vi.fn(async () => ok({ entries: [], total: 0 })),
+    listForgotten: vi.fn(async () => ok([])),
+    get: vi.fn(async () => ok(null)),
+    previewImport: vi.fn(async () => ok({
+      source: { kind: 'project', cwd: 'E:\\repo' },
+      path: 'E:\\repo\\repo.memory.md',
+      scope: { kind: 'project', projectKey: 'k-repo', path: 'E:\\repo' },
+      candidates: [],
+      problem: 'missing',
+    })),
+  } as unknown as MemoryRemote
+}
+const noChange = (): (() => void) => () => {}
+const memoryProps = (injection: 'markdown' | 'entries' | 'off' = 'markdown') => ({
+  memory: fakeMemory(injection), onMemoryChange: noChange, sessionPresent: () => undefined, tm,
+})
 
 describe('ChangesView', () => {
   it('groups changed paths, opens a patch, and offers only reveal / copy', async () => {
@@ -150,11 +180,39 @@ describe('WorktreeSection inside GitView', () => {
 })
 
 describe('MemoryView', () => {
+  it('waits for the project scope before offering a write and clears drafts on a session switch', async () => {
+    let resolveScope!: (value: unknown) => void
+    const memory = fakeMemory('entries')
+    memory.projectScope = vi.fn(() => new Promise((resolve) => { resolveScope = resolve })) as never
+    const props = { inspector: fakeInspector(), bridge: null, submitInstruction, t, ...memoryProps('entries'), memory }
+    const view = render(<MemoryView {...props} sessionId={sessionId} />)
+    await waitFor(() => { expect(memory.projectScope).toHaveBeenCalled() })
+    expect(screen.queryByPlaceholderText(memoryZh['add.placeholder'])).toBeNull()
+    resolveScope(ok({ kind: 'project', projectKey: 'k-repo', path: 'E:\\repo' }))
+    const box = await screen.findByPlaceholderText(memoryZh['add.placeholder']) as HTMLTextAreaElement
+    fireEvent.change(box, { target: { value: 'draft for the old session' } })
+    view.rerender(<MemoryView {...props} sessionId={'another-session' as SessionId} />)
+    await waitFor(() => { expect(screen.queryByDisplayValue('draft for the old session')).toBeNull() })
+  })
+
   it('renders the project memory as Markdown, offers open / ask / generate-AGENTS only, and never a save', async () => {
-    const inspector = fakeInspector({ memory: vi.fn(async () => ok({ cwd: 'E:\\repo', fileName: 'repo.memory.md', text: '# 项目记忆\n- likes `tabs`\n', agents: false })) })
+    const inspector = fakeInspector({
+      memory: vi.fn(async () => ok({ cwd: 'E:\\repo', fileName: 'repo.memory.md', text: '# 项目记忆\n- likes `tabs`\n', agents: false })),
+    })
     const bridge = bridgeStub()
-    render(<MemoryView inspector={inspector} bridge={bridge} sessionId={sessionId} submitInstruction={submitInstruction} t={t} />)
+    render(
+      <MemoryView
+        inspector={inspector}
+        bridge={bridge}
+        sessionId={sessionId}
+        submitInstruction={submitInstruction}
+        t={t}
+        {...memoryProps()}
+      />,
+    )
     expect(await screen.findByRole('heading', { level: 1 })).toBeTruthy()
+    // Markdown mode: the legacy file is the memory; the note points at the switch.
+    expect(screen.getByText(memoryZh['view.markdownNote'])).toBeTruthy()
     expect(screen.getByRole('listitem').textContent).toBe('likes tabs')
     expect(inspector.memory).toHaveBeenCalledWith(sessionId, expect.any(AbortSignal))
     fireEvent.click(screen.getByText(zh['memory.open']))
@@ -172,15 +230,37 @@ describe('MemoryView', () => {
 
   it('renders only the head of an oversized memory and says so', async () => {
     const text = `# big\n${'- 条目\n'.repeat(6000)}`
-    const inspector = fakeInspector({ memory: vi.fn(async () => ok({ cwd: 'E:\\repo', fileName: 'repo.memory.md', text, agents: false })) })
-    render(<MemoryView inspector={inspector} bridge={null} sessionId={sessionId} submitInstruction={submitInstruction} t={t} />)
-    expect(await screen.findByRole('note')).toBeTruthy()
+    const inspector = fakeInspector({
+      memory: vi.fn(async () => ok({ cwd: 'E:\\repo', fileName: 'repo.memory.md', text, agents: false })),
+    })
+    render(
+      <MemoryView
+        inspector={inspector}
+        bridge={null}
+        sessionId={sessionId}
+        submitInstruction={submitInstruction}
+        t={t}
+        {...memoryProps()}
+      />,
+    )
+    expect(await screen.findByText(zh['memory.truncated'].replaceAll('{max}', '20,000'))).toBeTruthy()
     expect(screen.getAllByRole('listitem').length).toBeLessThan(6000)
   })
 
   it('shows the empty state for a missing file and the open button when AGENTS.md exists', async () => {
-    const inspector = fakeInspector({ memory: vi.fn(async () => ok({ cwd: 'E:\\repo', fileName: 'repo.memory.md', text: null, agents: true })) })
-    render(<MemoryView inspector={inspector} bridge={bridgeStub()} sessionId={sessionId} submitInstruction={submitInstruction} t={t} />)
+    const inspector = fakeInspector({
+      memory: vi.fn(async () => ok({ cwd: 'E:\\repo', fileName: 'repo.memory.md', text: null, agents: true })),
+    })
+    render(
+      <MemoryView
+        inspector={inspector}
+        bridge={bridgeStub()}
+        sessionId={sessionId}
+        submitInstruction={submitInstruction}
+        t={t}
+        {...memoryProps()}
+      />,
+    )
     expect(await screen.findByText(zh['memory.empty'])).toBeTruthy()
     expect(screen.getByText(zh['memory.openAgents'])).toBeTruthy()
     expect(screen.queryByText(zh['memory.createAgents'])).toBeNull()
@@ -191,8 +271,65 @@ describe('MemoryView', () => {
     const inspector = fakeInspector({
       memory: vi.fn(async () => failed('workspace directory does not exist: E:\\gone')),
     })
-    render(<MemoryView inspector={inspector} bridge={null} sessionId={sessionId} submitInstruction={submitInstruction} t={t} />)
+    render(
+      <MemoryView
+        inspector={inspector}
+        bridge={null}
+        sessionId={sessionId}
+        submitInstruction={submitInstruction}
+        t={t}
+        {...memoryProps()}
+      />,
+    )
     expect(await screen.findByRole('alert')).toHaveProperty('textContent', expect.stringContaining('E:\\gone'))
     expect(screen.getByText(zh['memory.missingHint'])).toBeTruthy()
+  })
+
+  it('in entries mode shows the used-memory block, the project entries, the import and the folded legacy file; no tidy prompt', async () => {
+    const inspector = fakeInspector({
+      memory: vi.fn(async () => ok({ cwd: 'E:\\repo', fileName: 'repo.memory.md', text: '# old\n- legacy line\n', agents: false })),
+    })
+    const props = memoryProps('entries')
+    render(
+      <MemoryView
+        inspector={inspector}
+        bridge={bridgeStub()}
+        sessionId={sessionId}
+        submitInstruction={submitInstruction}
+        t={t}
+        {...props}
+      />,
+    )
+    expect(await screen.findByText(memoryZh['view.entriesNote'])).toBeTruthy()
+    await screen.findByText(memoryZh['list.title.session'])
+    expect(props.memory.projectScope).toHaveBeenCalledWith('E:\\repo', expect.any(AbortSignal))
+    expect(props.memory.list).toHaveBeenCalledWith(
+      expect.objectContaining({ scope: { kind: 'session', projectKey: 'k-repo' } }),
+      expect.any(AbortSignal),
+    )
+    expect(screen.getByText(memoryZh['used.title'])).toBeTruthy()
+    expect(screen.getByText(memoryZh['import.title'])).toBeTruthy()
+    expect(screen.getByText(memoryZh['view.legacyFile'])).toBeTruthy()
+    expect(screen.queryByText(zh['memory.ask'])).toBeNull()
+    expect(screen.queryByText(memoryZh['view.markdownNote'])).toBeNull()
+  })
+
+  it('in off mode says so and shows neither entries nor the legacy file', async () => {
+    const inspector = fakeInspector()
+    const props = memoryProps('off')
+    render(
+      <MemoryView
+        inspector={inspector}
+        bridge={null}
+        sessionId={sessionId}
+        submitInstruction={submitInstruction}
+        t={t}
+        {...props}
+      />,
+    )
+    expect(await screen.findByText(memoryZh['view.offNote'])).toBeTruthy()
+    expect(screen.queryByText(memoryZh['list.title.session'])).toBeNull()
+    expect(screen.queryByText(zh['memory.title'])).toBeNull()
+    expect(props.memory.list).not.toHaveBeenCalled()
   })
 })

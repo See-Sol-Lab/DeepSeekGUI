@@ -1,5 +1,5 @@
 ---
-description: "面向用户与维护者的本地工作区 @file 补全提供方，用于启用、设置大小或排查 ctx.fileReferences 的发现能力。"
+description: "面向用户与维护者的本地工作区 @file 补全提供方，用于启用、调整规模或排查 ctx.fileReferences 的发现能力。"
 kind: "package-reference"
 ---
 
@@ -63,7 +63,7 @@ agent（智能体）及宿主 UI 可以用各 agent 本地工作区中经过排�
 
 ### 设计理念
 
-提供方为每个 agent 维护一个可复用的 `WorkspaceFileSearch`，以该会话的 `cwd` 为根。目录范围查询（`a/b/...`）列出实时目录状态，裸模糊查询共享一次有界递归遍历。只有一个工作区的首次裸查询会等待该遍历；`tool/result` 事件把已完成的条目标记为陈旧，下一次裸查询在替代品构建期间继续由它作答。模型指引是按 agent 的提示词段，仅在指定 agent 拥有 `read` 工具时贡献；agent 释放时会同时释放索引与提示词 fiber。
+提供方为每个 agent 维护一个可复用的 `WorkspaceFileSearch`，以该会话的 `cwd` 为根。目录范围查询（`a/b/...`）列出实时目录状态，裸模糊查询共享一次有界递归遍历。每个工作区仅首次裸查询会等待该遍历；`tool/result` 事件把已完成的条目标记为陈旧，下一次裸查询在替代品构建期间继续由它作答。模型指引是按 agent 的提示词段，仅在指定 agent 拥有 `read` 工具时贡献；创建会等待提示词安装，安装失败会回滚 agent；agent dispose（资源释放）时会同时释放索引与提示词 fiber。
 
 ### 源码地图
 
@@ -71,11 +71,11 @@ agent（智能体）及宿主 UI 可以用各 agent 本地工作区中经过排�
 |---|---|
 | [`src/index.ts`](src/index.ts) | `LocalFileReferenceService`：配置校验、按 agent 搜索、提示词安装 |
 | [`src/search.ts`](src/search.ts) | `WorkspaceFileSearch`：遍历、排序、排除、陈旧标记与后台重建 |
-| — | 不发布运行时不变式伴生入口；按 Agent 的 index 是私有 advisory cache，其失效与释放通过 service 测试直接观察。 |
+| — | 不发布运行时不变式伴生入口；按 agent 的 index 是私有 advisory cache，其失效与 dispose 行为通过服务测试直接观察。 |
 
 ### 主要流程
 
-`list(agent, query, signal)` 要么列出某个目录的条目，要么读取共享的有界索引，对候选排序（精确、前缀、子串，再到子序列得分，目录有加成），并按确定性顺序返回至多 `maxResults` 个。`tool/result` 事件把指定 agent 的索引标记为陈旧，之后的裸查询因此观察到全新目录树。不可读或已排除的子目录不贡献候选，而不可读的根目录则让该次遍历失败：一次瞬时故障不得用空索引覆盖仍然有效的条目。
+`list(agent, query, signal)` 要么列出某个目录的条目，要么读取共享的有界索引，对候选排序（精确、前缀、子串，再到子序列得分，目录有加成），并按确定性顺序返回至多 `maxResults` 个。`tool/result` 事件把指定 agent 的索引标记为陈旧；下一次裸查询仍从旧索引返回结果，同时在后台构建替代索引。不可读或已排除的子目录不贡献候选，而不可读的根目录则让该次遍历失败：一次瞬时故障不得用空索引覆盖仍然有效的条目。
 
 </details>
 
@@ -89,7 +89,7 @@ agent（智能体）及宿主 UI 可以用各 agent 本地工作区中经过排�
 - [文件引用 seam](../file-reference/README.zh.md)——本提供方所实现的服务约定与 `@file` 语法。
 - [会话引用子系统](../../../docs/subsystems/session-reference.zh.md)——宿主 UI 背后的共享文件引用约定。
 - [文件系统工具目录](../../../docs/tool-catalog.zh.md#deepseek-aidsh-tool-fs)——发现能力必须匹配其命名空间的 `read` 工具。
-- [context 组地图](../README.zh.md)——相邻的请求上下文包。
+- [上下文组地图](../README.zh.md)——相邻的请求上下文包。
 
 -----
 
@@ -105,7 +105,7 @@ agent（智能体）及宿主 UI 可以用各 agent 本地工作区中经过排�
 ##### 文件引用指令
 
 ```markdown
-Tokens prefixed with @ are workspace paths the user explicitly referenced, relative to the workspace root. A trailing slash marks a directory: list it when its contents matter. Anything else is a file: use the read tool when its contents are needed, and do not claim to have inspected it before reading. @"..." quotes a path containing spaces.
+Tokens prefixed with @ are paths the user explicitly referenced. Relative paths resolve from the workspace root; absolute paths identify files or directories on the host. A trailing slash marks a directory: list it when its contents matter. Anything else is a file: use the read tool when its contents are needed, and do not claim to have inspected it before reading. @"..." quotes a path containing spaces.
 ```
 
 #### Token 影响
@@ -125,7 +125,7 @@ Tokens prefixed with @ are workspace paths the user explicitly referenced, relat
 
 - **宿主本地命名空间**：提供方扫描 Harness 宿主的文件系统，因此远程或虚拟 `read` 实现需要使用命名空间与该工具一致的提供方。
 - **有界的提示性索引**：超大型工作区可能省略 `maxEntries` 之后的路径；被排除或无法读取的目录不会出现。默认排除项只列没有任何生态用作源码目录的构建产物；`lib` 被刻意排除在外，因此构建进 `lib` 的工作区需通过 `excludedDirectories` 自行加上。
-- **一次失效的陈旧窗口**：紧接工具结果之后的模糊查询反映的是上一次遍历时的目录树；下一次查询才看到重建结果。
+- **一次失效的陈旧窗口**：紧接工具结果之后的裸查询反映的是上一次遍历时的目录树；下一次查询才看到重建结果。
 - **没有忽略文件语义**：`.gitignore` 和其他项目忽略文件不会影响发现；系统只排除已配置的目录基名。
 
 <a id="dev-note"></a>

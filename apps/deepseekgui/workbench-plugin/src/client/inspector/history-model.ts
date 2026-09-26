@@ -1,4 +1,7 @@
-/** Conversation-only commit/push/PR history with provenance (the Git view's session section); current Git reads live in views/. */
+/**
+ * Conversation-only commit/push/PR history with each record's tool, time and sequence
+ * (the Git view's session section); current Git reads live in views/.
+ */
 import type { ToolCallBlock } from '@deepseek-ai/dsh-client-ui-chat/client'
 import {
   firstLine,

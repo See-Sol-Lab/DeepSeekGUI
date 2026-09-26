@@ -1,0 +1,33 @@
+# Agent Note: The memory pages and the explicit migration
+
+Status: implemented
+
+English | [中文](2026-09-14-memory-pages-and-migration.zh.md)
+
+## Problem
+
+The engineering memory had a store, tools, a per-step recall and a cross-window chain ([entries](2026-09-13-engineering-memory-entries.md), [Harness face](2026-09-13-engineering-memory-harness-face.md), [cross-window](2026-09-14-memory-cross-window-and-continuation.md)), but no person could see it: the Memory view still rendered the legacy project file, Settings → Global memory was the JS settings plugin's editor of the legacy `memory.md`, the injection mode had no switch a person could reach, and the reviewed import had no page. Everything had to reach the user without a second data path — the pages, the session tools and the automatic records writing one store — while the legacy Markdown files stayed the memory until the person chose otherwise, never injected beside the entries, never modified by the pages, and never returned to silently.
+
+## Decision
+
+The pages live in the DeepSeekGUI workbench plugin's client (`apps/deepseekgui/workbench-plugin/src/client/memory/`), which mounts the generated `workbenchMemory` Remote namespace beside the inspector's and subscribes once to the forwarded `workbench-memory/change` so every mounted page re-reads on any window's write. Two registrations: the Memory view (`conversation.view` `deepseekgui-memory`, order 23) and Settings → Global memory (`settings.section` `deepseekgui-memory`, order 43) — the latter taking over the id the JS settings plugin used to register, whose memory section and strings are removed so one id has one owner.
+
+Both pages follow the store's `injection` mode. In `entries` mode the view shows what this session's model was shown — the ids, versions and scopes of the newest recalled list, read from the Chat window's injected context row (the session log's own `source`), each beside its current content or "since forgotten" — then the entries of this project plus the global ones through one component, `MemoryEntries`: search and kind filter (a debounced `list` with `text`), a detail with source, session, evidence and history, edit (content, keywords, kind), forget, undo of the latest change, the forgotten entries with an explicit restore, and a small add form; then the reviewable import of the project's legacy file and that file folded away. Settings shows the mode panel, and in `entries` mode the same component over the global scope plus the import of `<home>/memory.md` and an export of the entries as Markdown text to copy. In `markdown` mode the view renders the legacy file as before with a pointer to the switch, and Settings shows the legacy editor — ported to TypeScript: the text from the desktop control model, the save through the closed `save-global-memory` command with the text the edit started from, so a file changed underneath is refused — plus the import. In `off` mode both pages show one statement; nothing else is read.
+
+Writes quote the version the page read: a stale one comes back as `MEMORY_CONFLICT` with the current version and shows as a conflict with a reload, never as done; a refused add shows the store's code and message; nothing shows "saved", "forgotten", "restored" or "switched" before the store answered. An open draft whose entry changed elsewhere (the change fan-out re-read the list) keeps its text and says so. Every read and write is keyed by the target it was issued for — the scope for the list, the session for the view, the source for the import — with a generation counter, so a result that arrives after the target moved on never lands. The mode switch is a two-step in place: the button opens a confirmation that says what changes and what stays (the legacy file is kept and no longer injected; entries are kept and can be switched back to; off injects nothing and does not fall back), then `setInjection`; the two paths never apply together because the Host's injection mode is the single truth. The import previews without writing, unticks segments already in the store, applies the ticked ones in order and reports where it stopped, then re-reads the preview so what landed shows as stored; the export renders text and copies it to the clipboard — no code path writes the legacy file. The continuation codec moved to a client-safe export (`@deepseek-ai/dsh-workbench-memory/continuation`, `TextEncoder` instead of `Buffer`) so the detail renders a hand-over's five parts apart.
+
+## Alternatives considered
+
+**A separate memory client plugin.** Rejected: the Memory view already lived in the workbench plugin, which mounts remotes and holds the desktop bridge the legacy editor needs; one plugin, one overlay row.
+
+**Keeping the JS settings section beside a new TypeScript one.** Rejected: two registrations of one id, and the legacy editor would have been a second owner of the global memory path; the section moved whole.
+
+**Writing the export into the legacy file, or next to it.** Rejected: the brief forbids a background reverse write, and a file beside the original is a second source of truth; text to copy is the honest export.
+
+**Reading the recall list's prose to show what was used.** Rejected: the injected message's `source` already records ids and versions; the page reads that and asks the store for the current content, so "changed since" and "since forgotten" are facts, not parsing.
+
+**A page-side project resolution.** Rejected: the view asks the store's `projectScope` with the session folder the inspector already reports, so the page and the tools agree on the project key.
+
+## Consequences
+
+Client tests (jsdom, testing-library) cover the pieces on their own and in the view: listing and searching through the store; the detail with source, evidence, session presence and "source session deleted"; an edit quoting the read version, the conflict-with-reload on a stale one, the draft kept across a change underneath, the empty-content refusal; undo, forget, restore; an add and a refused add; a late read for a scope no longer shown dropped; the mode panel switching only after a confirm and reporting a refusal; the legacy editor's CAS save and its refusal; the import's preview without writing, duplicate unticking, apply and stop report; the export's text and copy; the used-memory block with "now v2" and "since forgotten"; the view in each mode and the settings section in each mode; the plugin entry registering the view with the store props and the section under the JS plugin's former id. The real-page checks — Chinese and English, empty lists, long entries, narrow windows, keyboard operation, source expansion, an import error, and the two skill entries' regression — are the supervising window's.

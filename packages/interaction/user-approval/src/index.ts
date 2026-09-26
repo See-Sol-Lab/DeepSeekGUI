@@ -9,6 +9,13 @@ import { Context, Service } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { createUserMessage, type ToolCallId } from '@deepseek-ai/dsh-llm'
+import type { ContextFormed } from '@deepseek-ai/dsh-llm'
+declare module '@deepseek-ai/dsh-llm' {
+  interface MessageSourceMap {
+    'user-approval': { kind: 'user-approval' } & ContextFormed
+  }
+}
+
 import { scopeTarget } from '@deepseek-ai/dsh-scope'
 import type { Session } from '@deepseek-ai/dsh-session'
 import { SessionSeq } from '@deepseek-ai/dsh-session'
@@ -39,10 +46,13 @@ declare module '@deepseek-ai/dsh-session/types' {
 }
 
 import { ApprovalRequestId } from './types.ts'
-import type { ApprovalOutcome, ApprovalRequestEvent } from './types.ts'
+import type { ApprovalDanger, ApprovalOutcome, ApprovalRequestEvent } from './types.ts'
 
 export { ApprovalRequestId } from './types.ts'
-export type { ApprovalOutcome } from './types.ts'
+export type { ApprovalDanger, ApprovalOutcome } from './types.ts'
+
+/** DeepSeekGUI: concerns that make an approval a red warning, which only a person may answer. */
+const RED_DANGER: ReadonlySet<ApprovalDanger> = new Set(['system', 'apps', 'gui', 'elevated'])
 
 /** Every {@link ApprovalOutcome}, for runtime normalization of answerer returns. */
 const OUTCOMES: readonly ApprovalOutcome[] = ['allowed-once', 'rejected', 'cancelled', 'unavailable']
@@ -76,6 +86,7 @@ const ASK_SENTENCE = 'Approval policy: ask. Operations that require approval may
  */
 function hasOpenTurn(session: Session): boolean {
   for (let seq = session.seq - 1; seq >= 0; seq -= 1) {
+    // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
     const type = session.eventAt(SessionSeq(seq))?.type
     if (type === 'turn/start') return true
     if (type === 'turn/end') return false
@@ -182,7 +193,7 @@ export class ApprovalService extends Service {
         type: 'text',
         text: `The approval policy changed from "${previous}" to "${policy}" (changed by the user).`,
       }],
-      source: { kind: 'plugin', plugin: 'user-approval' },
+      source: { kind: 'user-approval' },
     }))
   }
 
@@ -243,6 +254,7 @@ export class ApprovalService extends Service {
    */
   overrideOf(session: Session): ApprovalPolicy | undefined {
     for (let seq = session.seq - 1; seq >= 0; seq -= 1) {
+      // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
       const event = session.eventAt(SessionSeq(seq))
       if (event?.type === 'approval/policy') return event.data.policy
     }
@@ -263,7 +275,11 @@ export class ApprovalService extends Service {
     // ahead of any gate LISTENER, so a listener-shaped gate cannot keep the
     // documented promise that 'never' rejects deterministically regardless
     // of registration order — only the service's own request path can.
-    if (this.effectivePolicy(session) === 'never') return 'rejected'
+    // DeepSeekGUI (2026-09-24): a protected action (red warning) is always a
+    // person's decision, even under 'never' — the Full access preset. Refusing
+    // it silently would hide why the assistant stopped; with no answerer it
+    // still fails closed through the 'unavailable' fallthrough below.
+    if (this.effectivePolicy(session) === 'never' && req.danger?.some(concern => RED_DANGER.has(concern)) !== true) return 'rejected'
     // Enter the promise chain BEFORE dispatching: a listener that throws
     // SYNCHRONOUSLY (before its first await) must land in the same rejection
     // path as an async one — `Promise.resolve(call())` would let it escape

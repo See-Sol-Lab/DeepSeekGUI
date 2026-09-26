@@ -5,13 +5,14 @@ import { bytesToBase64 } from '@deepseek-ai/dsh-util-crypto'
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import { FILE_UPLOAD_PATH } from '../protocol.ts'
+import { FILE_UPLOAD_ROUTE } from '../protocol.ts'
 import type {
   ClientFileUploadHooks, EncodedFileUploadRequest, FileUploadFetch, FileUploadValue,
 } from '../types.ts'
 import type { FileUploadBody, FileUploadService } from './contract.ts'
 
 interface FileUploadRequest {
+  /** Document-relative app-owned upload route, query string included. */
   readonly path: string
   readonly body: FileUploadBody
   readonly headers?: Readonly<Record<string, string>>
@@ -160,14 +161,12 @@ interface FileUploadTransport {
 
 /** Cordis service that owns one background carrier per upload operation. */
 export class FileUploadRuntime extends Service implements FileUploadService {
-  readonly available: boolean
   private readonly transport: FileUploadTransport
 
   /** @param ctx - providing Client context. */
   constructor(ctx: Context) {
     super(ctx, 'fileUpload')
     const hook = (globalThis as ClientFileUploadGlobal).__DSH_FILE_UPLOAD__
-    this.available = hook !== undefined || !isFixturePage()
     this.transport = hook === undefined ? workerTransport() : customTransport(hook.fetch)
   }
 
@@ -177,7 +176,6 @@ export class FileUploadRuntime extends Service implements FileUploadService {
    * @returns the response status and text body.
    */
   post(request: FileUploadRequest): Promise<FileUploadResponse> {
-    if (!this.available) return Promise.reject(new Error('background upload is unavailable in fixture mode'))
     return this.transport.post(request)
   }
 
@@ -197,11 +195,11 @@ export class FileUploadRuntime extends Service implements FileUploadService {
     signal?: AbortSignal,
     onProgress?: (progress: { readonly loaded: number; readonly total?: number }) => void,
   ): Promise<RemoteResult<FileUploadValue>> {
-    if (!(data instanceof Uint8Array) && this.available) {
+    if (!(data instanceof Uint8Array)) {
       const query = new URLSearchParams({ sessionId })
       if (name !== undefined) query.set('name', name)
       const response = await this.post({
-        path: `${FILE_UPLOAD_PATH}?${query.toString()}`,
+        path: `${FILE_UPLOAD_ROUTE}?${query.toString()}`,
         body: data,
         headers: { 'content-type': 'application/octet-stream' },
         ...(signal === undefined ? {} : { signal }),
@@ -212,14 +210,10 @@ export class FileUploadRuntime extends Service implements FileUploadService {
       }
       return parseFileUploadResult(response.body)
     }
-    if (!(data instanceof Uint8Array) && !(data instanceof Blob)) {
-      throw new Error('stream file upload requires a background carrier')
-    }
-    const bytes = data instanceof Uint8Array ? data : new Uint8Array(await data.arrayBuffer())
     return (this.ctx as FileUploadRemoteContext).remote.fileUploads.upload(
       sessionId,
       {
-        data: bytesToBase64(bytes),
+        data: bytesToBase64(data),
         ...(name === undefined ? {} : { name }),
       },
       signal,
@@ -237,7 +231,7 @@ function customTransport(customFetch: FileUploadFetch): FileUploadTransport {
         ...(request.body instanceof ReadableStream ? { duplex: 'half' as const } : {}),
         ...(request.signal === undefined ? {} : { signal: request.signal }),
       }
-      const response = await customFetch(resolveUrl(request.path), init)
+      const response = await customFetch(request.path, init)
       return { status: response.status, body: await response.text() }
     },
   }
@@ -291,7 +285,8 @@ function workerTransport(): FileUploadTransport {
         }
         request.signal?.addEventListener('abort', abort, { once: true })
         const message: UploadWorkerStart = {
-          url: resolveUrl(request.path).href,
+          // The Worker's own base is `blob:`, so its request URL must be absolute.
+          url: new URL(request.path, document.baseURI).href,
           body: request.body,
           headers: request.headers ?? {},
         }
@@ -302,24 +297,8 @@ function workerTransport(): FileUploadTransport {
   }
 }
 
-function resolveUrl(path: string): URL {
-  const pageLocation = Reflect.get(globalThis, 'location') as unknown
-  const origin = typeof pageLocation === 'object' && pageLocation !== null
-    && 'origin' in pageLocation && typeof pageLocation.origin === 'string'
-    ? pageLocation.origin
-    : undefined
-  return new URL(path, origin === undefined || origin === 'null' ? 'http://dsh.internal' : origin)
-}
-
-function isFixturePage(): boolean {
-  const pageLocation = Reflect.get(globalThis, 'location') as unknown
-  return typeof pageLocation === 'object' && pageLocation !== null
-    && 'search' in pageLocation && typeof pageLocation.search === 'string'
-    && new URLSearchParams(pageLocation.search).has('fixture')
-}
-
 function parseFileUploadResult(body: string): RemoteResult<FileUploadValue> {
-  const value = JSON.parse(body) as unknown
+  const value: unknown = JSON.parse(body)
   if (!isRecord(value) || typeof value.ok !== 'boolean') {
     throw new TypeError('file upload transport returned an invalid result')
   }

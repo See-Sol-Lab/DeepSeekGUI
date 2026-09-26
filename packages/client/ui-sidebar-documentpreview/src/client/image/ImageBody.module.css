@@ -1,28 +1,41 @@
+/* The frame follows the scroller's width, so the image's percentage maximum
+   resolves against the pane and never scrolls horizontally; a taller image
+   grows the frame and scrolls vertically. */
 .frame {
   display: flex;
   box-sizing: border-box;
-  width: max-content;
+  width: 100%;
   min-width: 100%;
   height: max-content;
   min-height: 100%;
-  padding: 8px;
+  padding: 12px;
   font-family: var(--dsw-font, sans-serif);
   white-space: normal;
 }
 
-.image {
+.frame:has([data-document-loading]) {
+  height: 100%;
+}
+
+/* A wider image shrinks to the pane's width at its aspect ratio; a smaller
+   one keeps its intrinsic size. The auto margins centre it either way. */
+.surface {
   display: block;
   flex: none;
-  width: auto;
+  max-width: none;
+  margin: auto;
+}
+
+.surface[hidden] { display: none; }
+
+.image {
+  display: block;
+  width: 100%;
   max-width: none;
   height: auto;
   max-height: none;
-  margin: auto;
+  border-radius: var(--dsw-radius-md);
   user-select: none;
-}
-
-.image[hidden] {
-  display: none;
 }
 
 .status {

@@ -1,5 +1,5 @@
 ---
-description: "面向模型的 glob 与 grep 发现工具：供组合或排查 agent 工作区搜索的用户与维护者使用。"
+description: "面向模型的 glob 与 grep 发现工具：供组合或排查 agent（智能体）工作区搜索的用户与维护者使用。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-使用 `dsh-tool-fs-search` 为模型提供本地工作区中的 `glob` 文件发现与 `grep` 内容搜索。搜索无需宿主安装 `rg` 或提供文件系统后端；结果相对于工作目录，并包含隐藏与忽略文件但排除 VCS 元数据。可配置上限约束内联输出；挂载可选 spill 存储后，达到上限的结果仍可完整恢复。若需读取、写入或编辑文件，请选择同级 `dsh-tool-fs` 包。
+使用 `dsh-tool-fs-search` 为模型提供本地工作区中的 `glob` 文件发现与 `grep` 内容搜索。搜索无需在宿主上安装 `rg`，也无需文件系统提供方；结果相对于工作目录，并包含隐藏与忽略文件但排除 VCS 元数据。可配置上限约束内联输出；挂载可选 spill 存储后，达到上限的结果仍可完整恢复。若需读取、写入或编辑文件，请选择同级 `dsh-tool-fs` 包。
 
 ## 目录
 
@@ -70,7 +70,7 @@ kind: "package-reference"
 
 ### 部署要求
 
-Node 部署在受支持的 macOS、Linux 与 Windows 目标上获得 `@vscode/ripgrep` 平台包；Python SDK wheel 把目标原生二进制复制到单文件运行时旁，作为 `-rg` 伴随文件。两种载体均不要求宿主安装 `rg`。返回路径相对于解析后的工作目录显示（有会话 cwd 时使用会话 cwd），只有该工作目录与文件系统根目录是同一工作区时，才能用 `read` 继续读取。
+Node 部署在受支持的 macOS、Linux 与 Windows 目标上获得 `@vscode/ripgrep` 平台包；Python SDK 的 wheel 包把目标原生二进制复制到单文件运行时旁，作为 `-rg` 伴随文件。两种载体均不要求宿主安装 `rg`。返回路径相对于解析后的工作目录显示（有会话 cwd 时使用会话 cwd），只有该工作目录与文件系统根目录是同一工作区时，才能用 `read` 继续读取。
 
 ### 失败与恢复
 
@@ -134,18 +134,12 @@ Node 部署在受支持的 macOS、Linux 与 Windows 目标上获得 `@vscode/ri
 
 #### 模型看到的内容
 
-组装时，每个段落通过 `ctx.tools.get(name, scope)` 检查对应工具，仅在其可见时输出。grep 段落仅在 read 可见时包含后续使用 read 的句子。同一受支持工具集合下，原文和段落顺序保持不变，包括通过 `run_code` 暴露的 PTC 能力。 这种按 scope 选择文本的机制适用于系统提示词段落。工具 schema 描述仍是注册时的文本；具体而言，即使 scope 隐藏了 read，grep 的 schema 仍会推荐 read。尚未实现按 scope 改变 schema 措辞。
+组装时，每个段落通过 `ctx.tools.get(name, scope)` 检查对应工具，仅在其可见时输出。grep 段落仅在 read 可见时包含后续使用 read 的句子。同一受支持工具集合下，原文和段落顺序保持不变，包括通过 `run_code` 暴露的 PTC 能力。 这种按 scope 选择文本的机制适用于系统提示词段落。工具 schema 描述仍是注册时的文本，不提及其他工具。
 
-##### 启用 `sampleOverCapGlobResults: true` 时的 Glob 指导
-
-```markdown
-Use the glob tool — not shell find — to discover files by path pattern. A pattern with no "/" matches basenames at any depth, so "*" matches every file in the tree rather than its top level. Results are files only, never directories, and include hidden and ignored files: a result that fits comes back in modification-time order, while a larger one is sampled across top-level entries, so it spans the tree instead of one subtree.
-```
-
-##### 启用 `sampleOverCapGlobResults: false` 时的 Glob 指导
+##### Glob 指导
 
 ```markdown
-Use the glob tool — not shell find — to discover files by path pattern. A pattern with no "/" matches basenames at any depth, so "*" matches every file in the tree rather than its top level. Results are files only, never directories, and include hidden and ignored files: a result that fits comes back in modification-time order, while a larger one keeps the modification-time-ordered head.
+Use the glob tool — not shell find — to discover files by path pattern.
 ```
 
 ##### Grep 指导
@@ -226,4 +220,4 @@ glob 描述声明了配置的超过上限排序方式。生成的 [`glob` 和 `g
 
 </details>
 
-**运行时不变式：** 不发布伴生入口。这个模型侧 adapter 没有独立 lifecycle stream；执行关系由它调用的 capability seam 负责。
+**运行时不变式：** 不发布伴生入口。这个面向模型的适配器没有独立生命周期流；执行关系由它调用的能力 seam 负责。

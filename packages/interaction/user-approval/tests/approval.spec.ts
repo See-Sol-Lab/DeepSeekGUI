@@ -419,6 +419,25 @@ describe('approval policy (the approval/policy fold)', () => {
     expect(session.snapshotEvents().filter(e => e.type === 'approval/decided')).toHaveLength(1)
   })
 
+  it('DeepSeekGUI: a red-warning request still reaches a person under never; a .git-only one does not', async () => {
+    const ctx = new Context()
+    await ctx.plugin(ApprovalService, { policy: 'never' })
+    const seen = vi.fn()
+    ctx.on('approval/request', (req) => { seen(req.danger); return Promise.resolve<ApprovalOutcome>('allowed-once') })
+    const { agent } = sessionAgent('sess-gate-red')
+    await expect(ctx.approval.request({ agent, toolName: 'pwsh', danger: ['system'] })).resolves.toBe('allowed-once')
+    expect(seen).toHaveBeenCalledExactlyOnceWith(['system'])
+    await expect(ctx.approval.request({ agent, toolName: 'git_stage', danger: ['git'] })).resolves.toBe('rejected')
+    expect(seen).toHaveBeenCalledOnce()
+  })
+
+  it('DeepSeekGUI: a red-warning request under never fails closed without an answerer', async () => {
+    const ctx = new Context()
+    await ctx.plugin(ApprovalService, { policy: 'never' })
+    const { agent } = sessionAgent('sess-gate-red-headless')
+    await expect(ctx.approval.request({ agent, toolName: 'pwsh', danger: ['gui'] })).resolves.toBe('unavailable')
+  })
+
   it('the gate decides FIRST even against an answerer registered before the service (prepend)', async () => {
     const ctx = new Context()
     ctx.on('approval/request', () => Promise.resolve<ApprovalOutcome>('allowed-once'))
@@ -471,7 +490,7 @@ describe('approval policy (the approval/policy fold)', () => {
         type: 'text',
         text: 'The approval policy changed from "ask" to "never" (changed by the user).',
       }],
-      source: { kind: 'plugin', plugin: 'user-approval' },
+      source: { kind: 'user-approval' },
     })
   })
 

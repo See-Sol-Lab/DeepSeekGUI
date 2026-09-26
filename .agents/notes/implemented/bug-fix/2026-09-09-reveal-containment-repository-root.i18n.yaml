@@ -1,6 +1,22 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-09-09-reveal-containment-repository-root.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-09-09-reveal-containment-repository-root.md
-2026-09-09-reveal-containment-repository-root.md: 8ec819e5ac5ae1bc14481196074dfa5a18dbabcc
-2026-09-09-reveal-containment-repository-root.zh.md: 30d07155b9a8bb044613dc8d0d5bd6d4df248204
+/agent-note-widen-reveal-containment-to-the-session-s-repository-root:
+  en: 7b514ef4fca6d8ab
+  zh: 06372143ee350712
+/agent-note-widen-reveal-containment-to-the-session-s-repository-root/problem:
+  en: 0ca17fb5255530aa
+  zh: 1a5f6a890ac5e520
+/agent-note-widen-reveal-containment-to-the-session-s-repository-root/decision:
+  en: cbf2b99b937f5008
+  zh: abe6869ad6420d6d
+/agent-note-widen-reveal-containment-to-the-session-s-repository-root/alternatives-considered:
+  en: 6152a10fd9611010
+  zh: 0040a06d114a12cb
+/agent-note-widen-reveal-containment-to-the-session-s-repository-root/consequences:
+  en: e7e60873c83c860f
+  zh: a6d74609146de7d0
+/agent-note-widen-reveal-containment-to-the-session-s-repository-root/verification:
+  en: 0410f6663d2befa3
+  zh: 66721ecd6bff8047

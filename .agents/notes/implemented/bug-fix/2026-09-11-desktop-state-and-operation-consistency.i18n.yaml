@@ -1,6 +1,19 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-09-11-desktop-state-and-operation-consistency.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-09-11-desktop-state-and-operation-consistency.md
-2026-09-11-desktop-state-and-operation-consistency.md: 1fed37ca369f92cd67b89589badb3f59eb47af41
-2026-09-11-desktop-state-and-operation-consistency.zh.md: 96d0511dc29df8baf0f135aa7216e01ac6d2fec7
+/agent-note-desktop-operations-retain-their-approved-target-and-report-completion-accurately:
+  en: 2ea71f6a0f8be5b7
+  zh: 340b05f87420d60f
+/agent-note-desktop-operations-retain-their-approved-target-and-report-completion-accurately/problem:
+  en: 93ed3760ddc6f6bb
+  zh: bde3d8f93ee0fd57
+/agent-note-desktop-operations-retain-their-approved-target-and-report-completion-accurately/decision:
+  en: d82c38bd512753c0
+  zh: 7b0d6c0e6523ead1
+/agent-note-desktop-operations-retain-their-approved-target-and-report-completion-accurately/consequences:
+  en: ccfc0f4a7385992d
+  zh: a8e5712d8d3f77d0
+/agent-note-desktop-operations-retain-their-approved-target-and-report-completion-accurately/alternatives-considered:
+  en: a4b5ec8e968db125
+  zh: 63901fb1c0a31e4d

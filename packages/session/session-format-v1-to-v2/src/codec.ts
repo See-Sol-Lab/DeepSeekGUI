@@ -34,7 +34,7 @@ export const releasedV2SessionFormatCodec = Object.freeze({
     return encodeHeader(header, inheritedEventCount)
   },
   encodeEvent(event: SessionFormatEvent) {
-    return encodeProvenance(event)
+    return encodeSourceEventRanges(event)
   },
 } satisfies SessionFormatCodec & SessionFormatCurrentEncoder)
 
@@ -144,7 +144,7 @@ function decodeEvent(value: unknown, rowIndex: number): SessionFormatEvent {
   if (record['ignorable'] !== undefined && record['ignorable'] !== true) {
     throw new SessionFormatError(`released v2 row ${rowIndex} ignorable must be true when present`)
   }
-  if (record['sourceEventSeqs'] === undefined) return record as unknown as SessionFormatEvent
+  if (record['sourceEventSeqs'] === undefined) return record as SessionFormatEvent
   const seq = sessionFormatCount(record['seq'], `released v2 row ${rowIndex} seq`)
   return {
     ...record,
@@ -175,7 +175,7 @@ function encodeHeader(
   }
 }
 
-function encodeProvenance(event: SessionFormatEvent): SessionFormatJsonObject {
+function encodeSourceEventRanges(event: SessionFormatEvent): SessionFormatJsonObject {
   if (event.sourceEventSeqs === undefined) return event
   return {
     ...event,

@@ -8,7 +8,7 @@
 import { useState } from 'react'
 import type { DiffResult, StatusEntry } from '@deepseek-ai/dsh-git/types'
 import type { WorkbenchFileText, WorkbenchRepository } from '@deepseek-ai/dsh-workbench-inspector/types'
-import { button, caption, mono, ReadStatus, TextView, Toolbar, useRead, view, type ViewProps } from './shared.tsx'
+import { button, BUTTON_CLASS, caption, mono, ReadStatus, TextView, Toolbar, useRead, view, type ViewProps } from './shared.tsx'
 
 const GROUPS = ['staged', 'unstaged', 'untracked', 'conflict'] as const
 
@@ -60,7 +60,7 @@ export function ChangesView({ inspector, bridge, sessionId, t }: ViewProps) {
   return (
     <section style={view} aria-label={t('view.changes')}>
       <Toolbar t={t} refresh={read.refresh}>
-        {selected !== null && <button type="button" style={button} onClick={() => setSelected(null)}>{t('changes.back')}</button>}
+        {selected !== null && <button type="button" className={BUTTON_CLASS} style={button} onClick={() => setSelected(null)}>{t('changes.back')}</button>}
       </Toolbar>
       <ReadStatus state={read} t={t} />
       {repository !== undefined && (
@@ -78,15 +78,16 @@ export function ChangesView({ inspector, bridge, sessionId, t }: ViewProps) {
                   <div key={`${entry.kind}/${entry.path}/${index}`} style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
                     <button
                       type="button"
+                      className={BUTTON_CLASS}
                       style={{ ...button, ...mono, flex: 1, textAlign: 'left', color: 'var(--dsw-alias-label-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                       onClick={() => setSelected(entry)}
                     >
                       {entry.path}{entry.origPath !== undefined ? ` ← ${entry.origPath}` : ''}
                     </button>
                     {bridge !== null && (
-                      <button type="button" style={button} title={t('changes.revealTitle')} onClick={() => reveal(entry.path)}>{t('changes.reveal')}</button>
+                      <button type="button" className={BUTTON_CLASS} style={button} title={t('changes.revealTitle')} onClick={() => reveal(entry.path)}>{t('changes.reveal')}</button>
                     )}
-                    <button type="button" style={button} onClick={() => copy(entry.path)}>
+                    <button type="button" className={BUTTON_CLASS} style={button} onClick={() => copy(entry.path)}>
                       {copied === entry.path ? t('changes.copied') : t('changes.copyPath')}
                     </button>
                   </div>

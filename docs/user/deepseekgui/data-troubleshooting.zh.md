@@ -16,6 +16,8 @@ DeepSeekGUI 把应用状态与 Managed Harness Home 保存在 Windows 用户目�
 | 更新缓存 | `%APPDATA%\DeepSeekGUI\updates` | 最多保存一条已验证安装器记录及其文件。 |
 | 全局记忆 | 托管 Harness Home 内 | 在设置中编辑的跨项目偏好。 |
 | 项目记忆 | 所选工作区中的 `<文件夹名>.memory.md` | 助手维护的项目事实，属于项目文件的一部分。 |
+| 记忆条目 | 托管 Harness Home 内的 `storages/deepseekgui_memory` | 开启条目记忆后每条条目（含已遗忘条目）一个 JSON 文件，外加记忆方式设置（见[记忆](memory.zh.md)）。 |
+| 技能库 | 托管 Harness Home 内的 `deepseekgui/skills` 与 `storages/deepseekgui_skills` | 已安装的技能包及其清单，以及每个项目文件夹的选择。 |
 
 Windows 通过 Known Folder API 解析真实应用数据目录。表格使用 `%APPDATA%` 作为熟悉的默认写法。
 
@@ -79,6 +81,37 @@ DeepSeekGUI 使用应用内的浏览器面板，首次浏览器操作时启动�
 ## 检查更新报告没有可用更新
 
 已安装版本已经是最新发布版本。这不会改变已安装应用。你也可以从 GitHub 手动下载 Release。
+
+## Sandbox 模式用过的项目里，自己运行程序出错（已知问题）
+
+在 Sandbox 模式下，Windows 沙箱第一次给某个项目文件夹写权限时，会在这个文件夹上永久留下三样设置：一条给沙箱的写入授权、一条“禁止删除子项”，以及**低完整性标签**。这是上游 DSH 0.1.7 的设计，关掉 DeepSeekGUI 也不会撤销。
+
+标签带来的副作用是：之后**你自己**从这个文件夹里启动的程序也会以低权限运行，即使你是在普通终端里启动的。常见表现：
+
+- 项目里的 Electron 程序启动即退出，退出码 `0x80000003`，没有任何输出；
+- 项目里的 Python 虚拟环境、`uv`、编译出来的程序写用户目录或缓存时报“拒绝访问”。
+
+同一个程序拷到别的文件夹能正常运行，基本就是这个原因。可以这样确认（把路径换成你的项目）：
+
+```powershell
+icacls "D:\my-project" | Select-String "Mandatory"
+```
+
+输出里有 `Low Mandatory Level` 就是被打了标签。确认没有 DeepSeekGUI 任务在这个项目里运行后，在自己的 PowerShell 里执行下面几行即可恢复（`S-1-4-…` 换成上一条命令输出里看到的那个编号）：
+
+```powershell
+$root = "D:\my-project"
+$acl = (Get-Item $root).GetAccessControl('Access')
+$acl.PurgeAccessRules([Security.Principal.SecurityIdentifier]'S-1-4-…')
+$everyone = [Security.Principal.SecurityIdentifier]'S-1-1-0'
+foreach ($r in @($acl.GetAccessRules($true, $false, [Security.Principal.SecurityIdentifier]))) {
+  if ($r.AccessControlType -eq 'Deny' -and $r.IdentityReference -eq $everyone) { [void]$acl.RemoveAccessRuleSpecific($r) }
+}
+(Get-Item $root).SetAccessControl($acl)
+icacls $root /setintegritylevel '(OI)(CI)M'
+```
+
+下次再以 Sandbox 模式在这个项目里执行命令时，这些设置会重新写上。经常要在项目里自己运行程序的，可以给这个项目用 Full Access。上游跟踪见 [deepseek-harness#7709](https://github.com/deepseek-ai/deepseek-harness/discussions/7709)。
 
 ## GUI 无法使用时导出诊断
 

@@ -42,6 +42,14 @@
   padding-left: var(--dsh-table-lead);
 }
 
+/* Only the painted table outranks Conversation's z-index 0 width handle. The
+   full-width scroll wrapper and its transparent alignment padding stay below,
+   so a fitting four-column table does not disable the surrounding gutter. */
+.body :global(.md-table-wide) > table {
+  position: relative;
+  z-index: 1;
+}
+
 /* hidden="until-found" keeps a zero-height reasoning box in flex layout.
    Cancel the one gap that box would otherwise leave before the visible reply;
    visible Assistant blocks retain the ordinary 16px rhythm. */
@@ -55,7 +63,7 @@
 .stopped {
   align-self: flex-start;
   padding: 0 6px;
-  border-radius: 6px;
+  border-radius: var(--dsw-radius-sm);
   background: var(--dsw-alias-interactive-bg-hover);
   color: var(--dsw-alias-label-tertiary);
   font-size: 11px;
@@ -65,6 +73,6 @@
 /* Finalized footer offset (figma 43:32997); chrome lives in MessageIconActions. */
 .actions {
   margin-top: 16px;
-  /* Optical align with 28px icon hit targets that pad 6px past the glyph. */
+  /* Optical align with the 28px action hit targets. */
   margin-left: -6px;
 }

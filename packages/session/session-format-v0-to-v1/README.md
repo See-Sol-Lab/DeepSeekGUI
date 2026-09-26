@@ -40,7 +40,7 @@ stage.transformEvent(event, migrationContext)
 const targetInheritedEventCount = stage.finish(migrationContext)
 ```
 
-`releasedV0SessionFormatCodec` reads the exact v0 header and physical rows, including packed Assistant deltas and range-encoded provenance. Its decoder emits either a scalar event or a codec-owned compact run through `emitEvent()` and `emitRun()`. `sessionFormatV0ToV1` creates one stateful stage per restore; the static catalog connects that decoder and stage so migration does not retain a physical-row array. `releasedV1SessionFormatCodec` exposes the same row-at-a-time decoder for the v1 physical layout without freezing the ordinary event vocabulary.
+`releasedV0SessionFormatCodec` reads the exact v0 header and physical rows, including packed Assistant deltas and range-encoded source-event references. Its decoder emits either a scalar event or a codec-owned compact run through `emitEvent()` and `emitRun()`. `sessionFormatV0ToV1` creates one stateful stage per restore; the static catalog connects that decoder and stage so migration does not retain a physical-row array. `releasedV1SessionFormatCodec` exposes the same row-at-a-time decoder for the v1 physical layout without freezing the ordinary event vocabulary.
 
 The alpha edge refuses every event type outside its frozen inventory, including an unknown event marked `ignorable: true`. It also refuses unexpected payload members. `tool/result.meta` and nested PTC `arguments` remain explicit opaque JSON fields and are preserved without Session-sequence interpretation. Unknown content-block `type`, message-source `kind`, assistant finish-reason `kind`, and `turn/end` reason `kind` arms remain owner-opaque JSON while their known arms receive structural validation.
 
@@ -58,7 +58,7 @@ The physical codec validates each packed row atomically, emits it as a compact r
 
 | File | Role |
 |---|---|
-| [`src/codec.ts`](src/codec.ts) | Frozen v0/v1 physical headers, packed rows, and provenance ranges |
+| [`src/codec.ts`](src/codec.ts) | Frozen v0/v1 physical headers, packed rows, and source-event ranges |
 | [`src/dispositions.ts`](src/dispositions.ts) | Released-v0 event and payload-member inventory |
 | [`src/payload-validation.ts`](src/payload-validation.ts) | Frozen nested payload semantics for every released-v0/v1 event type |
 | [`src/relationships.ts`](src/relationships.ts) | Frozen cross-event pairings: turns, steps, tool starts and results, retries, compaction, titles |

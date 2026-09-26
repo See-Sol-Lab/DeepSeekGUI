@@ -43,7 +43,7 @@ Status: implemented
 
 更新与迁移两条流程在构造上未变：它们的函数没有被移动，调用点仍按同一顺序执行。迁移的删除入口仍由上一次运行写下的清单把关。
 
-仓库保留既有的动态入口面。knip 仍是本 fork 的临时基线而不是门禁——上游已在[从仓库门禁中移除 Knip](../process/2026-08-19-remove-knip.zh.md) 中移除它，本 fork 在提交 `4e7868d671` 重新加入 `knip.json`。它剩下的发现是按名字加载的 snapshot fixture、e2e 驱动与语料文件，以及模块数据形状；没有一个是死代码。
+仓库保留既有的动态入口面。knip 仍是本 fork 的临时基线而不是门禁——上游已在[从仓库门禁中移除 Knip](../process/2026-08-19-remove-knip.zh.md) 中移除它，本 fork 重新加入了 `knip.json`。它剩下的发现是按名字加载的 snapshot fixture、e2e 驱动与语料文件，以及模块数据形状；没有一个是死代码。
 
 ## 验证
 

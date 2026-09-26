@@ -1,6 +1,6 @@
 /**
- * The file tree's view state: which directories are expanded, and what each
- * loaded level contains.
+ * The file tree's view state: which directories are expanded, what each
+ * loaded level contains, and where the body is scrolled to.
  *
  * The tree is not one resource. A directory listing per level, expanded lazily,
  * is state the type owns — so it lives in a Slot-standard exclusive store
@@ -31,7 +31,7 @@ export interface DirLevel {
 /** What one directory level is doing right now. */
 export type LevelState =
   | { readonly kind: 'loading' }
-  | { readonly kind: 'ready'; readonly level: DirLevel }
+  | { readonly kind: 'ready'; readonly level: DirLevel; readonly failure?: RemoteFailure }
   | { readonly kind: 'failed'; readonly failure: RemoteFailure }
 
 /**
@@ -41,12 +41,15 @@ export type LevelState =
  * the Host reports it, and a child is the parent joined with the entry name.
  */
 export interface FilesTabState {
+  autoRefresh: boolean
   /** Absolute path of the workspace root this tree is rooted at. */
   root: string
   /** Level state by absolute directory path; a path absent here was never asked for. */
   levels: Record<string, LevelState>
   /** Expanded absolute directory paths, root included. */
   expanded: string[]
+  /** The body's scroll offset in px, so a remounted tree comes back where the reader was. */
+  scrollTop: number
 }
 
 /** Every tab's tree, keyed by tab id. */
@@ -69,11 +72,13 @@ function bucket(state: FilesState, tabId: TabId): FilesTabState {
 
 /** The tree store's write set; every action names the tab it writes. */
 type FilesActions = {
+  autoRefresh: (draft: FilesState, tabId: TabId, enabled: boolean) => void
   start: (draft: FilesState, tabId: TabId, root: string) => void
   loading: (draft: FilesState, tabId: TabId, path: string) => void
   loaded: (draft: FilesState, tabId: TabId, path: string, level: DirLevel) => void
   failed: (draft: FilesState, tabId: TabId, path: string, failure: RemoteFailure) => void
   toggled: (draft: FilesState, tabId: TabId, path: string) => void
+  scrolled: (draft: FilesState, tabId: TabId, scrollTop: number) => void
   reset: (draft: FilesState, tabId: TabId) => void
   forget: (draft: FilesState, tabId: TabId) => void
 }
@@ -89,6 +94,7 @@ export function createFilesStore(): EngineStoreHandle<FilesState, FilesActions> 
   return defineStore({
     init: (): FilesState => ({ byTab: {} }),
     actions: {
+      autoRefresh: (d, tabId: TabId, enabled: boolean) => { bucket(d, tabId).autoRefresh = enabled },
       /**
        * Seed one tab's tree at its workspace root, with the root expanded.
        * @param d - draft state.
@@ -96,7 +102,7 @@ export function createFilesStore(): EngineStoreHandle<FilesState, FilesActions> 
        * @param root - absolute path of the workspace root.
        */
       start: (d, tabId: TabId, root: string) => {
-        d.byTab[tabId] = { root, levels: {}, expanded: [root] }
+        d.byTab[tabId] = { root, levels: {}, expanded: [root], scrollTop: 0, autoRefresh: true }
       },
       /**
        * Mark one directory as being listed.
@@ -105,7 +111,8 @@ export function createFilesStore(): EngineStoreHandle<FilesState, FilesActions> 
        * @param path - absolute directory path.
        */
       loading: (d, tabId: TabId, path: string) => {
-        bucket(d, tabId).levels[path] = { kind: 'loading' }
+        const state = bucket(d, tabId)
+        if (state.levels[path]?.kind !== 'ready') state.levels[path] = { kind: 'loading' }
       },
       /**
        * Record one directory's contents.
@@ -115,7 +122,19 @@ export function createFilesStore(): EngineStoreHandle<FilesState, FilesActions> 
        * @param level - the listing to show under it.
        */
       loaded: (d, tabId: TabId, path: string, level: DirLevel) => {
-        bucket(d, tabId).levels[path] = { kind: 'ready', level }
+        const state = bucket(d, tabId)
+        const previous = state.levels[path]
+        if (previous?.kind === 'ready') {
+          const directories = new Set(level.entries.filter(entry => entry.type === 'directory').map(entry => entry.name))
+          for (const entry of previous.level.entries) {
+            if (entry.type !== 'directory' || directories.has(entry.name)) continue
+            const removed = `${path.replace(/[/\\]+$/, '')}/${entry.name}`
+            state.expanded = state.expanded.filter(value => value !== removed && !value.startsWith(`${removed}/`))
+            state.levels = Object.fromEntries(Object.entries(state.levels)
+              .filter(([key]) => key !== removed && !key.startsWith(`${removed}/`)))
+          }
+        }
+        state.levels[path] = { kind: 'ready', level }
       },
       /**
        * Record why one directory could not be listed.
@@ -125,7 +144,10 @@ export function createFilesStore(): EngineStoreHandle<FilesState, FilesActions> 
        * @param failure - the settled Remote failure.
        */
       failed: (d, tabId: TabId, path: string, failure: RemoteFailure) => {
-        bucket(d, tabId).levels[path] = { kind: 'failed', failure }
+        const level = bucket(d, tabId).levels[path]
+        bucket(d, tabId).levels[path] = level?.kind === 'ready'
+          ? { ...level, failure }
+          : { kind: 'failed', failure }
       },
       /**
        * Open a collapsed directory, or collapse an open one.
@@ -140,6 +162,15 @@ export function createFilesStore(): EngineStoreHandle<FilesState, FilesActions> 
         const at = state.expanded.indexOf(path)
         if (at >= 0) state.expanded.splice(at, 1)
         else state.expanded.push(path)
+      },
+      /**
+       * Record where one tab's body is scrolled to.
+       * @param d - draft state.
+       * @param tabId - the tab being drawn.
+       * @param scrollTop - the body's scroll offset, in px.
+       */
+      scrolled: (d, tabId: TabId, scrollTop: number) => {
+        bucket(d, tabId).scrollTop = scrollTop
       },
       /**
        * Drop every loaded level, keeping what is expanded.

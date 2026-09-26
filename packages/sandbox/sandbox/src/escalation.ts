@@ -18,6 +18,8 @@
 
 import { assertNever } from '@deepseek-ai/dsh-util-values'
 import type { SandboxMode } from './index.ts'
+import { actionConcerns, chatOnlyReason } from './protected-zones.ts'
+import type { SafetyConcern } from './protected-zones.ts'
 
 /**
  * The strictly-wider table: what a call whose effective mode is the key may
@@ -86,6 +88,17 @@ export function escalationHintMarker(subject: string): string {
 }
 
 /**
+ * The model-facing `sandbox_permissions` parameter description, which carries
+ * the escalation rules for every enforcing family.
+ * @param subject - the family's noun for the denied action (`command` for
+ *   bash, `operation` for a filesystem mutation).
+ * @returns the parameter description, exactly as the model sees it.
+ */
+export function sandboxPermissionsDescription(subject: string): string {
+  return `The narrowest wider sandbox mode for a one-shot retry of the exact ${subject} the sandbox just denied; the retry asks the user for approval.`
+}
+
+/**
  * The closed outcome vocabulary of one escalation ask — structurally identical
  * to the approval seam's `ApprovalOutcome` so an `ApprovalService.request`
  * return is assignable without this package importing it.
@@ -102,10 +115,19 @@ export type EscalationOutcome = 'allowed-once' | 'rejected' | 'cancelled' | 'una
 export interface EscalationApprover<A = object, C = string> {
   /**
    * Ask the human to approve one action, resolving to a closed outcome.
-   * @param req - the audit-self-contained request (agent, tool, call id, reason, optional signal).
+   * @param req - the audit request with optional localized displayReason and presentation lifetime signal.
    * @returns the human's decision as a closed {@link EscalationOutcome}.
    */
-  request(req: { agent: A; toolName: string; callId: C; reason: string; signal?: AbortSignal }): Promise<EscalationOutcome>
+  request(req: {
+    agent: A
+    toolName: string
+    callId: C
+    reason: string
+    /** DeepSeekGUI: protected locations the action touches (a red warning). */
+    danger?: readonly SafetyConcern[]
+    displayReason?: { readonly en: string; readonly [locale: string]: string }
+    signal?: AbortSignal
+  }): Promise<EscalationOutcome>
 }
 
 /**
@@ -134,28 +156,37 @@ export interface EscalationRequest {
   requestedMode: string
   /** The model's one-sentence reason, shown verbatim to the user inside the audit reason. */
   justification: string
-  /** The call's effective mode (session override ?? composition default) the request must strictly widen. */
+  /** The call's effective mode (session override ?? composition default); repeating it needs no approval. */
   effectiveMode: SandboxMode
   /** The family's noun for the escalated action in user-facing texts (`command` for bash, `operation` for fs). */
   subject: string
+  /**
+   * DeepSeekGUI: what the action writes, so the approval can carry its safety
+   * concerns (red warning) and a chat-only workspace can refuse outright.
+   * Omitted by callers that have no workspace to judge. `cwd` is where a
+   * command actually runs, so its relative paths are judged there.
+   */
+  action?: { workspaceRoot: string; command?: string; paths?: readonly string[]; cwd?: string }
 }
 
 /**
- * Resolve a sandbox-escalation request BEFORE anything executes: check strict
- * widening against the call's effective mode, then resolve the approval
- * channel, then map every outcome — the ordered fail-closed sequence both
- * enforcing families share. Returns the granted mode to stamp onto exactly
- * this call; throws the distinct verbatim text for every other path (a
- * non-widening request, a missing approval service, an agent-less execution,
- * a rejection, a cancellation, an unanswerable ask) — the tool registry turns
- * the throw into the call's isError result, and nothing has run. A
- * non-widening request never prompts a human.
+ * Resolve a sandbox permission request before execution. Repeating the call's
+ * effective mode returns it without approval. A strictly wider mode requires
+ * approval and applies only to this call. Narrower or unsupported targets,
+ * missing approval services or agents for widening, and non-grant outcomes
+ * throw before execution.
  * @param request - the escalation to judge (see {@link EscalationRequest}).
  * @param approval - the approval ingredients the tool holds (see {@link EscalationApproval}).
  * @returns the granted mode, consumed by the one call that asked.
  */
 export async function approveEscalation<A, C>(request: EscalationRequest, approval: EscalationApproval<A, C>): Promise<SandboxMode> {
   const { requestedMode: mode, effectiveMode, justification, subject } = request
+  if (mode === effectiveMode) {
+    // DeepSeekGUI: repeating standing full access is no way around the
+    // protected-location stop the tool applies to an ordinary call.
+    if (effectiveMode === 'danger-full-access' && request.action !== undefined) await approveProtectedAction(request.action, subject, approval)
+    return effectiveMode
+  }
   // Strict widening is an EXECUTION check against the call's effective mode —
   // deliberately not a schema constraint (the enum is the closed target
   // vocabulary; the effective mode is per-call truth).
@@ -168,6 +199,12 @@ export async function approveEscalation<A, C>(request: EscalationRequest, approv
   if (approval.agent === undefined) {
     throw new Error(`sandbox escalation to "${mode}" requires approval, but the call has no agent to route it through`)
   }
+  if (request.action !== undefined && chatOnlyReason(request.action.workspaceRoot) !== undefined) {
+    throw new Error('this workspace is chat-only (the home directory, a drive root, or a system location): changes and sandbox escalation are not available here; ask the user to open a project folder')
+  }
+  const danger = request.action === undefined
+    ? []
+    : actionConcerns({ ...request.action, fullAccess: mode === 'danger-full-access' })
   // Self-contained for the audit trail: approval/asked stores this reason,
   // and the target mode is part of the grant's identity.
   const outcome = await approval.approver.request({
@@ -175,15 +212,56 @@ export async function approveEscalation<A, C>(request: EscalationRequest, approv
     toolName: approval.toolName,
     callId: approval.callId,
     reason: `escalate sandbox to ${mode}: ${justification}`,
+    ...danger.length > 0 ? { danger } : {},
+    displayReason: {
+      en: `Allow this operation with ${mode} permissions: ${justification}`,
+      zh: `允许本次操作使用 ${mode} 权限：${justification}`,
+    },
     ...approval.signal ? { signal: approval.signal } : {},
   })
   switch (outcome) {
     // The schema enum already pinned `mode` to the closed target vocabulary;
     // the check above proved it is strictly wider.
     case 'allowed-once': return mode as SandboxMode
-    case 'rejected': throw new Error(`the user rejected escalating this ${subject} to "${mode}"`)
+    case 'rejected': throw new Error(`the user rejected escalating this ${subject} to "${mode}"; it stays denied, so stop and explain instead of working around it`)
     case 'cancelled': throw new Error(`approval for escalating to "${mode}" was cancelled`)
     case 'unavailable': throw new Error(`sandbox escalation to "${mode}" requires approval, but no approval channel is available`)
     default: return assertNever(outcome, 'EscalationOutcome')
+  }
+}
+
+/**
+ * DeepSeekGUI (2026-09-24): under standing full access nothing confines an
+ * action, so one that names a protected location — Windows, installed
+ * application code, DeepSeekGUI's own code — stops for a person first, as a
+ * red warning. `.git` is not guarded here: full access is the person's grant
+ * for repository work. The text scan is heuristic (see protected zones).
+ * @param action - what the action writes: the workspace plus its command text or target paths.
+ * @param subject - the family's noun for the action (`command`, `operation`).
+ * @param approval - the approval ingredients the tool holds.
+ * @returns once the action may proceed.
+ * @throws when the person declines or no approval channel is available.
+ */
+export async function approveProtectedAction<A, C>(
+  action: { workspaceRoot: string; command?: string; paths?: readonly string[]; cwd?: string },
+  subject: string,
+  approval: EscalationApproval<A, C>,
+): Promise<void> {
+  const danger = actionConcerns({ ...action, fullAccess: true }).filter(concern => concern !== 'git' && concern !== 'elevated')
+  if (danger.length === 0) return
+  const list = danger.join(', ')
+  if (approval.approver === undefined || approval.agent === undefined) {
+    throw new Error(`this ${subject} touches protected locations (${list}) and needs the user's approval, but no approval channel is available`)
+  }
+  const outcome = await approval.approver.request({
+    agent: approval.agent,
+    toolName: approval.toolName,
+    callId: approval.callId,
+    reason: `this ${subject} touches protected locations (${list})`,
+    danger,
+    ...approval.signal ? { signal: approval.signal } : {},
+  })
+  if (outcome !== 'allowed-once') {
+    throw new Error(`the user did not approve this ${subject}, which touches protected locations (${list}); do not retry it another way`)
   }
 }

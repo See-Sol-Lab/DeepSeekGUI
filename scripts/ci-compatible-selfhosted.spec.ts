@@ -35,7 +35,7 @@ function evaluate(expression: string, context: Record<string, unknown>): unknown
   const body = expression.trim().slice(3, -2)
   return runInNewContext(body, {
     ...context, fromJSON: JSON.parse,
-  }, { timeout: 1000 }) as unknown
+  }, { timeout: 1000 })
 }
 
 function route(options: { mode?: string; author?: string; repository?: string; fork?: boolean; actor?: string } = {}): unknown {
@@ -57,6 +57,9 @@ describe('Node compatibility self-hosted routing', () => {
   it('uses the Linux pool only for opted-in repository-owned PRs', () => {
     expect(route()).toEqual(labels)
     for (const mode of ['', 'hosted', 'unexpected']) expect(route({ mode })).toBe('ubuntu-latest')
+    // The blacksmith value routes the compatibility legs onto Blacksmith's
+    // standard Linux runner regardless of PR ownership (ephemeral runners).
+    expect(route({ mode: 'blacksmith' })).toBe('blacksmith-4vcpu-ubuntu-2404')
     expect(route({ author: 'dependabot[bot]', actor: 'maintainer' })).toBe('ubuntu-latest')
     expect(route({ repository: 'outsider/fork', fork: true })).toBe('ubuntu-latest')
     expect(route({ repository: 'outsider/fork', fork: false })).toBe('ubuntu-latest')

@@ -20,6 +20,8 @@ import { appendDesktopEvent } from './desktop-events.ts'
 import { formatStampLocal } from './diagnostics-service.ts'
 import { cancelledInstallView, digestInstaller, updateViewOf } from './update-view.ts'
 import {
+  DEFAULT_UPDATE_FEED_URL,
+  FALLBACK_UPDATE_FEED_URL,
   sanitizeAssetFilename,
   isNewerStable,
   selectPlatformAsset,
@@ -307,7 +309,7 @@ export function createUpdateControl(deps: UpdateControlDeps): UpdateControl {
         return
       case 'current':
         manifest = null
-        view = updateViewOf({ channel: feedUrl, result: 'current' })
+        view = updateViewOf({ channel: feedUrl, result: 'current', viaFallback: outcome.viaFallback === true })
         return
       case 'available': {
         // 平台没有对应资产（例如 Linux 上只有 .exe）是明确拒绝，绝不退回
@@ -333,6 +335,7 @@ export function createUpdateControl(deps: UpdateControlDeps): UpdateControl {
           state: reusable ? 'verified' : 'available',
           latestVersion: outcome.manifest.latestVersion,
           releaseNotes: outcome.manifest.releaseNotes,
+          viaFallback: outcome.viaFallback === true,
         })
         if (background && balloonVersion !== outcome.manifest.latestVersion) {
           balloonVersion = outcome.manifest.latestVersion
@@ -370,7 +373,9 @@ export function createUpdateControl(deps: UpdateControlDeps): UpdateControl {
       const feedUrl = deps.readFeed()
       view = updateViewOf({ channel: feedUrl, state: 'checking' })
       deps.broadcast()
-      const outcome = await runUpdateCheck(deps.runner, feedUrl, deps.appVersion, deps.zh())
+      // 官网镜像只接在内置公开通道后面；用户显式覆盖过 feed 就不回落。
+      const fallback = feedUrl === DEFAULT_UPDATE_FEED_URL ? FALLBACK_UPDATE_FEED_URL : null
+      const outcome = await runUpdateCheck(deps.runner, feedUrl, deps.appVersion, deps.zh(), fallback)
       applyCheckOutcome(feedUrl, outcome, background)
       deps.broadcast()
     } catch (error) {

@@ -1,6 +1,28 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-08-17-deepseekgui-b2-p4-update-diagnostics-hardening.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-08-17-deepseekgui-b2-p4-update-diagnostics-hardening.md
-2026-08-17-deepseekgui-b2-p4-update-diagnostics-hardening.md: 302c2fb0c54218b8c1eae042acf5a84f20288f0f
-2026-08-17-deepseekgui-b2-p4-update-diagnostics-hardening.zh.md: 8c231c682f2b9287e008161c5b7a4df293deacc5
+/agent-note-deepseekgui-b2-p4-update-service-diagnostics-center-log-retention-release-hardening:
+  en: 9d7bce3c91efccd7
+  zh: ef2cc1c1d4bbcb89
+/agent-note-deepseekgui-b2-p4-update-service-diagnostics-center-log-retention-release-hardening/problem:
+  en: 27b259547a168b73
+  zh: be2fee1ee303f0ad
+/agent-note-deepseekgui-b2-p4-update-service-diagnostics-center-log-retention-release-hardening/decision:
+  en: c66c93253668aee5
+  zh: a9622adf951262b3
+/agent-note-deepseekgui-b2-p4-update-service-diagnostics-center-log-retention-release-hardening/alternatives-considered:
+  en: 824288069359a410
+  zh: e7ac14287daf887e
+/agent-note-deepseekgui-b2-p4-update-service-diagnostics-center-log-retention-release-hardening/consequences:
+  en: 2252c6c6617fb9a9
+  zh: 3e180c07cb8dbba7
+/agent-note-deepseekgui-b2-p4-update-service-diagnostics-center-log-retention-release-hardening/acceptance-rework-post-review-facts:
+  en: a7e796710e8863a2
+  zh: ff4ad6fb0c9fad61
+/agent-note-deepseekgui-b2-p4-update-service-diagnostics-center-log-retention-release-hardening/deferred:
+  en: 535c77a071c6264b
+  zh: fb909b069ee5e7ce
+/agent-note-deepseekgui-b2-p4-update-service-diagnostics-center-log-retention-release-hardening/verification-notes-for-the-acceptance-stage:
+  en: 44b9739aef5a999e
+  zh: ea9bb4ee1ea2593c

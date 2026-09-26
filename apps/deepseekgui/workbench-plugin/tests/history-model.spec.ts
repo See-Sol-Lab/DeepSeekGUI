@@ -34,7 +34,7 @@ const result = (over: {
 } as unknown as ToolCallBlock)
 
 const runningCall = (name: string): ToolCallBlock => ({
-  callId: 'c-run', name, argsRaw: '{}', turn: 1, step: 1, time: 500, subCalls: [],
+  phase: 'start', callId: 'c-run', name, argsRaw: '{}', turn: 1, step: 1, time: 500, subCalls: [],
 } as unknown as ToolCallBlock)
 
 /** One Chat window node wrapper. */

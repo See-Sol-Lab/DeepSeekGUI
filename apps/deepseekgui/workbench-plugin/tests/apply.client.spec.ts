@@ -15,11 +15,13 @@ import { DeepSeekGUIBrandName } from '../src/client/Brand.tsx'
 import { WorkbenchBadge } from '../src/client/WorkbenchBadge.tsx'
 import { DesktopActions } from '../src/client/DesktopActions.tsx'
 import { NotificationWatcher } from '../src/client/NotificationWatcher.tsx'
-import { FirstRunGuide } from '../src/client/FirstRunGuide.tsx'
-import { FirstRunWorkspaceGuide } from '../src/client/FirstRunWorkspaceGuide.tsx'
+import { DeleteSessionDialog, DeleteSessionMenuItem } from '../src/client/session-delete.tsx'
+import { WelcomeOverlay } from '../src/client/welcome/WelcomeOverlay.tsx'
 import { ChangesView } from '../src/client/views/ChangesView.tsx'
 import { GitView } from '../src/client/views/GitView.tsx'
 import { MemoryView } from '../src/client/views/MemoryView.tsx'
+import { MemorySettingsSection } from '../src/client/memory/MemorySettingsSection.tsx'
+import { ArchivedSessionsSection } from '../src/client/ArchivedSessionsSection.tsx'
 import { BrowserToolRow, GitPrToolRow } from '../src/client/cards/tool-rows.tsx'
 
 /** Git/pr and browser wire keys the rows own. */
@@ -43,7 +45,47 @@ interface RegisteredEntry {
 }
 
 describe('workbench client apply', () => {
-  it('registers the brand seats, the marker, the desktop poll, the tool rows and the four views', async () => {
+  it('registers the official-style welcome overlay only in a DeepSeekGUI window carrying the Host shim', async () => {
+    const registered: RegisteredEntry[] = []
+    const slots = {
+      inject: vi.fn((_name: string, contribution: () => unknown) => { contribution(); return undefined }),
+      register: (options: RegisteredEntry, component: unknown) => { registered.push({ ...options, component }); return {} },
+    }
+    const page = globalThis as Record<string, unknown>
+    window.history.replaceState(null, '', '/?deepseekgui-control=5555.tok')
+    page.dshDesktop = { shell: 'deepseekgui' }
+    page.dshOnboarding = { hasApiKey: vi.fn(async () => false), saveApiKey: vi.fn(async () => true) }
+    const ctx = {
+      locale: { register: vi.fn(), bind: vi.fn(() => (key: string) => key), getSnapshot: () => ({ active: 'zh' }) },
+      sessions: { open: vi.fn(), list: { getSnapshot: () => ({ current: undefined, phase: 'ready', byId: {} }) } },
+      remote: {
+        $mount: vi.fn(async () => async () => {}), $on: vi.fn(() => () => {}), workbenchInspector: {}, workbenchMemory: {},
+        $stream: vi.fn(() => ({ dispose: vi.fn(), async *[Symbol.asyncIterator]() { /* no frames */ } })),
+        account: { watch: vi.fn(), startSignIn: vi.fn(), cancelSignIn: vi.fn() },
+      },
+      layout: { openRightbar: vi.fn(), closeRightbar: vi.fn() },
+      sidebarRight: { isExpanded: vi.fn(() => false), toggleExpanded: vi.fn() },
+      effect: vi.fn((fn: () => unknown) => { fn() }),
+      provide: vi.fn(),
+      inject: vi.fn((_deps: string[], callback: (scoped: unknown) => void) => { callback(ctx); return Promise.resolve() }),
+      slots,
+    }
+    try {
+      await apply(ctx as never)
+      expect(ctx.inject.mock.calls[0]?.[0]).toEqual(['slots', 'remote.account'])
+      const welcome = registered.find(entry => entry.id === 'deepseekgui-welcome')
+      expect(welcome).toMatchObject({ name: 'shell.overlay', locale: 'deepseekgui.welcome', component: WelcomeOverlay })
+      // The expired-sign-in notice and both key-readiness events are wired.
+      const events = ctx.remote.$on.mock.calls.map(([name]) => name)
+      expect(events).toEqual(expect.arrayContaining(['deepseek-account/session-expired', 'credentials/reference-updated', 'llm/adapters-updated']))
+    } finally {
+      delete page.dshDesktop
+      delete page.dshOnboarding
+      window.history.replaceState(null, '', '/')
+    }
+  })
+
+  it('registers the brand seats, the marker, the desktop poll, the tool rows, the views and the memory section', async () => {
     const registered: RegisteredEntry[] = []
     const drive = (result: unknown): void => {
       if (result !== undefined && typeof (result as { next?: unknown }).next === 'function') {
@@ -61,8 +103,8 @@ describe('workbench client apply', () => {
     }
     const ctx = {
       locale: { register: vi.fn(), bind: vi.fn(() => (key: string) => key) },
-      sessions: { open: vi.fn(), list: { getSnapshot: () => ({ current: undefined }) } },
-      remote: { $mount: vi.fn(async () => async () => {}), workbenchInspector: {} },
+      sessions: { open: vi.fn(), list: { getSnapshot: () => ({ current: undefined, phase: 'ready', byId: { 's-1': {} } }) } },
+      remote: { $mount: vi.fn(async () => async () => {}), $on: vi.fn(() => () => {}), workbenchInspector: {}, workbenchMemory: {} },
       // #13: the frame's panel face the exclusion latches onto, and the
       // Sidebar controller it collapses.
       layout: { openRightbar: vi.fn(), closeRightbar: vi.fn() },
@@ -80,32 +122,43 @@ describe('workbench client apply', () => {
     }
     await apply(ctx as never)
 
-    expect(ctx.remote.$mount).toHaveBeenCalledOnce()
+    // The inspector namespace and (B7-P9) the memory namespace.
+    expect(ctx.remote.$mount).toHaveBeenCalledTimes(2)
+    // One fan-out subscription to the forwarded store change.
+    expect(ctx.remote.$on).toHaveBeenCalledWith('workbench-memory/change', expect.any(Function))
     expect(ctx.provide).toHaveBeenCalledWith('chatTextDisplay', expect.anything())
     // #13: the latch replaced the face's two methods on the same instance.
     expect(typeof ctx.layout.openRightbar).toBe('function')
     expect(ctx.layout.openRightbar).not.toBe(ctx.layout.closeRightbar)
     // The views that call the mounted namespace register inside a scope
     // declaring it (Cordis refuses `ctx.remote.<namespace>` without inject);
-    // the session guide waits for `remote.credentials` the same way.
-    expect(ctx.inject).toHaveBeenCalledTimes(2)
-    expect(ctx.inject.mock.calls[0]?.[0]).toContain('remote.credentials')
-    expect(ctx.inject.mock.calls[1]?.[0]).toContain('remote.workbenchInspector')
+    // Outside a DeepSeekGUI window (no control bridge) the welcome overlay is not registered.
+    expect(ctx.inject).toHaveBeenCalledTimes(1)
+    expect(ctx.inject.mock.calls[0]?.[0]).toContain('remote.workbenchInspector')
+    expect(ctx.inject.mock.calls[0]?.[0]).toContain('remote.workbenchMemory')
     // The brand marks stay official (the whale); only the name is ours.
     expect(slots.inject.mock.calls.map(([name]) => name)).toEqual([
       'sidebar.brand.name',
       'conversation.session.header.actions',
       'sidebar.footer.action',
       'sidebar.footer.action',
-      'conversation.hero.dock',
-      'conversation.input.dock',
+      'sidebar.workspaces.session.menu.item',
+      'shell.overlay',
+      // Settings → Archived sessions (住户 2026-09-23).
+      'settings.section',
       'tool.call.toolview',
       'conversation.view',
+      'settings.section',
     ])
-    const staticEntries = registered.filter(entry => entry.name !== 'tool.call.toolview' && entry.name !== 'conversation.view')
+    const staticEntries = registered.filter(entry => !['tool.call.toolview', 'conversation.view', 'settings.section'].includes(entry.name))
     expect(staticEntries.map(entry => entry.component)).toEqual([
-      DeepSeekGUIBrandName, WorkbenchBadge, DesktopActions, NotificationWatcher, FirstRunWorkspaceGuide, FirstRunGuide,
+      DeepSeekGUIBrandName, WorkbenchBadge, DesktopActions, NotificationWatcher,
+      DeleteSessionMenuItem, DeleteSessionDialog,
     ])
+    // Delete session (住户 2026-09-22): the row follows the shipped archive row (400)
+    // in the official session menu, and its confirmation hangs in the frame-wide layer.
+    expect(staticEntries[4]).toMatchObject({ id: 'deepseekgui-delete', order: 500, locale: 'deepseekgui.workbench' })
+    expect(staticEntries[5]).toMatchObject({ id: 'deepseekgui-session-delete', locale: 'deepseekgui.workbench' })
     expect(staticEntries[1]).toMatchObject({ id: 'deepseekgui-workbench', order: -10 })
     expect(staticEntries[2]).toMatchObject({ id: 'deepseekgui-desktop', order: 10, locale: 'deepseekgui.workbench' })
     expect(staticEntries[3]).toMatchObject({ id: 'deepseekgui-notifier', order: 20, locale: 'deepseekgui.notify' })
@@ -128,9 +181,25 @@ describe('workbench client apply', () => {
     ])
     expect(views.every(entry => entry.locale === 'deepseekgui.inspector')).toBe(true)
     expect(views.map(entry => entry.label?.())).toEqual(['view.changes', 'view.git', 'view.memory'])
+    // The Memory view carries the store beside the inspector; the session-presence probe reads the list snapshot.
+    const memoryView = views[2] as RegisteredEntry & { inject: (sessionId: string) => Record<string, unknown> }
+    const injected = memoryView.inject('s-1')
+    expect(injected.memory).toBe(ctx.remote.workbenchMemory)
+    expect(typeof injected.onMemoryChange).toBe('function')
+    expect((injected.sessionPresent as (id: string) => boolean | undefined)('s-1')).toBe(true)
+    expect((injected.sessionPresent as (id: string) => boolean | undefined)('s-9')).toBe(false)
 
-    expect(ctx.locale.register).toHaveBeenCalledTimes(4)
-    for (const namespace of ['deepseekgui.workbench', 'deepseekgui.tools', 'deepseekgui.inspector', 'deepseekgui.notify']) {
+    // Settings → Global memory (B7-P9): the JS settings plugin's former id and slot, now the TS section.
+    const sections = registered.filter(entry => entry.name === 'settings.section')
+    // Settings → Archived sessions (住户 2026-09-23) comes first, ahead of our 40s.
+    expect(sections.map(entry => [entry.id, entry.order, entry.locale, entry.component])).toEqual([
+      ['deepseekgui-archived', 30, 'deepseekgui.workbench', ArchivedSessionsSection],
+      ['deepseekgui-memory', 43, 'deepseekgui.memory', MemorySettingsSection],
+    ])
+    expect(sections[1]?.label?.()).toBe('nav.memory')
+
+    expect(ctx.locale.register).toHaveBeenCalledTimes(6)
+    for (const namespace of ['deepseekgui.workbench', 'deepseekgui.tools', 'deepseekgui.inspector', 'deepseekgui.notify', 'deepseekgui.memory', 'deepseekgui.welcome']) {
       expect(ctx.locale.register)
         .toHaveBeenCalledWith(namespace, expect.objectContaining({ zh: expect.any(Object), en: expect.any(Object) }))
     }

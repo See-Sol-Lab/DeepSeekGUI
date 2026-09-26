@@ -8,13 +8,16 @@ import { chromium } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it, onTestFailed } from 'vitest'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import {
-  acknowledgeReloadConnectionLoss, captureExpandedTurnProcessAria, compareOrRefreshGolden, fixtureUserPrompts,
+  acknowledgeReloadConnectionLoss, captureExpandedTurnProcessAria, captureStableAria, compareOrRefreshGolden, fixtureUserPrompts,
   launchWebScaffold, recordFixture, watchConsole, webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
 import { connectFreshWorkspace, expandOwningTurnProcess, newEnglishPage, saveFailureShot } from './support.ts'
 
 const FIXTURE = fileURLToPath(new URL('../../../snapshots/web/ptc-round/session.v3.jsonl', import.meta.url))
 const UI_EXPECTED = fileURLToPath(new URL('../../../snapshots/web/ptc-round/ui.expected.md', import.meta.url))
+const TRAJECTORY_EXPECTED = fileURLToPath(new URL('../../../snapshots/web/ptc-round/trajectory.expected.md', import.meta.url))
+const CODE_EXPECTED = fileURLToPath(new URL('../../../snapshots/web/ptc-round/code.expected.md', import.meta.url))
+const PREPARING_EXPECTED = fileURLToPath(new URL('../../../snapshots/web/ptc-round/preparing.expected.md', import.meta.url))
 const MODE = webSnapshotMode()
 
 // Elicits the successful and failed sub-rows this scenario asserts.
@@ -27,10 +30,11 @@ describe('web e2e: PTC mode round renders nested sub-calls', () => {
   let page: Page
   let tripwire: ReturnType<typeof watchConsole>
   const sessionEvents: SessionEvent[] = []
+  let releasePreparation: (() => void) | undefined
 
   beforeAll(async () => {
     scaffold = await launchWebScaffold({
-      agentPresets: { roots: [], default: 'ptc' },
+      agentPresets: { default: 'ptc' },
       compareReplaySession: true,
       ...(MODE === 'record' ? {} : { replayFixture: FIXTURE, paceMs: 15 }),
     })
@@ -44,6 +48,7 @@ describe('web e2e: PTC mode round renders nested sub-calls', () => {
   }, 120_000)
 
   afterAll(async () => {
+    releasePreparation?.()
     await browser?.close()
     await scaffold?.close()
   })
@@ -56,9 +61,38 @@ describe('web e2e: PTC mode round renders nested sub-calls', () => {
     const input = page.locator('[data-composer-input]').first()
     await input.waitFor({ timeout: 10_000 })
     const settled = scaffold.whenTurnSettled()
-    await input.fill(PROMPT)
-    await input.press('Enter')
-    const sessionId = await settled
+    const gate = Promise.withResolvers<undefined>()
+    const dispose = scaffold.ctx.on('llm/stream', async function* (_options, next) {
+      let held = false
+      for await (const chunk of next()) {
+        yield chunk
+        if (!held && chunk.type === 'tool-call-delta' && chunk.name) {
+          held = true
+          await gate.promise
+        }
+      }
+    }, { prepend: true })
+    releasePreparation = () => { gate.resolve(undefined); dispose() }
+    const observePreparation = async () => {
+      try {
+        await input.fill(PROMPT)
+        await input.press('Enter')
+        const row = page.locator('[data-chat-call-id] [data-state="preparing"]').first()
+        await row.waitFor({ state: 'attached', timeout: 30_000 })
+        await expandOwningTurnProcess(page, row)
+        await row.waitFor({ state: 'visible' })
+        await page.getByRole('button', { name: 'Preparing to run code', exact: true }).waitFor()
+        expect(sessionEvents.some(event => event.type === 'tool/call')).toBe(false)
+        expect(await row.getByRole('button').count()).toBe(0)
+        expect(await row.locator('pre').count()).toBe(0)
+        const group = row.locator('xpath=ancestor::*[@data-chat-group-key][1]')
+        await compareOrRefreshGolden(PREPARING_EXPECTED, await group.ariaSnapshot(), MODE)
+      } finally {
+        releasePreparation?.()
+      }
+    }
+    const [sessionId] = await Promise.all([settled, observePreparation()])
+    await expect.poll(() => page.locator('[data-state="preparing"]').count(), { timeout: 15_000 }).toBe(0)
     if (MODE === 'record') {
       await recordFixture(scaffold, sessionId, FIXTURE)
     }
@@ -116,6 +150,7 @@ describe('web e2e: PTC mode round renders nested sub-calls', () => {
         await page.reload({ waitUntil: 'load' })
         acknowledgeReloadConnectionLoss(tripwire, warningStart)
         await page.getByText('DONE', { exact: true }).waitFor({ timeout: 15_000 })
+        await expect.poll(() => page.locator('[data-state="preparing"]').count(), { timeout: 15_000 }).toBe(0)
       }
       const nest = page.locator('[data-subcalls]').first()
       const frame = page.locator('[style*="grid-template-columns"]').first()
@@ -149,6 +184,47 @@ describe('web e2e: PTC mode round renders nested sub-calls', () => {
       scaffold.workspaceCwd,
     )
     await compareOrRefreshGolden(UI_EXPECTED, snapshot, MODE)
+  })
+
+  it.skipIf(MODE === 'record')('inspects recorded PTC source, wrapping, and original JSON in the trajectory', async () => {
+    onTestFailed(() => saveFailureShot(page, 'web-e2e-ptc-inspector'))
+    const call = sessionEvents.find(event => event.type === 'tool/call' && event.data.name === 'run_code')
+    if (call?.type !== 'tool/call') throw new Error('recorded PTC call missing')
+    const args = JSON.parse(call.data.arguments) as { code: string; description: string }
+    await page.getByRole('tab', { name: 'Trajectory', exact: true }).click()
+    const row = page.locator('tr[data-kind="tool"]').filter({ hasText: 'run_code' }).first()
+    await row.click()
+    await page.getByRole('tab', { name: 'Code', exact: true }).waitFor()
+    expect(await page.getByRole('tabpanel').textContent()).toContain(args.description)
+    expect(await page.getByRole('tabpanel').locator('dl').first().locator('dt').allTextContents())
+      .toEqual(['Hierarchy', 'Status'])
+    const overview = await Promise.all([1, 2].map(index => captureStableAria(
+      page, `[role="tabpanel"] [class*="overviewSections"] > section:nth-child(${index})`, scaffold.workspaceCwd,
+    )))
+    await compareOrRefreshGolden(TRAJECTORY_EXPECTED, overview.join('\n'), MODE)
+
+    await page.getByRole('button', { name: 'Code', exact: true }).click()
+    const source = page.locator('[data-line-numbers] pre')
+    await source.waitFor()
+    expect(await source.textContent()).toBe(args.code.endsWith('\n') ? args.code.slice(0, -1) : args.code)
+    const wrap = page.getByRole('button', { name: 'Wrap lines', exact: true })
+    expect(await wrap.getAttribute('aria-pressed')).toBe('false')
+    const content = page.locator('[data-wrap]').filter({ has: source })
+    expect(await content.evaluate(element => element.scrollWidth > element.clientWidth)).toBe(true)
+    await wrap.click()
+    expect(await wrap.getAttribute('aria-pressed')).toBe('true')
+    await expect.poll(() => content.evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1)
+    const code = await captureStableAria(page, '[role="tabpanel"]', scaffold.workspaceCwd)
+    await compareOrRefreshGolden(CODE_EXPECTED, code, MODE)
+
+    await page.getByRole('button', { name: 'Original JSON' }).click()
+    const json = page.getByRole('tree', { name: 'parameters JSON' })
+    await json.waitFor()
+    expect(await json.textContent()).toContain(args.description)
+    await page.getByRole('button', { name: 'Original JSON' }).click()
+    expect(await source.textContent()).toBe(args.code.endsWith('\n') ? args.code.slice(0, -1) : args.code)
+    await page.getByRole('tab', { name: 'Summary', exact: true }).click()
+    expect(await wrap.getAttribute('aria-pressed')).toBe('true')
   })
 
   it.skipIf(MODE === 'record')('stayed clean: no page errors, no reconnect churn', () => {

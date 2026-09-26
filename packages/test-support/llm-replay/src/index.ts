@@ -15,6 +15,7 @@ import type {} from '@deepseek-ai/dsh-deepseek-llm-api-extensions'
 import { SESSION_FORMAT_VERSION, SessionLogOffset, type SessionEvent } from '@deepseek-ai/dsh-session'
 import type { SessionLogOffset as SessionLogOffsetType } from '@deepseek-ai/dsh-session'
 import {
+  createSessionFormatCatalogWithChildren,
   SessionFormatUnsupportedMigrationError,
   sessionFormatCatalog,
 } from '@deepseek-ai/dsh-session-format-catalog'
@@ -31,8 +32,9 @@ import type {
   StreamChunk,
   SystemPromptUpdate,
   TokenUsage,
+  ToolUpdate,
 } from '@deepseek-ai/dsh-llm'
-import { LlmAdapter, LlmError, ReasoningEffortId, expandAssistantStream, requestImageHandleText, resolveRetryPolicy } from '@deepseek-ai/dsh-llm'
+import { LlmAdapter, LlmError, ReasoningEffortId, expandAssistantStream, offloadedImageText, requestImageHandleText, resolveRetryPolicy } from '@deepseek-ai/dsh-llm'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
 
 const PACKED_CHUNK_ROW_TYPES = new Set(['text-chunks', 'reasoning-chunks', 'tool-call-chunks'])
@@ -103,6 +105,8 @@ export interface ReplayModelConfig {
   defaultReasoningEffort?: string
   /** Optional in-history system prompt replacement for a keyless replay route. */
   systemPromptUpdate?: SystemPromptUpdate
+  /** Optional mid-conversation tool declaration mode for a keyless replay route. */
+  toolUpdate?: ToolUpdate
 }
 
 /** One provider route exposed by the replay adapter. */
@@ -232,7 +236,7 @@ function parseSessionFixture(text: string): ParsedSessionFixture {
       headerLineNumber = lineNumber
       sourceHeader = recordValue
       try {
-        restore = sessionFormatCatalog.createRestore(normalizeProjectedHeader(recordValue), {
+        restore = createSessionFormatCatalogWithChildren([]).createRestore(normalizeProjectedHeader(recordValue), {
           recovery: 'strict',
           validation: 'current',
         })
@@ -879,10 +883,9 @@ class ReplayAdapter extends LlmAdapter {
     const visualTokens = configured?.models?.find(candidate => candidate.id === model)?.imageRequestTokens
     if (visualTokens === undefined) return undefined
     return {
-      priceImages: images => images.map(ref => ({
-        visualTokens,
-        text: requestImageHandleText(ref, { width: ref.width, height: ref.height }),
-      })),
+      priceImages: images => images.map(({ attachment: ref, offloaded }) => (offloaded === true
+        ? { visualTokens: 0, text: offloadedImageText(ref) }
+        : { visualTokens, text: requestImageHandleText(ref, { width: ref.width, height: ref.height }) })),
     }
   }
 
@@ -921,6 +924,9 @@ class ReplayAdapter extends LlmAdapter {
       ...configuredModel?.systemPromptUpdate === undefined
         ? {}
         : { systemPromptUpdate: configuredModel.systemPromptUpdate },
+      ...configuredModel?.toolUpdate === undefined
+        ? {}
+        : { toolUpdate: configuredModel.toolUpdate },
       ...configuredModel?.reasoningEfforts === undefined
         ? {}
         : {
@@ -1170,6 +1176,13 @@ function validateConfiguredModels(providers: ReplayProviderConfig[] | undefined)
         throw new Error(
           `llm-replay: provider "${provider.id}" model "${model.id}" systemPromptUpdate `
           + 'must be "in-history" when present',
+        )
+      }
+      const toolUpdate: unknown = model.toolUpdate
+      if (toolUpdate !== undefined && toolUpdate !== 'in-history' && toolUpdate !== 'addition-only') {
+        throw new Error(
+          `llm-replay: provider "${provider.id}" model "${model.id}" toolUpdate `
+          + 'must be "in-history" or "addition-only" when present',
         )
       }
     }

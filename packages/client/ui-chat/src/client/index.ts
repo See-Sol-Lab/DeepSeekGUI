@@ -14,11 +14,11 @@ export type {} from './conversation-nodes/turn-process.ts'
 export type {} from './conversation-nodes/turn-tail.ts'
 
 export type {
-  AssistantBlock, AssistantMessageNode, AssistantProvenanceView, AssistantRequestConfig,
+  AssistantBlock, AssistantMessageNode, AssistantProviderMetadataView, AssistantRequestConfig,
   AssistantTiming, ChatLocationNodeIndex, ChatNodeProcessSource, ChatNodeSource, ChatNodeStore,
   ChatSnapshot, ChatTurnNavigationIndex, ChatTurnProcessPresentation,
   CommandNode, CompactionSummaryNode, ContextMessageNode, ConversationNode,
-  LegacyConversationSlice, ModelRetryNode, PartialAssistant, RunningToolCall,
+  LegacyConversationSlice, ModelRetryNode, PartialAssistant, PreparingToolCall, RunningToolCall, StartedToolCall,
   SteeringMessageNode, ToolCallBlock, ToolResultNode, TurnErrorNode, TurnMaxTokensNode,
   TurnNavigationItem, UnknownSurfaceNode, UserMessageNode,
 } from './contract/snapshot.ts'
@@ -30,12 +30,14 @@ export type {
 export type { ChatStoreState, ToolCallId, TurnProcessViewEntry } from './contract/store.ts'
 export type { TranscriptViewRowInjected, TranscriptViewRowProps } from './settings/TranscriptViewRow.tsx'
 export type { TranscriptViewMode } from '../chat-settings.ts'
+export type { ChatPresentationPolicy } from './presentation-policy.ts'
 export type {
-  AssistantActionOwnerProps, ChatFileMentions, ChatNodeOwnerProps, ChatNodeTurnDataInjected,
-  ChatNodeViewProps, ChatScrollPosition, ChatStore, ChatTextDisplay, ChatTextDisplayInput,
-  ChatViewInjected, ChatViewSlotProps,
-  CommandRowOwnerProps, CommandRowProps, MessageImagesProps, OpenFileOptions,
-  TurnProcessOwnerProps, TurnTailOwnerProps, UseChat, UseChatNodeTurnData,
+  AssistantActionOwnerProps, ChatFileMentions, ChatNodeHookContext, ChatNodeInjected, ChatNodeOwnerProps,
+  // ChatTextDisplay / ChatTextDisplayInput: DeepSeekGUI B6-P4 display service types
+  ChatNodeViewProps, ChatScrollPosition, ChatStore, ChatTextDisplay, ChatTextDisplayInput, ChatViewInjected, ChatViewSlotProps,
+  CommandRowOwnerProps, CommandRowProps, MessageImagesProps, OpenFileOptions, PresentationInjected,
+  QuotaNoticeCode, QuotaNoticeHostProps, QuotaNoticeInjected, QuotaNoticeOwnerProps, QuotaNoticeState,
+  TurnProcessOwnerProps, TurnTailOwnerProps, UseChat, UseChatNodeTurnData, UseDisclosure, UsePresentation,
 } from './contract/slots.ts'
 export type {
   TurnProcessSpec,
@@ -43,7 +45,7 @@ export type {
 export type { ChatKey } from './locale.ts'
 export type { ConversationContext, ConversationContextOriginKind } from './model/conversation-context.ts'
 export type {
-  ContextProvenanceView, ContextRole, KnownContextForm,
+  ContextProducerView, ContextRole, KnownContextForm,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
 export type {
   ConversationPromptSnapshot, RequestInspectionSnapshot, RequestPromptChange, RequestView,
@@ -60,3 +62,4 @@ type PublicChatNodeDataMap = ChatNodeDataMap
 declare module './contract/chat-nodes.ts' {
   interface ChatNodeDataMap extends PublicChatNodeDataMap {}
 }
+export type { ProcessActivity, ProcessActivitySummary, ProcessGroupData } from './contract/process-groups.ts'

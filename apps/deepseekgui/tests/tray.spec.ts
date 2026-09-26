@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'vitest'
 import { trayMenuTemplate, type TrayMenuItem } from '../src/tray.ts'
 import type { DesktopControlModel } from '../src/control-model.ts'
+import { usageViewOf } from '../src/usage-service.ts'
 
 function model(overrides: Partial<DesktopControlModel> = {}): DesktopControlModel {
   return {
@@ -29,18 +30,18 @@ function model(overrides: Partial<DesktopControlModel> = {}): DesktopControlMode
     highContrast: false,
     recoveryNotice: null,
     sessionPressure: null,
-    pluginManager: { profiles: [], error: null, operation: null, handoffPending: false, recovery: null, builtin: [] },
     update: {
-      channel: null, state: 'idle', result: null, latestVersion: null, releaseNotes: null,
-      progressBytes: null, progressTotal: null, message: null, autoDownload: true,
+      channel: null, state: 'idle', result: null, latestVersion: null, releaseNotes: null, releasePageUrl: null,
+      progressBytes: null, progressTotal: null, message: null, autoDownload: true, viaFallback: false,
     },
     diagnostics: { buildInfo: [], homeDisplay: '', logPath: null, lastExport: null, uncleanExit: null },
     feedback: { open: false, diagnostics: '', phase: 'idle', reply: null, issueTitle: '', degradedReason: null, notice: null, gatewayConfigured: false },
     permissions: { mode: 'sandbox', preset: 'workspace-write', detail: null },
     powerShell7Available: true,
     browserPane: { present: false, open: false },
-    firstRun: { pending: false },
     dataHome: { homePath: 'C:/ud/dsh', homeKind: 'managed', awaitingRestart: null, verifyFailed: null, pendingCleanup: null },
+    usage: usageViewOf(),
+    skillPick: null,
     revision: 1,
     viewMode: 'workbench',
     navigateRequest: null,
@@ -53,7 +54,7 @@ const labels = (items: TrayMenuItem[]): string[] =>
   items.filter(item => item.type !== 'separator').map(item => item.label ?? '')
 
 describe('trayMenuTemplate', () => {
-  it('顶层结构：打开/只读 Profile/只读状态/分隔/Profiles/Restart/视图切换/Terminal/检查更新/About/Quit（Harness 面板项已随 P8-D39 移居设置页）', () => {
+  it('顶层结构：打开/只读 Profile/只读状态/分隔/Profiles/Restart/视图切换/Terminal/检查更新/Quit（About 已按 2026-09-14 人工验收移出托盘）', () => {
     const items = trayMenuTemplate({ model: model(), locale: 'zh' })
     expect(labels(items)).toEqual([
       '打开 DeepSeekGUI',
@@ -65,7 +66,6 @@ describe('trayMenuTemplate', () => {
       '打开 Compatibility View（官方原版界面）',
       '打开 DSH Terminal',
       '检查更新',
-      '关于 DeepSeekGUI',
       '退出 DeepSeekGUI',
     ])
   })
@@ -87,7 +87,8 @@ describe('trayMenuTemplate', () => {
       model: model({
         update: {
           channel: 'https://feed.example.com/m.json', state: 'available', result: null, latestVersion: '0.2.0',
-          releaseNotes: null, progressBytes: null, progressTotal: null, message: null, autoDownload: true,
+          releaseNotes: null, releasePageUrl: null, progressBytes: null, progressTotal: null, message: null, autoDownload: true,
+          viaFallback: false,
         },
       }),
       locale: 'zh',
@@ -113,14 +114,13 @@ describe('trayMenuTemplate', () => {
     expect(profiles).toEqual([{ label: '（尚未发现，点击"刷新 Profiles"）', enabled: false }])
   })
 
-  it('动作绑定面：quit/restart/open-terminal/check-updates/about/show-window 全部就位', () => {
+  it('动作绑定面：quit/restart/open-terminal/check-updates/show-window 全部就位', () => {
     const items = trayMenuTemplate({ model: model(), locale: 'zh' })
     const byLabel = new Map(items.map(item => [item.label, item]))
     expect(byLabel.get('退出 DeepSeekGUI')!.action).toEqual({ kind: 'quit' })
     expect(byLabel.get('重启 Harness')!.action).toEqual({ kind: 'restart' })
     expect(byLabel.get('打开 DSH Terminal')!.action).toEqual({ kind: 'open-terminal' })
     expect(byLabel.get('检查更新')!.action).toEqual({ kind: 'check-updates' })
-    expect(byLabel.get('关于 DeepSeekGUI')!.action).toEqual({ kind: 'about' })
     expect(byLabel.get('打开 DeepSeekGUI')!.action).toEqual({ kind: 'show-window' })
   })
 

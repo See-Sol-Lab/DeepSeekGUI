@@ -8,7 +8,7 @@ import type { ContentBlock } from '@deepseek-ai/dsh-llm/types'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import type { LlmRetryEventData } from '@deepseek-ai/dsh-llm-retry/types'
 import type { TodoItem } from '@deepseek-ai/dsh-tool-todo/client'
-import type { ContextProvenanceView, KnownContextForm } from './context-provenance.ts'
+import type { ContextProducerView, KnownContextForm } from './context-producer.ts'
 export type { TodoItem }
 
 /** Request configuration recorded for one provider call. */
@@ -24,7 +24,7 @@ export interface AssistantRequestConfig {
 }
 
 /** Stable provider/model identity reported for one completed request. */
-export interface AssistantProvenanceView {
+export interface AssistantProviderMetadataView {
   provider: string
   model: string
 }
@@ -73,7 +73,7 @@ export interface AssistantMessageNode {
   step: number
   blocks: readonly AssistantBlock[]
   usage?: unknown
-  provenance?: AssistantProvenanceView
+  providerMetadata?: AssistantProviderMetadataView
   requestConfig?: AssistantRequestConfig
   /** Timing derived from the recorded step/chunk/message event sequence. */
   timing?: AssistantTiming
@@ -104,7 +104,7 @@ export interface ContextMessageNode {
   content: readonly ContentBlock[]
   source: unknown
   /** Role and producer name projected from `source` by the target. */
-  provenance: ContextProvenanceView
+  producer: ContextProducerView
   /** Producer-declared information form supported by the target; null presents as opaque. */
   form: KnownContextForm | null
 }
@@ -158,7 +158,7 @@ export interface ToolResultNode {
   /** Unix epoch ms from the tool/result session event. */
   time: number
   callId: string
-  /** Parent Tool call for a Code Dispatch result; absent on a root Session result. */
+  /** Parent Tool call for a PTC dispatch result; absent on a root Session result. */
   parentCallId?: string
   /** Call head backfilled from the in-window tool/call; null when window truncation left the call outside (card head shows callId). */
   call: { name: string; argsRaw: string } | null
@@ -166,7 +166,7 @@ export interface ToolResultNode {
   callTime: number | null
   content: readonly ContentBlock[]
   isError: boolean
-  error?: { name: string; code: string }
+  error?: { name: string; code: string; reason?: string }
   meta?: unknown
   /** Child calls owned by this call, in dispatch order. */
   subCalls: readonly ToolCallBlock[]
@@ -197,13 +197,9 @@ export interface CompactionSummaryNode {
 }
 
 /**
- * Fallback for surface events this UI version does not know: the documented
- * default arm of `SessionEventMap`, which is merge-extensible, so the
- * projection's switch cannot end in `assertNever`. No event produces this node
- * because `isAppendSurfaceEvent` admits only the four types in core's
- * `SurfaceEventType`, and each has its own arm (`system/message` is claimed by
- * a Chat Definition that renders no transcript row) — and it exists so widening
- * that set core-side degrades to a raw row instead of dropping the event silently.
+ * Fallback for unclaimed append-surface events. The merge-extensible
+ * SessionEventMap permits unfamiliar events to retain a raw presentation.
+ * Known unsupported developer events throw before fallback selection.
  */
 export interface UnknownSurfaceNode {
   kind: 'unknown'
@@ -261,22 +257,35 @@ export type ConversationNode =
   | CompactionSummaryNode
   | UnknownSurfaceNode
 
-/** In-flight tool card material: tool/call seen, tool/result not yet. */
-export interface RunningToolCall {
+/** Identity and placement shared by tool preparation and dispatch. */
+interface ToolCallHead {
   callId: string
-  /** Parent Tool call for a Code Dispatch start; absent on a root Session call. */
+  /** Parent Tool call for a PTC dispatch start; absent on a root Session call. */
   parentCallId?: string
   name: string
-  argsRaw: string
   turn: number
   step: number
-  /** Unix epoch ms when the tool/call event was logged. */
+  /** Unix epoch ms when this stage began. */
   time: number
   /** Child calls owned by this call, in dispatch order. */
   subCalls: readonly ToolCallBlock[]
 }
 
-/** One running or settled call, recursively owning its child calls. */
+/** A named model call whose arguments are not yet available to tool views. */
+export interface PreparingToolCall extends ToolCallHead {
+  readonly phase: 'preparing'
+}
+
+/** A dispatched tool call with complete arguments and no result yet. */
+export interface StartedToolCall extends ToolCallHead {
+  readonly phase: 'start'
+  readonly argsRaw: string
+}
+
+/** A tool still preparing or awaiting its result. */
+export type RunningToolCall = PreparingToolCall | StartedToolCall
+
+/** One preparing, dispatched, or settled call, recursively owning its child calls. */
 export type ToolCallBlock = RunningToolCall | ToolResultNode
 
 /** In-progress assistant output (chunk accumulator product). */

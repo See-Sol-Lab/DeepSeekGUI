@@ -64,7 +64,7 @@ export function applyWriteTool(ctx: Context, sandbox: FsSandboxController): void
     order: ctx.systemPrompt.getSectionOrder('TOOL_WRITE'),
     text: ({ scope }) => ctx.tools.get('write', scope) === undefined
       ? ''
-      : 'Use the write tool to create files or completely replace file contents. Existing files are overwritten, so read an existing file first (the default fs-observation-policy requires it)'
+      : 'Read an existing file before overwriting it with write (the default fs-observation-policy requires it)'
         + (ctx.tools.get('edit', scope) === undefined ? '' : ' and prefer edit for targeted changes')
         + '.',
   })
@@ -96,6 +96,7 @@ export function applyWriteTool(ctx: Context, sandbox: FsSandboxController): void
       },
       render: (_args, value) => [{ type: 'text', text: formatWriteOutput(value.path, value) }],
       presentationMeta: (args, value) => ({
+        operation: value.operation,
         diffs: value.before === null
           ? []
           : computeHunkDiffs(args.file_path, value.before, value.after)
@@ -107,8 +108,8 @@ export function applyWriteTool(ctx: Context, sandbox: FsSandboxController): void
       // Resolve the per-call sandbox policy (approved mode > session override
       // > backend default, plus the session cwd root) BEFORE anything executes;
       // an escalating call throws its distinct text on any non-grant.
-      const sandboxPolicy = await sandbox.resolvePolicy('write', args, exec)
-      const target = await ctx.fs.resolve(input.filePath, sessionResolveOptions(exec, input.filePath, sandboxPolicy?.workspaceRoot))
+      const sandboxPolicy = await sandbox.resolvePolicy('write', args, exec, input.filePath)
+      const target = await ctx.fs.resolve(input.filePath, sessionResolveOptions(exec, sandboxPolicy?.workspaceRoot))
       // Single-slot decision: the policy plugin produces createIfAbsent/
       // replaceIfVersion; the bare default is undefined (unconditional). No stat.
       const intent = await ctx.waterfall('fs/write-intent', target, exec, () => undefined)

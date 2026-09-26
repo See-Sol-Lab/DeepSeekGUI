@@ -12,8 +12,9 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node
 import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
 import { DSH_HOME_ENV } from '@deepseek-ai/dsh-home-paths'
-import type { DshConfigTreeDeclaration } from '@deepseek-ai/dsh-package-manifest'
 import type { ConfigTree, ImageTree, PackResult } from './pack.ts'
+
+export { packPreviewFixture } from './preview.ts'
 
 /**
  * Repository directories scanned for workspace and vendored packages. The
@@ -31,6 +32,16 @@ const CLI_ENTRY = `${CLI_PACKAGE}/src/bin.ts`
 
 /** Repository-owned deterministic filesystem content offered by the preview. */
 const PREVIEW_EXAMPLE_ROOT = 'packages/experimental/webworker-runtime/tests/fixtures/vfs-example'
+
+/** Config directory metadata owned by the CLI image packer, not the public plugin manifest. */
+interface ConfigTreeDeclaration {
+  /** Non-empty destination path in the image; mount values must be unique. */
+  mount: string
+  /** Non-empty source directory path relative to the declaring package root. */
+  path: string
+  /** Include the directory's YAML plugin rows in the package roster; absent means false. */
+  scanRoster?: boolean
+}
 
 /** One built-in Preview source and the trees packed into its overlay. */
 export interface PreviewFixture {
@@ -75,11 +86,11 @@ export function indexWorkspacePackages(repoRoot: string): Map<string, string> {
 
 /**
  * Compose one profile through the real CLI dump path, leaving `!!js`
- * unevaluated. The dump runs against a throwaway Harness home and default
- * layers only, so the image is the shipped profile: the machine's `$DSH_HOME`
- * — its profile manifest with locally installed bundles, and its patch files —
- * would otherwise leak this machine's plugins into the image and break the
- * same-tree-same-bytes guarantee.
+ * unevaluated. The dump runs against a throwaway Harness home, so the
+ * profile's own layer is the freshly initialized empty patch file and the
+ * machine's `$DSH_HOME` — its profile manifest with locally installed
+ * bundles, and its patch files — would otherwise leak this machine's plugins
+ * into the image and break the same-tree-same-bytes guarantee.
  * @param repoRoot - Absolute repository root.
  * @param profile - Profile name to compose.
  * @returns The composed YAML.
@@ -89,7 +100,14 @@ export function composeProfile(repoRoot: string, profile: string): string {
   try {
     return execFileSync(
       process.execPath,
-      ['--import', 'tsx/esm', join(repoRoot, CLI_ENTRY), '--profile', profile, '--dump-default-config'],
+      [
+        '--import', 'tsx/esm', join(repoRoot, CLI_ENTRY),
+        '--profile', profile,
+        // `--dump-config` over the throwaway home: the profile's own patch
+        // layer is a freshly initialized empty file, so the dump is the
+        // shipped composition alone.
+        '--dump-config',
+      ],
       { cwd: repoRoot, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: { ...process.env, [DSH_HOME_ENV]: home } },
     )
   } finally {
@@ -119,7 +137,7 @@ export function configTrees(repoRoot: string): ConfigTree[] {
   }
   const mounts = new Set<string>()
   return declared.map((entry, index) => {
-    const tree = entry as Partial<DshConfigTreeDeclaration> | null
+    const tree = entry as Partial<ConfigTreeDeclaration> | null
     const at = `${CLI_PACKAGE} dsh.configTrees[${String(index)}]`
     if (tree === null || typeof tree !== 'object'
       || typeof tree.mount !== 'string' || tree.mount === ''

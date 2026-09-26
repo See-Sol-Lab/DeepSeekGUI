@@ -33,7 +33,7 @@ Choose it for any host-side data that must survive restarts and stay valid again
 
 ### Declaring a domain
 
-The owning package declares the domain once with `defineDomain` — name, version, and zod record schemas — and exports it. `defineDomain` fails loud at module load on a bad name, a non-integer version, or a global schema that accepts `null`.
+The owning package declares the domain once with `defineDomain` — name, version, and zod record schemas — and exports it. `defineDomain` fails loudly at module load on a bad name, a version that is not a non-negative integer, or a global schema that accepts `null`.
 
 ```text
 // Owning package, once:
@@ -59,7 +59,7 @@ The caller owns the handle's lifecycle and releases it with `domain.close()` whe
 
 ### Routing domains to backends
 
-The domain plugin's configuration decides which backend serves which domain — never the hub. `backend` names the default route; `routes` overrides it per domain name. A route naming an unregistered backend fails loud at open with `backend-not-found`.
+The domain plugin's configuration decides which backend serves which domain — never the hub. `backend` names the default route; `routes` overrides it per domain name. A route naming an unregistered backend fails loudly at open with `backend-not-found`.
 
 | Field | Default | Meaning |
 |---|---|---|
@@ -84,7 +84,7 @@ The domain layer is a single implementation, not an abstracted seam: consumers d
 
 ### Design concept
 
-- **The spec object is the single source of truth.** `defineDomain` pins the spec's literal types and validates its fields at the owning package's module load, before any medium is touched. Record schemas are zod so `z.infer` keeps consumer types un-duplicated; plugin `Config` stays schemastery.
+- **The spec object is the single source of truth.** `defineDomain` pins the spec's literal types and validates its fields at the owning package's module load, before any medium is touched. Record schemas are zod, so `z.infer` avoids duplicating consumer types; plugin `Config` stays schemastery.
 - **Memory is authoritative; the medium is the durable projection.** Reads are synchronous from validated in-memory state. Every write queues on one per-domain write chain: backend durability first, then memory mutation, then `domain/changed` — a rejected backend write leaves memory untouched, so reads never diverge from the medium.
 - **One write chain per domain.** `put`, `delete`, `update`, and `global.set` all queue on it; `update`'s transform runs at its chain slot, so concurrent updates never interleave. Records are plain immutable data — returned values are the stored objects themselves and must not be mutated in place.
 - **Writes emit after the commit point.** `domain/changed` is a notification, not a transaction participant: a throwing listener is contained with a logged warning rather than rejecting the already-durable write.

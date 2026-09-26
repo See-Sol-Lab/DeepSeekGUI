@@ -1,0 +1,9 @@
+- button "Edit config.txt +1 -1" [expanded]:
+  - text: Edit
+  - button "config.txt"
+  - text: +1 -1
+- text: Code block
+- button "Wrap lines"
+- button "Copy"
+- text: config.txt - mode=DEBUG + mode=RELEASE level=info
+- button "Inspect"

@@ -136,6 +136,7 @@ export class ToolResultPruner extends Service {
   pruneSession(session: Session): PruneResult {
     const candidates: SnapshotCandidate[] = []
     for (const seq of [...session.surface.nodes]) {
+      // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
       const event = session.eventAt(seq)
       /* v8 ignore next -- surface seqs are validated contiguous log references. */
       if (event?.type === 'tool/result') candidates.push({ seq, event })
@@ -144,17 +145,14 @@ export class ToolResultPruner extends Service {
     const pruned: PrunedEntry[] = []
     let charsRemoved = 0
     for (const { seq, event } of candidates) {
-      const result = event.data.message.content[0]
-      const content = this.pruneContent(result.content)
+      const original = session.deriveEventMessage(event) as ToolResultMessage
+      const content = this.pruneContent(original.content)
       if (content === null) continue
-      const charsBefore = this.measureContent(result.content)
+      const charsBefore = this.measureContent(original.content)
       const charsAfter = this.measureContent(content)
       const message = freezeMessage<ToolResultMessage>({
-        ...event.data.message,
-        content: [{
-          ...result,
-          content,
-        }] as [typeof result],
+        ...original,
+        content,
       })
       // Shadow-price protocol: the metering event and its replacement are
       // appended synchronously adjacent, so pure consumers subtract the
@@ -162,7 +160,7 @@ export class ToolResultPruner extends Service {
       session.append('compaction/prune', {
         shadowedRange: { start: seq, end: seq },
         shadowedSeqs: [seq],
-        shadowedTokenCount: this.ctx.tokenMeter.estimateMessage(event.data.message),
+        shadowedTokenCount: this.ctx.tokenMeter.estimateMessage(original),
       })
       const replacement = session.append('tool/result', {
         ...event.data,

@@ -12,8 +12,9 @@ import { isPromise } from 'node:util/types'
 import { scopeTarget } from '@deepseek-ai/dsh-scope'
 import type { Scoped } from '@deepseek-ai/dsh-scope'
 import type { SessionEvent, SessionId, SessionLogOffset } from '@deepseek-ai/dsh-session'
+import { installTurnArchiveAdmission } from './archive-admission.ts'
 import type { Agent } from './types.ts'
-import type { AgentOptions } from './runtime-types.ts'
+import type { AgentOptions, SessionStartSource } from './runtime-types.ts'
 
 export * from './runtime-types.ts'
 export * from './types.ts'
@@ -86,11 +87,10 @@ export interface CreateAgentOptions {
   /** Exact fork-inherited prefix length when the session metadata sets `isSeeded`. */
   readonly inheritedEventCount?: SessionLogOffset
   /**
-   * Initial replay/fork history. A fork supplies a balanced completed-turn
-   * prefix of the parent's log. The complete seed must be contiguous from seq
-   * 0, carry only lossless-JSON data, and contain no open turn/step or dangling
-   * tool call. The factory passes it to the session's durable
-   * validator/snapshot boundary before publication.
+   * Initial replay/fork history, contiguous from seq 0 with lossless-JSON data.
+   * A fork supplies an exact parent prefix, its inherited marker, and closers
+   * for the open tail. Previously closed steps and turns remain unchanged.
+   * The factory validates and snapshots the seed before publication.
    */
   readonly seed?: readonly SessionEvent[]
   /** Per-agent options (model, …). */
@@ -107,7 +107,7 @@ export interface CreateAgentOptions {
    * the exact publication boundary. Everything registered through `agentCtx`
    * (scoped tools, prompt sections/variables, `restrict()`, listeners, awaited
    * child plugins) exists before `session/created`, `agent/created`,
-   * `agent/session-start`, and the first prompt assembly. A setup
+   * and the first prompt assembly. A setup
    * throw/rejection, commit throw, or owner disposal rolls the scope back
    * without publishing either id.
    *
@@ -172,8 +172,8 @@ export interface AgentFactory {
   /**
    * Create a new agent on a caller-supplied session id. Async because creation
    * awaits unpublished setup, invokes its optional synchronous commit, inserts
-   * both session and agent, emits their creation notifications in order, emits
-   * `agent/session-start`, and only then starts the loop. The sequence is
+   * both session and agent, announces session creation, and awaits serial
+   * `agent/created` listeners before releasing queued work. The sequence is
    * rollback-covered, but notifications delivered before a later listener
    * failure remain observable; every agent or session creation announcement
    * that began is paired by `agent/disposed` or `session/disposed` during
@@ -185,7 +185,7 @@ export interface AgentFactory {
    * ownership from the factory object's registration context.
    * @param ownerCtx - caller-bound context that owns the transaction and live handle.
    * @param options - agent/session identity, configuration, optional live parent, and setup.
-   * @returns the owned handle after setup, both announcements, and loop start complete.
+   * @returns the owned handle after setup and both creation announcements complete.
    */
   createAgent(ownerCtx: Context, options: CreateAgentOptions): Promise<AgentHandle>
   /**
@@ -277,6 +277,9 @@ export class AgentRegistry extends Service {
       yield () => this.disposeInitiators()
       yield () => { this.closeInitiators() }
     }.bind(this), 'agents.initiatorLifecycle()')
+    // Archive admission: the Workspace registry asks what still runs for a
+    // Session before hiding it; a running turn answers here, for every Agent.
+    installTurnArchiveAdmission(ctx, sessionId => this.get(sessionId))
   }
 
   /**
@@ -413,16 +416,16 @@ export class AgentRegistry extends Service {
   }
 
   /**
-   * Register a live agent. Throws if an agent with the same id is already
-   * registered. Emits `agent/created` on registration and `agent/disposed`
+   * Register a live agent with source `startup`. Rejects if the id is already registered or a
+   * serial `agent/created` listener fails. Emits `agent/disposed`
    * when the calling fiber is disposed — both with the agent's scope carrier
    * (`scopeTarget(agent, agent)`): the subject is the agent in hand, so the
    * emits are scope-filtered regardless of which context invoked `register`
    * (calling through `agent.ctx` scopes EFFECTS; dispatch scoping always
    * requires passing the carrier). The entry is a runtime root; factory-backed
-   * creation uses `options.parentAgent` for child ownership. Returns the disposer.
+   * creation uses `options.parentAgent` for child ownership. Await the registration before using the agent.
    * @param agent - the already-constructed agent to record in the store.
-   * @returns the EXACT Cordis effect disposer (single-shot; a repeat call
+   * @returns the awaitable Cordis effect disposer (single-shot; a repeat call
    *   returns undefined without awaiting an in-flight teardown). Exact
    *   identity is load-bearing: a composite (generator) effect that owns a
    *   teardown ORDER — the agent factory's lifecycle chain — must yield THIS
@@ -431,13 +434,11 @@ export class AgentRegistry extends Service {
    *   owner unload, unregistering the agent (and emitting `agent/disposed`)
    *   while its final turn is still draining.
    */
-  register(agent: Agent): () => void {
-    const dispose = this.ctx.effect(function* (this: AgentRegistry) {
+  register(agent: Agent): ReturnType<Context['effect']> {
+    return this.ctx.effect(async function* (this: AgentRegistry) {
       yield this.enter(agent, undefined)
-      this.announce(agent)
+      await this.announce(agent, 'startup')
     }.bind(this), 'agents.register()')
-    // oxlint-disable-next-line typescript/no-misused-promises -- synchronous cleanup; direct return preserves disposer identity
-    return dispose
   }
 
   /**
@@ -452,8 +453,8 @@ export class AgentRegistry extends Service {
    *   the resumed session's durable parent lineage.
    * @returns an idempotent closure that removes this exact entry and emits
    *   `agent/disposed` with listener failures contained. When called from a
-   *   synchronous `agent/created` listener, removal and disposal wait until
-   *   that creation dispatch unwinds.
+   *   `agent/created` listener, removal and disposal wait until the serial
+   *   creation dispatch settles.
    */
   enter(agent: Agent, owner: Agent | undefined): () => void {
     const id = agent.id
@@ -482,7 +483,7 @@ export class AgentRegistry extends Service {
       // live entry, and disposal must follow creation. A listener may own
       // the advanced detach capability, so make that ordering structural:
       // visibility and the paired disposal are deferred until announce()'s
-      // synchronous dispatch has unwound.
+      // serial dispatch has settled.
       if (entry.announcing) {
         entry.detachRequested = true
         return
@@ -526,11 +527,14 @@ export class AgentRegistry extends Service {
   /**
    * Announce an agent previously inserted with {@link enter}.
    * @param agent - the live inserted agent to announce.
+   * @param source - fresh creation, resume, clear, or compaction source.
+   * @param signal - optional factory initialization cancellation signal passed to listeners.
+   * @returns completion of the serial creation listeners; a listener failure rejects.
    * @throws if `agent` is not the exact live registry entry for its id, or its
    *   creation announcement already began (including a reentrant call from a
    *   creation listener).
    */
-  announce(agent: Agent): void {
+  async announce(agent: Agent, source: SessionStartSource, signal?: AbortSignal): Promise<void> {
     const entry = this.store.get(agent.id)
     if (entry === undefined || entry.agent !== agent) {
       throw new Error(`agent "${agent.id}" is not live in this registry`)
@@ -542,17 +546,12 @@ export class AgentRegistry extends Service {
     // lifecycle edge; detach still pairs a partially delivered first edge.
     entry.announcing = true
     entry.announced = true
-    const args: unknown[] = [entry.carrier, 'agent/created', { agent: entry.agent }]
     try {
-      for (const callback of this.ctx.events.dispatch('emit', args)) {
-        // A synchronous creation failure vetoes publication and rolls back.
-        // Returned-promise rejection happens after this synchronous boundary, so
-        // observe and report it instead of leaking an unhandled rejection.
-        const returned: unknown = callback(...args)
-        void Promise.resolve(returned).catch((error: unknown) => {
-          this.ctx.logger.warn(`agent "${entry.id}": agent/created listener rejected: ${String(error)}`)
-        })
-      }
+      await this.ctx.serial(entry.carrier, 'agent/created', {
+        agent: entry.agent,
+        source,
+        ...signal === undefined ? {} : { signal },
+      })
     } finally {
       entry.announcing = false
       if (entry.detachRequested) this.detachEntered(entry)

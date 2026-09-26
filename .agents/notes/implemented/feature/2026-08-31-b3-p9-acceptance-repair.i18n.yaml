@@ -1,6 +1,31 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-08-31-b3-p9-acceptance-repair.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-31-b3-p9-acceptance-repair.md
-2026-08-31-b3-p9-acceptance-repair.md: 46afa76dfafb10c83ed3784d2baa7c850e2fe7ea
-2026-08-31-b3-p9-acceptance-repair.zh.md: b3d7e8968dcd70d530f7eecbd1e1f49e42ffc098
+/agent-note-b3-p9-acceptance-repair-exact-session-ownership-and-isolated-evidence:
+  en: 10f6e35cacc520fd
+  zh: a0b970a7d39b5c29
+/agent-note-b3-p9-acceptance-repair-exact-session-ownership-and-isolated-evidence/problem:
+  en: e478eabf51e28a0f
+  zh: e0d610306f7eaa61
+/agent-note-b3-p9-acceptance-repair-exact-session-ownership-and-isolated-evidence/decision:
+  en: a15c7c13f167e5ac
+  zh: a15c7c13f167e5ac
+/agent-note-b3-p9-acceptance-repair-exact-session-ownership-and-isolated-evidence/decision/session-owned-asynchronous-work:
+  en: 7c07590264d379e3
+  zh: 8f56603f85c5be66
+/agent-note-b3-p9-acceptance-repair-exact-session-ownership-and-isolated-evidence/decision/exact-terminal-and-test-instance-identity:
+  en: 3a3c0c0a94f40c27
+  zh: f30c58b546db5b1b
+/agent-note-b3-p9-acceptance-repair-exact-session-ownership-and-isolated-evidence/decision/windows-path-aliases:
+  en: 3596a2561e7e3ff3
+  zh: 9307e54168a97e57
+/agent-note-b3-p9-acceptance-repair-exact-session-ownership-and-isolated-evidence/verification:
+  en: 43b094da7f46e630
+  zh: 882d72669bf96ff0
+/agent-note-b3-p9-acceptance-repair-exact-session-ownership-and-isolated-evidence/alternatives-considered:
+  en: b189be2aec4dcebc
+  zh: 334c8e726927c872
+/agent-note-b3-p9-acceptance-repair-exact-session-ownership-and-isolated-evidence/consequences:
+  en: 802a69964312f4bc
+  zh: 6b5840bb6926746b

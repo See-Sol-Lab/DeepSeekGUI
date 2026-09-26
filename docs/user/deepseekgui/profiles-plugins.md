@@ -21,40 +21,23 @@ If a new Profile fails to start, DeepSeekGUI can return to the last known good s
 
 ![DeepSeekGUI Settings with general, model, plugin, and agent preset controls](assets/settings-panel.png)
 
-## Understand the Plugin Manager
+## The Plugins page
 
-The Plugin Manager keeps three facts separate:
+Plugins are managed in **Settings → Plugins**. This is Harness's own plugin page, which DeepSeekGUI uses directly. It shows the active Profile:
 
-- **Profile Bundles** are the Profile's composition layers.
-- **Installed Dependencies** are packages listed in the Profile manifest.
-- **Effective/Loader status** reports what Harness can actually load.
+- **Installed**: plugin packages installed in the Profile. You can inspect their components, enable or disable them, configure them, and remove them.
+- **Official**: official plugins you can install directly.
+- **Bundled with DeepSeekGUI**: plugins installed together with DeepSeekGUI (workbench, theme, settings, browser, Skills, and others). They carry a red "Cannot be removed" tag and cannot be disabled or removed, because DeepSeekGUI depends on them.
 
-An installed dependency is not automatically an active plugin. Check the effective status after installation and restart.
+When adding a plugin you can choose the official source, a mirror, or a custom source. DeepSeekGUI installs with its bundled pnpm, so the computer does not need a separate pnpm installation. Most changes take effect the next time Harness starts; the page says so.
 
-## Install, update, or remove a plugin
+## Version compatibility check
 
-1. Open **Settings → Plugins (Local)**.
-2. Confirm the target Home, full path, Profile, action, and package specification.
-3. Run the operation and review its streamed output.
-4. Let DeepSeekGUI perform the post-check.
-5. Restart Harness when prompted, or restart later before expecting the new composition to run.
+When a plugin is installed or started, Harness checks the DSH versions the plugin declares support for. An incompatible plugin is refused, and the page states the reason. If you must use an incompatible version, you can grant an exemption for that exact plugin version and that exact DSH version only. This can break the application or corrupt data; do it only for a source you trust.
 
-DeepSeekGUI does not provide a plugin marketplace in V1. Use a compatible package name, tarball, or supported local path from a source you trust.
+## When a plugin stops Harness from starting
 
-## Protected plugin changes
-
-Before a confirmed plugin write, DeepSeekGUI snapshots only `package.json`, `pnpm-lock.yaml`, and `pnpm-workspace.yaml` and records their hashes. The actual mutation still runs through `dsh plugin`.
-
-DeepSeekGUI considers the change verified only after the next Harness generation starts successfully. If startup fails and the protected files have not changed again, Managed Home may restore the three snapshots and restart once. Existing Home always requires explicit confirmation before restoration. External file drift disables automatic restoration so newer edits are never overwritten.
-
-DeepSeekGUI never backs up or restores `node_modules` as part of this protection.
-
-## V1 plugin limits
-
-- Targets must already be discovered under the active Home.
-- DeepSeekGUI does not initialize a new Profile from the Plugin Manager.
-- Local paths and package specifications containing whitespace, control characters, or Windows command metacharacters are rejected.
-- Some compound semver ranges are unsupported because the official Windows CLI forwarding path cannot preserve them safely.
+When Harness fails to start, DeepSeekGUI shows a dialog naming the stage that failed, with the paths of the diagnostics log and the event record (the event record is `<DSH_HOME>/deepseekgui/events.md`). If you installed a plugin recently, suspect that installation first: remove it from the DSH terminal with `dsh plugin --profile <Profile> remove <package>`, then restart Harness.
 
 ## Related guides
 

@@ -54,11 +54,6 @@ export interface WorkbenchWorktree extends WorktreeInfo {
 }
 
 /**
- * Repository-level facts for the Git and Worktree views in one read: the
- * current status, configured remotes, the newest commits, and every
- * registered work tree with its own changed paths.
- */
-/**
  * The newest assistant reply of a Session, read for the desktop's feedback
  * triage (2026-09-11 manual test #15): the desktop prompts a hidden session
  * and polls this until the turn has ended.
@@ -70,6 +65,11 @@ export interface WorkbenchLastReply {
   readonly complete: boolean
 }
 
+/**
+ * Repository-level facts for the Git and Worktree views in one read: the
+ * current status, configured remotes, the newest commits, and every
+ * registered work tree with its own changed paths.
+ */
 export interface WorkbenchOverview {
   root: string
   status: RepoStatus

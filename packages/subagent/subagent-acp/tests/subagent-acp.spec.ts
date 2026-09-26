@@ -59,7 +59,7 @@ async function setup(mockEnv: SetupEnv = {}, permission: 'allow' | 'reject' = 'r
   return ctx
 }
 
-function text(blocks: { type: string; text?: string }[]): string {
+function text(blocks: readonly { type: string; text?: string }[]): string {
   return blocks.filter(b => b.type === 'text').map(b => b.text).join('')
 }
 
@@ -88,6 +88,7 @@ async function waitForFile(file: string, timeoutMs: number): Promise<void> {
 
 function rejectFinalExitWait(child: SubprocessHandle, message: string): SubprocessHandle {
   return {
+    control: child.control,
     stdin: child.stdin,
     stdout: child.stdout,
     stderr: child.stderr,
@@ -111,6 +112,7 @@ function rejectFinalExitWaitAfterExit(child: SubprocessHandle, message: string):
 
 function tapBoundedExitWait(child: SubprocessHandle, onWait: () => void): SubprocessHandle {
   return {
+    control: child.control,
     stdin: child.stdin,
     stdout: child.stdout,
     stderr: child.stderr,
@@ -132,6 +134,7 @@ function replaceProtocolStreams(
   if (child.stdin === undefined) throw new Error('expected piped child stdin')
   stdin.pipe(child.stdin)
   return {
+    control: child.control,
     stdin,
     stdout,
     stderr: child.stderr,
@@ -169,6 +172,7 @@ function closeProtocolOnPrompt(child: SubprocessHandle, onClose: () => void = ()
 
 function replaceProcessOutcome(child: SubprocessHandle, outcome: SubprocessOutcome): SubprocessHandle {
   return {
+    control: child.control,
     stdin: child.stdin,
     stdout: child.stdout,
     stderr: child.stderr,
@@ -298,6 +302,7 @@ describe('disposeAcpChild (the backend-owned teardown ladder over seam verbs)', 
     const stdin = new PassThrough()
     const calls: string[] = []
     const child: SubprocessHandle = {
+      control: undefined,
       stdin,
       stdout: undefined,
       stderr: undefined,
@@ -360,6 +365,7 @@ describe('disposeAcpChild (the backend-owned teardown ladder over seam verbs)', 
       .mockResolvedValueOnce(true)
     const terminate = vi.fn()
     const child: SubprocessHandle = {
+      control: undefined,
       stdin: new PassThrough(),
       stdout: undefined,
       stderr: undefined,
@@ -381,6 +387,7 @@ describe('disposeAcpChild (the backend-owned teardown ladder over seam verbs)', 
       .mockRejectedValueOnce(initialFailure)
       .mockRejectedValueOnce(finalFailure)
     const child: SubprocessHandle = {
+      control: undefined,
       stdin: new PassThrough(),
       stdout: undefined,
       stderr: undefined,
@@ -407,6 +414,7 @@ describe('disposeAcpChild (the backend-owned teardown ladder over seam verbs)', 
     const stdin = new PassThrough()
     const stdout = new PassThrough()
     const child: SubprocessHandle = {
+      control: undefined,
       stdin,
       stdout,
       stderr: undefined,
@@ -826,6 +834,7 @@ describe('dsh-subagent-acp', () => {
       disposeEofGraceMs: 50,
       disposeGraceMs: 50,
       spawn: () => ({
+        control: undefined,
         stdin,
         stdout,
         stderr: undefined,
@@ -1311,6 +1320,7 @@ describe('dsh-subagent-acp', () => {
         const child = spawnSubprocess(spec)
         realChild = child
         return closeProtocolOnPrompt({
+          control: child.control,
           stdin: child.stdin,
           stdout: child.stdout,
           stderr: child.stderr,
@@ -1412,17 +1422,27 @@ describe('dsh-subagent-acp', () => {
       args: [mockServer],
       permission: 'reject',
       env: { MOCK_TRAP_SIGTERM: '1', MOCK_TEXT: 'x', MOCK_READY_FILE: ready },
-      disposeEofGraceMs: 150,
-      disposeGraceMs: 150,
+      // The graces are wall-clock budgets for the managed scope's teardown on a
+      // shared host. At 150ms the hosted image escalated while the scope could
+      // not take the signal and systemctl failed the kill ("Failed to send
+      // signal SIGKILL to auxiliary processes: Invalid argument"), surfacing as
+      // a teardown failure the configuration never asked for. The case asserts
+      // that config graces reach the real run, so the value only has to clear
+      // the host's scope handling.
+      disposeEofGraceMs: 5_000,
+      disposeGraceMs: 5_000,
     })
     const run = await ctx.subagents.start('acp', request())
     expect(start).toHaveBeenCalledExactlyOnceWith(expect.anything(), expect.objectContaining({
-      disposeEofGraceMs: 150,
-      disposeGraceMs: 150,
+      disposeEofGraceMs: 5_000,
+      disposeGraceMs: 5_000,
     }))
     await waitForFile(ready, task.timeout)
     await expect(run.dispose()).resolves.toBeUndefined()
-  })
+    // The trapped child refuses stdin EOF, so the ladder waits out the EOF
+    // grace and then the SIGTERM grace (10s) before the SIGKILL settles it.
+    // That fixed cost is above the 5000ms default the local unit entry grants.
+  }, 30_000)
 
   it('rejects a dispose grace outside the Node timer range at load', async () => {
     for (const bad of [

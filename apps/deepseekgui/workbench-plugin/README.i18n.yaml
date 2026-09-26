@@ -1,6 +1,19 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write apps/deepseekgui/workbench-plugin/README.md
-README.md: 69c9870835b1238d1e8fe932c70650ac8f36ab8d
-README.zh.md: 8ef597ba4f5cc633e65f65e474022397416b7e52
+/see-sol-lab-deepseekgui-workbench:
+  en: 611cc6bb0400b3d9
+  zh: 8297e1db154465ba
+/see-sol-lab-deepseekgui-workbench/loading:
+  en: 918f531d8c5c8972
+  zh: e4faed1e34f0e8dd
+/see-sol-lab-deepseekgui-workbench/development:
+  en: 2992764bc17128f3
+  zh: 2810286a2ac99255
+/see-sol-lab-deepseekgui-workbench/model-experience:
+  en: 0c2c4e0f8e4d69df
+  zh: 7b3135b58cbdf58b
+/see-sol-lab-deepseekgui-workbench/model-experience/kv-cache-effect:
+  en: f927fbdcaa8b612f
+  zh: 6c88a06de274857d

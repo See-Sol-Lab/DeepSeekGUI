@@ -186,3 +186,29 @@ describe('createHarnessApi / sessionPrompt', () => {
       .rejects.toMatchObject({ code: 'bad-response' })
   })
 })
+
+describe('createHarnessApi / 返回 void 的端点', () => {
+  // 0.1.7 合并后真跑出来的：删除会话报「ok 响应缺少 value」。官方那三个端点
+  // 返回 void，成功响应是 `{ ok: true, value: undefined }`，JSON 里那个键直接
+  // 消失，所以对它们来说缺 value 才是正常的。
+  const voidEnvelope = (state: FetchState): unknown => ({
+    type: 'server-response', rpcId: state.seenBody.rpcId, result: { ok: true },
+  })
+
+  it('session/rename、workspace/archiveSession、workbenchInspector/deleteSession 都接受不带 value 的成功响应', async () => {
+    for (const run of [
+      (api: ReturnType<typeof createHarnessApi>) => api.sessionRename('s1', '新标题'),
+      (api: ReturnType<typeof createHarnessApi>) => api.sessionArchive('s1'),
+      (api: ReturnType<typeof createHarnessApi>) => api.sessionDelete('s1', 'signature'),
+    ]) {
+      const { fetch } = fakeFetch(voidEnvelope)
+      await expect(run(createHarnessApi({ baseUrl: 'http://127.0.0.1:3080', fetch: fetch as never }))).resolves.toBeUndefined()
+    }
+  })
+
+  it('带返回值的端点仍然要求 value：缺了就是坏响应，绝不当成空结果', async () => {
+    const { fetch } = fakeFetch(voidEnvelope)
+    const api = createHarnessApi({ baseUrl: 'http://127.0.0.1:3080', fetch: fetch as never })
+    await expect(api.sessionList()).rejects.toMatchObject({ code: 'bad-response' })
+  })
+})

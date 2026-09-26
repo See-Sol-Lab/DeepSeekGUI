@@ -1,6 +1,34 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for quickstart.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/user/deepseekgui/quickstart.md
-quickstart.md: 990aa6316a176016311a1f71a61bcd2f1d1ebe42
-quickstart.zh.md: 65e518ba6cbd70bd739ddfdef47a9edabd065506
+/deepseekgui-quick-start:
+  en: e99f4018c2311618
+  zh: 2f1f69f19d2eb00b
+/deepseekgui-quick-start/before-you-begin:
+  en: 7f3e67f7d5c540d4
+  zh: b7191b4bc6127ee4
+/deepseekgui-quick-start/1-download-deepseekgui:
+  en: 5ac5142f6e542031
+  zh: 1b631e23d0f5a714
+/deepseekgui-quick-start/2-install-and-launch:
+  en: 1facebdd321594e3
+  zh: 707820e9bd89f43b
+/deepseekgui-quick-start/3-connect-deepseek:
+  en: 8551fa9194d70a52
+  zh: e19197a2f04a69f1
+/deepseekgui-quick-start/4-choose-a-workspace:
+  en: 2a5d39436a9bbb15
+  zh: 4fce8ec5d1158e91
+/deepseekgui-quick-start/5-start-your-first-session:
+  en: fee9fa786ab540c3
+  zh: a3ef4d5051cb11ea
+/deepseekgui-quick-start/6-review-approvals-and-changes:
+  en: aeb5babc23f85daa
+  zh: 2f62b44fc8991f05
+/deepseekgui-quick-start/7-keep-what-you-learned:
+  en: 0326197a7865a797
+  zh: 0a299a3642013e9b
+/deepseekgui-quick-start/next-steps:
+  en: 866c0e11c6c232bc
+  zh: 15de2a78c5f4b76c

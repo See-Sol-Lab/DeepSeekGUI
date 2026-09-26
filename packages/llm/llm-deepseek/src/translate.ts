@@ -1,210 +1,166 @@
-/**
- * Translate DeepSeek SSE payloads with one stateful harness block per content, reasoning, or tool
- * call index. An empty initial reasoning delta does not open a block. Finish reason and the latest
- * usage are deferred until `[DONE]`, covering both finish-attached and trailing usage-only shapes
- * while ensuring no chunk follows `finish`.
- *
- * Translate DeepSeek wire chunks into the harness `StreamChunk` protocol.
- * @module dsh-llm-deepseek/translate
- */
+/** Translate Messages events while preserving block order and cumulative usage. */
 
-import { brandString } from '@deepseek-ai/dsh-brand'
-import { EMPTY_RESPONSE_CODE, LlmError } from '@deepseek-ai/dsh-llm'
-import type { ContentBlock, FinishReason, StreamChunk, TokenUsage, ToolCallId } from '@deepseek-ai/dsh-llm'
-import { DONE } from './sse.ts'
-import type { WireChunk, WireUsage } from './types.ts'
+import { LlmError, ToolCallId } from '@deepseek-ai/dsh-llm'
+import type { ContentBlock, FinishReason, StreamChunk, TokenUsage } from '@deepseek-ai/dsh-llm'
+import { object, replayState } from './replay.ts'
+import type { ReplayBlock } from './replay.ts'
 
-/** One open block under assembly. */
-interface OpenBlock {
+interface Block {
   index: number
-  kind: 'text' | 'reasoning' | 'tool-call'
-  text: string
-  /** tool-call only, absent until a delta carries a non-empty value. */
-  callId?: string | undefined
-  name?: string | undefined
+  content: Extract<ContentBlock, { type: ReplayBlock['type'] }>
+  replay: ReplayBlock
+  closed: boolean
+  json: string
 }
 
-/**
- * Map the wire finish_reason vocabulary to the harness FinishReason.
- * @param reason - the wire `finish_reason` string.
- * @returns the mapped reason; unrecognized values (content_filter, …) become `{kind: 'error'}` with the uppercased value as `code`.
+/** Decode a required string from provider JSON.
+ * @param value - provider field.
+ * @returns the validated string.
  */
-export function mapFinishReason(reason: string): FinishReason {
-  switch (reason) {
-    case 'stop': return { kind: 'stop' }
-    case 'tool_calls': return { kind: 'tool-calls' }
-    case 'length': return { kind: 'max-tokens' }
-    default:
-      // content_filter, insufficient_system_resource, future additions.
-      return {
-        kind: 'error',
-        failure: { message: `model stopped: ${reason}`, code: reason.toUpperCase() },
-      }
+export function string(value: unknown): string {
+  if (typeof value !== 'string') throw new LlmError('DeepSeek Messages expected a string field', 'MALFORMED_RESPONSE')
+  return value
+}
+
+function malformed(detail: string): never {
+  throw new LlmError(`DeepSeek Messages stream: ${detail}`, 'MALFORMED_RESPONSE')
+}
+
+function indexOf(event: Record<string, unknown>): number {
+  if (!Number.isSafeInteger(event.index) || (event.index as number) < 0) return malformed('invalid block index')
+  return event.index as number
+}
+
+function updateUsage(usage: TokenUsage, raw: unknown): void {
+  const fields = object(raw)
+  const keys = { input_tokens: 'inputTokens', output_tokens: 'outputTokens', cache_read_input_tokens: 'cacheReadTokens', cache_creation_input_tokens: 'cacheWriteTokens' } as const
+  for (const [wire, local] of Object.entries(keys)) {
+    const value = fields[wire]
+    if (value === undefined) continue
+    if (!Number.isSafeInteger(value) || (value as number) < 0) return malformed(`invalid ${wire}`)
+    usage[local] = value as number
   }
 }
 
-/**
- * Map wire usage fields. DeepSeek's `prompt_tokens` INCLUDES cache hits
- * (`prompt_tokens = prompt_cache_hit_tokens + prompt_cache_miss_tokens`,
- * api/create-chat-completion); the harness TokenUsage convention is
- * DISJOINT counts, so cache reads are subtracted out of `inputTokens`.
- * @param usage - wire usage from the finish chunk or the trailing usage-only chunk.
- * @returns disjoint harness counts; an exact total is present only when the
- *   aggregate prompt/completion counters are valid and agree with any wire total.
- */
-export function mapUsage(usage: WireUsage): TokenUsage {
-  const cacheRead = usage.prompt_tokens_details?.cached_tokens ?? usage.prompt_cache_hit_tokens
-  const reasoning = usage.completion_tokens_details?.reasoning_tokens
-  const combined = usage.prompt_tokens + usage.completion_tokens
-  const hasExactTotal = Number.isSafeInteger(usage.prompt_tokens)
-    && usage.prompt_tokens >= 0
-    && Number.isSafeInteger(usage.completion_tokens)
-    && usage.completion_tokens >= 0
-    && Number.isSafeInteger(combined)
-    && (usage.total_tokens === undefined || usage.total_tokens === combined)
-  return {
-    inputTokens: usage.prompt_tokens - (cacheRead ?? 0),
-    outputTokens: usage.completion_tokens,
-    ...hasExactTotal ? { totalTokens: combined } : {},
-    ...cacheRead !== undefined ? { cacheReadTokens: cacheRead } : {},
-    ...reasoning !== undefined ? { reasoningTokens: reasoning } : {},
+function startBlock(event: Record<string, unknown>, index: number): Block {
+  const native = object(event.content_block)
+  let content: Block['content']
+  let replay: ReplayBlock
+  switch (native.type) {
+    case 'text': content = { type: 'text', text: string(native.text) }; replay = { type: 'text' }; break
+    case 'thinking':
+      content = { type: 'reasoning', text: string(native.thinking) }
+      replay = { type: 'reasoning', ...native.signature === undefined ? {} : { signature: string(native.signature) } }
+      break
+    case 'tool_use':
+      content = { type: 'tool-call', id: ToolCallId(string(native.id)), name: string(native.name), arguments: JSON.stringify(object(native.input)) }
+      if (!content.id || !content.name) return malformed('empty tool identity')
+      replay = { type: 'tool-call' }
+      break
+    default: throw new LlmError(`DeepSeek Messages does not support response block ${String(native.type)}`, 'UNSUPPORTED_CONTENT')
+  }
+  return { index, content, replay, closed: false, json: '' }
+}
+
+function deltaChunk(block: Block, raw: unknown): StreamChunk | undefined {
+  const delta = object(raw)
+  const content = block.content
+  if (delta.type === 'text_delta' && content.type === 'text') {
+    const text = string(delta.text)
+    content.text += text
+    return { type: 'text-delta', index: block.index, text }
+  }
+  if (delta.type === 'thinking_delta' && content.type === 'reasoning') {
+    const text = string(delta.thinking)
+    content.text += text
+    return { type: 'reasoning-delta', index: block.index, text }
+  }
+  if (delta.type === 'signature_delta' && content.type === 'reasoning') {
+    block.replay.signature = (block.replay.signature ?? '') + string(delta.signature)
+    return undefined
+  }
+  if (delta.type === 'input_json_delta' && content.type === 'tool-call') {
+    const argumentsDelta = string(delta.partial_json)
+    block.json += argumentsDelta
+    return { type: 'tool-call-delta', index: block.index, id: content.id, argumentsDelta }
+  }
+  return malformed(`unsupported delta ${String(delta.type)} for ${content.type}`)
+}
+
+function stopReason(raw: unknown): FinishReason {
+  switch (raw) {
+    case 'end_turn': case 'stop_sequence': return { kind: 'stop' }
+    case 'tool_use': return { kind: 'tool-calls' }
+    case 'max_tokens': return { kind: 'max-tokens' }
+    default: return malformed(`unsupported stop reason ${String(raw)}`)
   }
 }
 
-/**
- * Accept one streamed identity field for a tool call. `id` and `name` are
- * identity, not accumulation: the wire sends each once, on the call's first
- * delta. A continuation delta that re-sends the field empty — or `null`, which
- * some OpenAI-compatible gateways fill in — means "no update", never "clear".
- * @param current - the identity established by an earlier delta of this call.
- * @param incoming - the field as parsed from this delta. The wire type is a
- *   claim about a remote encoder, so anything but a non-empty string leaves the
- *   established value alone rather than overwriting it.
- * @returns the identity in force after this delta.
+/** Translate decoded SSE data into the Harness stream protocol.
+ * @param events - framed, decoded provider events in arrival order.
+ * @param model - requested model id stored in durable replay state.
+ * @returns blocks, one final usage value, and exactly one terminal finish.
  */
-function acceptIdentity(current: string | undefined, incoming: unknown): string | undefined {
-  return typeof incoming === 'string' && incoming.length > 0 ? incoming : current
-}
-
-/** Assemble the final ContentBlock for one open block. */
-function closeBlock(block: OpenBlock): ContentBlock {
-  switch (block.kind) {
-    case 'text': return { type: 'text', text: block.text }
-    case 'reasoning': return { type: 'reasoning', text: block.text }
-    case 'tool-call': return {
-      type: 'tool-call',
-      id: brandString<ToolCallId>(block.callId ?? ''),
-      name: block.name ?? '',
-      arguments: block.text,
+export async function* translate(events: AsyncIterable<Record<string, unknown>>, model: string): AsyncGenerator<StreamChunk> {
+  const blocks = new Map<number, Block>()
+  const usage: TokenUsage = { inputTokens: 0, outputTokens: 0 }
+  let started = false
+  let reason: FinishReason | undefined
+  for await (const event of events) {
+    if (event.type === 'message_start') {
+      if (started) return malformed('duplicate message_start')
+      updateUsage(usage, object(event.message).usage)
+      started = true
+      continue
     }
-  }
-}
-
-/**
- * Consume SSE data payloads (ending with `[DONE]`) and yield StreamChunks.
- * Malformed JSON payloads abort the stream with `MALFORMED_RESPONSE`.
- * @param payloads - SSE data payloads from {@link parseSse}, `[DONE]`-terminated.
- * @returns deltas as they arrive; `block-end`s, `usage`, and `finish` are all deferred to the `[DONE]` sentinel.
- *   A `stop` (or absent) finish with no opened blocks is a degenerate provider completion and maps to an
- *   `EMPTY_RESPONSE` error finish instead of a successful empty message.
- */
-export async function* translate(payloads: AsyncIterable<string>): AsyncGenerator<StreamChunk> {
-  let nextIndex = 0
-  let textBlock: OpenBlock | undefined
-  let reasoningBlock: OpenBlock | undefined
-  const toolBlocks = new Map<number, OpenBlock>()
-  const order: OpenBlock[] = []
-  let pendingFinish: FinishReason | undefined
-  let pendingUsage: TokenUsage | undefined
-
-  function open(kind: OpenBlock['kind']): OpenBlock {
-    const block: OpenBlock = { index: nextIndex++, kind, text: '' }
-    order.push(block)
-    return block
-  }
-
-  for await (const payload of payloads) {
-    if (payload === DONE) {
-      for (const block of order) {
-        yield { type: 'block-end', index: block.index, block: closeBlock(block) }
+    if (!['content_block_start', 'content_block_delta', 'content_block_stop', 'message_delta', 'message_stop'].includes(String(event.type))) {
+      // Anthropic permits additional event types; content-bearing events remain validated below.
+      continue
+    }
+    if (!started) return malformed('event precedes message_start')
+    if (event.type === 'content_block_start') {
+      const wireIndex = indexOf(event)
+      if (blocks.has(wireIndex) || reason !== undefined) return malformed('block starts after settlement or repeats an index')
+      const block = startBlock(event, blocks.size)
+      blocks.set(wireIndex, block)
+      yield { type: 'block-start', index: block.index, blockType: block.content.type }
+      if (block.content.type === 'text' || block.content.type === 'reasoning') {
+        if (block.content.text) yield { type: block.content.type === 'text' ? 'text-delta' : 'reasoning-delta', index: block.index, text: block.content.text }
+      } else {
+        yield { type: 'tool-call-delta', index: block.index, id: block.content.id, name: block.content.name, argumentsDelta: '' }
       }
-      if (pendingUsage) yield { type: 'usage', usage: pendingUsage }
-      const reason = pendingFinish ?? { kind: 'stop' as const }
-      yield {
-        type: 'finish',
-        reason: reason.kind === 'stop' && order.length === 0
-          ? {
-            kind: 'error',
-            failure: { message: 'model returned a completed response with no content', code: EMPTY_RESPONSE_CODE },
-          }
-          : reason,
+    } else if (event.type === 'content_block_delta' || event.type === 'content_block_stop') {
+      const block = blocks.get(indexOf(event))
+      if (block === undefined || block.closed) return malformed('delta/stop without an open block')
+      if (event.type === 'content_block_delta') {
+        const chunk = deltaChunk(block, event.delta)
+        if (chunk !== undefined) yield chunk
+      } else {
+        block.closed = true
+        if (block.content.type === 'tool-call' && block.json.length > 0) block.content.arguments = block.json
+        yield { type: 'block-end', index: block.index, block: { ...block.content } }
       }
+    } else if (event.type === 'message_delta') {
+      const delta = object(event.delta)
+      if (delta.stop_reason != null) reason = stopReason(delta.stop_reason)
+      if (event.usage !== undefined) updateUsage(usage, event.usage)
+    } else {
+      if (reason === undefined || [...blocks.values()].some(block => !block.closed)) return malformed('message_stop without settled blocks and stop reason')
+      if (blocks.size === 0 && reason.kind === 'stop') throw new LlmError('DeepSeek Messages returned no content', 'EMPTY_RESPONSE')
+      // Truncated tool JSON is retained in the stream, then pruned by the shared assembler.
+      if (reason.kind !== 'max-tokens') {
+        for (const { content } of blocks.values()) {
+          if (content.type !== 'tool-call') continue
+          let parsed: unknown
+          try { parsed = JSON.parse(content.arguments) } catch (_invalidProviderToolJson) { return malformed('tool input is invalid JSON') }
+          object(parsed)
+        }
+      }
+      usage.totalTokens = usage.inputTokens + usage.outputTokens + (usage.cacheReadTokens ?? 0) + (usage.cacheWriteTokens ?? 0)
+      yield { type: 'usage', usage }
+      yield { type: 'finish', reason, replayState: replayState(model, [...blocks.values()].map(block => block.replay)) }
       return
     }
-
-    let chunk: WireChunk
-    try {
-      chunk = JSON.parse(payload) as WireChunk
-    } catch {
-      throw new LlmError(`malformed SSE payload: ${payload.slice(0, 120)}`, 'MALFORMED_RESPONSE')
-    }
-
-    for (const choice of chunk.choices ?? []) {
-      const delta = choice.delta
-
-      // Reasoning first: thinking mode interleaves it before text. The
-      // empty-string first chunk must not open a block.
-      const reasoning = delta?.reasoning_content
-      if (typeof reasoning === 'string' && reasoning.length > 0) {
-        if (!reasoningBlock) {
-          reasoningBlock = open('reasoning')
-          yield { type: 'block-start', index: reasoningBlock.index, blockType: 'reasoning' }
-        }
-        reasoningBlock.text += reasoning
-        yield { type: 'reasoning-delta', index: reasoningBlock.index, text: reasoning }
-      }
-
-      const content = delta?.content
-      if (typeof content === 'string' && content.length > 0) {
-        if (!textBlock) {
-          textBlock = open('text')
-          yield { type: 'block-start', index: textBlock.index, blockType: 'text' }
-        }
-        textBlock.text += content
-        yield { type: 'text-delta', index: textBlock.index, text: content }
-      }
-
-      for (const call of delta?.tool_calls ?? []) {
-        let block = toolBlocks.get(call.index)
-        if (!block) {
-          block = open('tool-call')
-          toolBlocks.set(call.index, block)
-          yield { type: 'block-start', index: block.index, blockType: 'tool-call' }
-        }
-        block.callId = acceptIdentity(block.callId, call.id)
-        block.name = acceptIdentity(block.name, call.function?.name)
-        const fragment = call.function?.arguments ?? ''
-        block.text += fragment
-        yield {
-          type: 'tool-call-delta',
-          index: block.index,
-          id: brandString<ToolCallId>(block.callId ?? ''),
-          ...block.name !== undefined ? { name: block.name } : {},
-          argumentsDelta: fragment,
-        }
-      }
-
-      if (typeof choice.finish_reason === 'string') {
-        pendingFinish = mapFinishReason(choice.finish_reason)
-      }
-    }
-
-    // Usage may arrive attached to the finish chunk or as a trailing
-    // usage-only chunk — keep the latest.
-    if (chunk.usage) pendingUsage = mapUsage(chunk.usage)
   }
-
-  // parseSse guarantees the [DONE] sentinel (or throws); reaching here means
-  // the payload source violated that contract.
-  throw new LlmError('SSE payload stream ended without [DONE]', 'STREAM_CLOSED')
+  throw new LlmError('DeepSeek Messages stream ended before message_stop', 'STREAM_CLOSED')
 }

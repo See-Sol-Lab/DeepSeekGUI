@@ -21,11 +21,16 @@ export const ROLE_OVERHEAD = 4
 /**
  * Structural JSON price of one block outside the typed pricing arms: the
  * fixed heuristic for merge-extended blocks and for image references, whose
- * request price is route-owned rather than fixed.
+ * request price is route-owned rather than fixed. Image offload marks do not
+ * change this reference-only heuristic; route pricing owns their placeholders.
  * @param block - block to price without mutation.
  * @returns heuristic tokens for the block's JSON structure.
  */
 export function estimateStructuralBlock(block: ContentBlock): number {
+  if (block.type === 'image') {
+    const { offloaded: _offloaded, ...reference } = block
+    return BLOCK_OVERHEAD + Math.ceil(JSON.stringify(reference).length / CHARS_PER_TOKEN)
+  }
   return BLOCK_OVERHEAD + Math.ceil(JSON.stringify(block).length / CHARS_PER_TOKEN)
 }
 
@@ -46,9 +51,6 @@ export function estimateContent(blocks: readonly ContentBlock[]): number {
         tokens += Math.ceil(block.name.length / CHARS_PER_TOKEN)
           + Math.ceil(block.arguments.length / CHARS_PER_TOKEN)
           + BLOCK_OVERHEAD
-        break
-      case 'tool-result':
-        tokens += estimateContent(block.content) + BLOCK_OVERHEAD
         break
       default:
         // ContentBlockMap is merge-extensible; unknown blocks (and image

@@ -1,6 +1,22 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-09-10-b6-p8-main-process-responsibility-split.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-09-10-b6-p8-main-process-responsibility-split.md
-2026-09-10-b6-p8-main-process-responsibility-split.md: ccf57266f799c6b48fd0b24d3312baa34d24c250
-2026-09-10-b6-p8-main-process-responsibility-split.zh.md: 9c6b08109171f174c8b7bdf2ca3e8c0920dec91b
+/agent-note-split-the-desktop-main-process-by-owned-responsibility:
+  en: b645347620f30e79
+  zh: dc07b75ea7705802
+/agent-note-split-the-desktop-main-process-by-owned-responsibility/problem:
+  en: e97163106ad11929
+  zh: 07c9ef60d5ab6c60
+/agent-note-split-the-desktop-main-process-by-owned-responsibility/decision:
+  en: b3f9057fbe9b1b93
+  zh: f65f81e772ec9073
+/agent-note-split-the-desktop-main-process-by-owned-responsibility/alternatives-considered:
+  en: 602cdc44ad92c6a0
+  zh: 99ae22732c4d0749
+/agent-note-split-the-desktop-main-process-by-owned-responsibility/consequences:
+  en: efdefa92032c7431
+  zh: ebf05ee2f60b02e1
+/agent-note-split-the-desktop-main-process-by-owned-responsibility/verification:
+  en: bdb3f700d597558d
+  zh: cb6b19127fccee9b

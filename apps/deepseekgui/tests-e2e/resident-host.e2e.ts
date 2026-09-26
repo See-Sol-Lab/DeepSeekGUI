@@ -397,22 +397,15 @@ describe.runIf(packagedExists)('Resident Host（P2 常驻生命周期）', () =>
         await waitForCompMount(app)
         await waitLauncherState(temp)
 
-        // 恢复入口：只在 recovery-needed / drift 时出现，此刻不该有。
+        // 浏览器面板项：只在插件创建过 pane 之后出现，全新启动不该有（轮询兼等菜单渲染）。
         await expect.poll(
           () => evalInView<string>(
             app,
             CHROME_URL_PREFIX,
-            "getComputedStyle(document.getElementById('menu-plugin-recovery')).display",
+            "getComputedStyle(document.getElementById('menu-browser-pane')).display",
           ),
           { timeout: 15_000 },
         ).toBe('none')
-
-        // 浏览器面板项：只在插件创建过 pane 之后出现，全新启动不该有。
-        expect(await evalInView<string>(
-          app,
-          CHROME_URL_PREFIX,
-          "getComputedStyle(document.getElementById('menu-browser-pane')).display",
-        )).toBe('none')
 
         // 对照：一直都在的项必须仍然可见，别把 hidden 修成「全都不显示」。
         expect(await evalInView<string>(

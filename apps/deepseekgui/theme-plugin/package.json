@@ -8,6 +8,7 @@
   "exports": {
     ".": "./lib/index.js",
     "./client": "./lib/client.js",
+    "./locale/*.json": "./locale/*.json",
     "./package.json": "./package.json"
   },
   "dsh": {
@@ -21,6 +22,7 @@
   },
   "license": "SEE LICENSE IN ../../../DEEPSEEKGUI-LICENSE.md",
   "files": [
+    "locale/*.json",
     "lib/client.js",
     "lib/index.js"
   ]

@@ -1,6 +1,43 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for desktop-tools.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/user/deepseekgui/desktop-tools.md
-desktop-tools.md: 1347f1d28397841ffbf0981c78b62872ab4b1048
-desktop-tools.zh.md: be0eb8cb56084e0aa5104fd31962c17df0fab9ed
+/desktop-tools:
+  en: 34476b25d2102770
+  zh: b93ac8d4279b7e60
+/desktop-tools/built-in-browser:
+  en: 49ce470d13b8b2aa
+  zh: 8e9d0eb3f452277a
+/desktop-tools/dsh-terminal:
+  en: 12fa2ecd3c790a44
+  zh: 10b3347c3733b943
+/desktop-tools/harness-controls:
+  en: 9727b2c396a90857
+  zh: ef1ec448fb73d37c
+/desktop-tools/updates:
+  en: 6dfbfe68d0914831
+  zh: 376c55b115b73648
+/desktop-tools/account-balance:
+  en: 59b5f29bff890140
+  zh: 9d33637e95dfe89b
+/desktop-tools/skill:
+  en: 04bd342e194b8ded
+  zh: ada50ef1c86d939b
+/desktop-tools/project-management:
+  en: bc267e6e638996b4
+  zh: f3c3947104cc8325
+/desktop-tools/diagnostics-center:
+  en: ee99c3ca04933f52
+  zh: 72669694bd160270
+/desktop-tools/feedback:
+  en: aa68b63dc2393196
+  zh: ed7074575f8c30ce
+/desktop-tools/desktop-notifications:
+  en: 793bcbf7a4afed1c
+  zh: 8e3bf325c901d264
+/desktop-tools/tray-and-lifecycle:
+  en: 0a98336b42ccebf1
+  zh: bd19b67a74d0ed33
+/desktop-tools/related-guides:
+  en: c8ac322d56e11665
+  zh: 19fffc22ecd8864a

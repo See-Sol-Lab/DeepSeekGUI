@@ -1,5 +1,5 @@
 ---
-description: "面向消费方与后端作者的统一会话历史查询服务：对实时与持久会话日志的精确读取、关系追踪与提供方无关过滤。"
+description: "面向消费方与后端作者的统一会话历史查询服务：对实时与持久化会话日志的精确读取、关系追踪与提供方无关过滤。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-session-query` 让应用代码可以列出、过滤、读取和搜索会话历史，检查带边界的事件上下文，并追踪会话或事件关系。读取优先使用实时会话而非持久化副本，并返回来自同一次一致观察的脱离存储克隆。精确读取、过滤与追踪可用于任何受支持的存储设置；排序全文搜索需要 `dsh-session-query-sqlite` 等后端。当应用代码需要以编程方式访问呈现给模型的历史时，请使用本包。
+`dsh-session-query` 让应用代码可以列出、过滤、读取和搜索会话历史，检查带边界的事件上下文，并追踪会话或事件关系。读取优先使用实时会话而非持久化副本，并返回来自同一次一致观察的脱离存储克隆。精确读取、过滤与追踪可用于任何受支持的存储设置；带排名的全文搜索需要 `dsh-session-query-sqlite` 等后端。当应用代码需要以编程方式访问呈现给模型的历史时，请使用本包。
 
 ## 目录
 
@@ -48,7 +48,7 @@ kind: "package-reference"
 
 `SessionResultFilter` 按 id、可空 cwd、创建时间范围、可空父级或来源可用性缩小会话范围；`SessionEventResultFilter` 按 seq/时间范围、事件类型、表层或字面文本缩小事件范围。过滤器数组使用 AND 连接，同一子句内的列表值使用 OR；空列表值不匹配任何内容，范围包含端点，格式错误的范围或未知的封闭联合值以 `SESSION_QUERY_INVALID_FILTER` 失败。
 
-文本子句是对所提取语义文本的字面、不区分大小写、空白灵活的扫描——而非全文查询。需要任意子字符串召回时使用它；需要排序后的全文结果时使用挂载后端的搜索方法。
+文本子句是对所提取语义文本的字面、不区分大小写、空白灵活的扫描——而非全文查询。需要任意子字符串召回时使用它；需要带排名的全文结果时使用挂载后端的搜索方法。
 
 ### 配置
 
@@ -62,7 +62,7 @@ kind: "package-reference"
 
 ### 失败与恢复
 
-失败带有稳定的 `SessionQueryError.code` 类型。你会遇到的包括：id 不存在时 `SESSION_QUERY_SESSION_NOT_FOUND`；同一会话的实时与持久化观察在不可变 header 上不一致时 `SESSION_QUERY_SOURCE_CONFLICT`；已挂载持久化不可读时 `SESSION_QUERY_PERSISTENCE_FAILED`；持久化记录未通过 Session 校验时 `SESSION_QUERY_CORRUPT_SESSION`；加载的日志破坏表层约定时 `SESSION_QUERY_INVALID_SURFACE`。针对已知实时会话的读取从不查询持久化，因此后端故障不会让当前内存历史变得不可读。
+失败带有稳定的 `SessionQueryError.code` 类型。你会遇到的包括：id 不存在时 `SESSION_QUERY_SESSION_NOT_FOUND`；同一会话的实时与持久化观察在不可变 header 上不一致时 `SESSION_QUERY_SOURCE_CONFLICT`；已挂载持久化不可读时 `SESSION_QUERY_PERSISTENCE_FAILED`；持久化记录未通过 Session 校验，或实时或 prepared 观察的投影计算失败时 `SESSION_QUERY_CORRUPT_SESSION`；加载的日志破坏表层约定时 `SESSION_QUERY_INVALID_SURFACE`。投影失败会将原始错误保留为 `cause`。针对已知实时会话的读取从不查询持久化，因此后端故障不会让当前内存历史变得不可读。
 
 -----
 
@@ -92,7 +92,7 @@ kind: "package-reference"
 | [`src/index.ts`](src/index.ts) | 服务定义：抽象 `SessionQueryEngine`、具体读取、配置校验 |
 | [`src/corpus.ts`](src/corpus.ts) | 实时优先的语料库解析、可选持久化绑定、批量投影 |
 | [`src/observation.ts`](src/observation.ts) | 实时优先的定点观察，带按修订键控的有界 prepared-Session 缓存 |
-| [`src/cold-read.ts`](src/cold-read.ts) | 基于 handle 的冷日志读取，附内存中的中断轮次闭合事件 |
+| [`src/cold-read.ts`](src/cold-read.ts) | 基于句柄的冷日志读取，附内存中的中断轮次闭合事件 |
 | [`src/types.ts`](src/types.ts) | 公共记录、过滤器、请求与分页类型 |
 | [`src/config.ts`](src/config.ts) | 继承配置与封闭的 `SessionQueryError` 分类体系 |
 | [`src/filters.ts`](src/filters.ts) | 提供方无关谓词与字面文本扫描 |
@@ -100,15 +100,15 @@ kind: "package-reference"
 | [`src/documents.ts`](src/documents.ts) | 表层感知的语义文档投影 |
 | [`src/tracing.ts`](src/tracing.ts) | 一次性会话血缘与事件关系追踪 |
 | [`src/sources.ts`](src/sources.ts) | 不可变 header 兼容性检查 |
-| — | 不发布运行时不变式伴生入口；结果均为按调用投影。 |
+| — | 不发布运行时不变式伴生入口；查询结果是每次调用产生的不可变投影，其血缘与事件关系会在构建时完成校验；服务不保留可观察的结果状态。 |
 
 ### 语料库解析
 
-`SessionCorpus` 通过 fiber 绑定可选的 `ctx.sessionPersistence`，并实时优先解析每次读取：已知实时目标直接快照，不查询持久化；否则先列出会话，再通过短生命周期的读取 handle 完整读出日志，并在克隆前重新检查是否出现实时挂载。写入者在轮次中途崩溃的冷日志用 `interruptedTurnClosers` 在内存中补齐 —— 读取从不修改持久化。列表与加载观察之间会断言 header 兼容性。批量标题读取执行一次元数据列表与有界并发读取，把逐会话失败隔离，而取消会拒绝整个批次。
+`SessionCorpus` 通过 fiber 绑定可选的 `ctx.sessionPersistence`，并实时优先解析每次读取：已知实时目标直接快照，不查询持久化；否则先列出会话，再通过短生命周期的读取句柄完整读出日志，并在克隆前重新检查是否出现实时挂载。写入者在轮次中途崩溃的冷日志用 `interruptedTurnClosers` 在内存中补齐——读取从不修改持久化。列表与加载观察之间会断言 header 兼容性。批量标题读取执行一次元数据列表与有界并发读取，把逐会话失败隔离，而取消会拒绝整个批次。
 
 ### 观察缓存
 
-`observeSession` 不经过列表预检直接构建定点观察。实时观察以当前日志长度固定 cut，并在首次读取时才物化 `events`，因此只需要 header、cursor 或 projection 的消费者永远不会复制日志；日志只会追加，所以延后的首次读取得到的仍然正好是该前缀。冷路径先对存储会话执行 `stat`，再查询自有的有界缓存，缓存键为持久化实例加 `stat` 修订：修订未变则复用已恢复的未发布 Session，不再重读日志；修订变化或持久化实例被替换则经 handle 缝重新加载并替换条目。缓存保留 `preparedSessionCacheSize` 个条目并按最久未用淘汰，被活跃观察租约钉住的条目从不被淘汰；读取中途转为实时的会话会重试实时路径。
+`observeSession` 不经过列表预检直接构建定点观察。实时观察以当前日志长度固定 cut，并在首次读取时才物化 `events`，因此只需要 header、cursor 或 projection 的消费者永远不会复制日志；日志只会追加，所以延后的首次读取得到的仍然正好是该前缀。冷路径先对存储会话执行 `stat`，再查询自有的有界缓存，缓存键为持久化实例加 `stat` 修订：修订未变则复用已恢复的未发布 Session，不再重读日志；修订变化或持久化实例被替换则经句柄 seam 重新加载并替换条目。缓存保留 `preparedSessionCacheSize` 个条目并按最久未用淘汰，被活跃观察租约钉住的条目从不被淘汰；读取中途转为实时的会话会重试实时路径。
 
 ### 读取与追踪
 
@@ -150,7 +150,7 @@ kind: "package-reference"
 - **无调用方授权**——这是上下文范围内的可信基础设施；模型工具或 UI 必须限制调用方可检查的会话。
 - **无提供方协调器或回退**——服务在搜索上是抽象的，组合必须挂载具体后端；没有搜索提供方注册表或回退实现。
 - **精确读取回放整个日志**——`readSession`、`readSurface`、`filterEvents` 与事件追踪会加载并校验完整逻辑日志，因此非常大的历史每次调用都要付出完整检查；`listSessions` 保持轻量。
-- **字面文本扫描，而非全文搜索**——`text` 过滤器用正则表达式扫描提取出的文档且不排序；排序搜索需要挂载后端。
+- **字面文本扫描，而非全文搜索**——`text` 过滤器用正则表达式扫描提取出的文档且不提供排名；带排名的搜索需要挂载后端。
 
 <a id="dev-note"></a>
 ### 开发备注

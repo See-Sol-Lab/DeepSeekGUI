@@ -1,0 +1,19 @@
+# Bilingual-pair consistency record for 2026-09-13-engineering-memory-entries.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-13-engineering-memory-entries.md
+/agent-note-versioned-engineering-memory-entries-over-the-storage-domain:
+  en: 12093706691bdcb8
+  zh: 350702be10c7dad7
+/agent-note-versioned-engineering-memory-entries-over-the-storage-domain/problem:
+  en: 176edb0c2c9ad7db
+  zh: d2563d8cb5a2da05
+/agent-note-versioned-engineering-memory-entries-over-the-storage-domain/decision:
+  en: 7801b5227abbcdcc
+  zh: 243e41268817c0e2
+/agent-note-versioned-engineering-memory-entries-over-the-storage-domain/alternatives-considered:
+  en: 14a1072dfd0048aa
+  zh: 01b743e3b9e3a2e7
+/agent-note-versioned-engineering-memory-entries-over-the-storage-domain/consequences:
+  en: f5db4798e06f082c
+  zh: 55149f7ce6284358

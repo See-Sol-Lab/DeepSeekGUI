@@ -1,6 +1,49 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for data-troubleshooting.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/user/deepseekgui/data-troubleshooting.md
-data-troubleshooting.md: 629c6daccc00d37a8899e478d7014537a18d6d35
-data-troubleshooting.zh.md: 25d739d4e64276bf7afc23687f2edf42b562cdd8
+/data-and-troubleshooting:
+  en: 559fb8bf32d0a56b
+  zh: 0128bc5fa72447a4
+/data-and-troubleshooting/where-deepseekgui-stores-data:
+  en: bd1b8ab2c6de65ab
+  zh: ecdce7fb7f52ef4d
+/data-and-troubleshooting/move-the-managed-harness-home:
+  en: 76343e13cb5f5eea
+  zh: a1ed5b80a3d7afdf
+/data-and-troubleshooting/uninstall-and-reinstall:
+  en: 23db5411e85690a1
+  zh: 3152b5c2de08f700
+/data-and-troubleshooting/privacy-boundaries:
+  en: 506b95b8ecb036ce
+  zh: 5ad34b7c4fbcdc7b
+/data-and-troubleshooting/windows-smartscreen-blocks-the-installer:
+  en: 789850eac152757a
+  zh: 6eccc08c426399df
+/data-and-troubleshooting/deepseekgui-reports-a-missing-api-key:
+  en: 2bcc021a7896d765
+  zh: 33cdfc449d00838d
+/data-and-troubleshooting/harness-does-not-start:
+  en: 793ae5e148a3d842
+  zh: 788453689f77c044
+/data-and-troubleshooting/deepseekgui-opens-but-the-window-is-missing:
+  en: ed63fb570506ec3b
+  zh: a9ac2066a0995368
+/data-and-troubleshooting/a-plugin-operation-failed:
+  en: fe19c26e9c282556
+  zh: cb344e9276ce8214
+/data-and-troubleshooting/the-browser-does-not-open:
+  en: 4540e8f3357435bb
+  zh: 18ef4bf7bae652d0
+/data-and-troubleshooting/check-for-updates-reports-no-update:
+  en: 838993cd5c2f26c0
+  zh: a727ea7929ec9fc3
+/data-and-troubleshooting/programs-you-run-yourself-fail-in-a-project-used-with-sandbox-known-issue:
+  en: dde9922594a56b41
+  zh: b77715bf125c4fbd
+/data-and-troubleshooting/export-diagnostics-without-the-gui:
+  en: 842e241dab3a17fe
+  zh: 62084a468d1f4f2f
+/data-and-troubleshooting/get-help:
+  en: ba42e3a773237f6b
+  zh: 536843374d0ab8bf

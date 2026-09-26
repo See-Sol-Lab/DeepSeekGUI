@@ -9,7 +9,7 @@ kind: "package-group"
 
 ## 概述
 
-`api/` 组提供应用的 Remote 层：Client 环境可以调用运行在 Host 上的业务能力——管理目标、运行命令、查看插件清单、发现文件与会话引用——调用方式是类型化方法，并接收结果或转发的 Host 事件。`remotes` 决定暴露哪些能力、以及每次调用如何到达正确会话的 agent；`gateway` 在 Client 与 Host 之间承载调用及其结果。技术栈运行在应用共享的 Connection 之上；流式会话数据刻意不在其中。
+`api/` 组提供应用的 Remote 层：Client 环境可以调用运行在 Host 上的业务能力——管理目标、运行命令、查看插件清单、发现文件与会话引用——调用方式是类型化方法，可接收结果或流、在已打开的流上发送上行项，并观察转发的 Host 事件。`remotes` 决定暴露哪些能力、以及每次调用如何到达正确会话的 agent；`gateway` 在 Client 与 Host 之间承载调用及其结果。技术栈运行在应用共享的 Connection 之上；流式会话数据刻意不在其中。
 
 ## 目录
 
@@ -22,19 +22,23 @@ kind: "package-group"
 <a id="packages"></a>
 ## 包
 
-下面这些包共同提供 Remote 层；穷尽式约定以各包 README 为准。
+下面这些包共同提供 Remote 层；完整约定以各包 README 为准。
 
 | 包 | 职责 | ctx key |
 |---|---|---|
 | [`workbench-inspector/`](workbench-inspector/README.zh.md) | 不调用模型，读取 DeepSeekGUI 当前工作区文件与 Git 差异。 | `ctx.workbenchInspector` |
+| [`skill-manager/`](skill-manager/README.zh.md) | 导入、列出与卸载 DeepSeekGUI 本机技能库里的技能包，保存每个项目文件夹的选择，并注册唯一一个为会话列出已选安装的 provider。 | `ctx.skillManager` |
+| [`workbench-memory/`](workbench-memory/README.zh.md) | 按项目文件夹或全局存储 DeepSeekGUI 的工程记忆条目：带版本的纠正、留墓碑的遗忘、一层撤销、显式恢复，以及旧 Markdown 记忆文件的审阅式导入。 | `ctx.workbenchMemory` |
 | [`remotes/`](remotes/README.zh.md) | 决定 Client 可以消费哪些 Host 能力与事件。 | — |
-| [`gateway/`](gateway/README.zh.md) | 承载带类型的单次调用、多路复用 stream 与转发的 Host 事件。 | `ctx.typertGateway` / `ctx.remote` |
-| [`session-controller/`](session-controller/README.zh.md) | 拥有 Session 命令、历史 stream、实时控制状态与 Agent/Session 身份策略。 | `ctx.sessionController` / `ctx.remote.session` |
+| [`gateway/`](gateway/README.zh.md) | 承载类型化一元调用、带 Client 上行的多路复用流，以及转发的 Host 事件。 | `ctx.typertGateway` / `ctx.remote` |
+| [`job-controller/`](job-controller/README.zh.md) | 把一个后台任务的观测 record 流式送到 Client。 | `ctx.jobController` / `ctx.remote.job` |
+| [`session-controller/`](session-controller/README.zh.md) | 拥有会话命令、历史记录流、实时控制状态与 Agent/Session 身份策略。 | `ctx.sessionController` / `ctx.remote.session` |
 | [`settings-controller/`](settings-controller/README.zh.md) | 拥有 settings 域各 seam 之上的配置界面读写。 | `ctx.settingsController`、`ctx.credentialsController` / `ctx.remote.settings`、`ctx.remote.credentials` |
 | [`workspace-controller/`](workspace-controller/README.zh.md) | 拥有 Workspace 变更与完整 Client Workspace 投影。 | `ctx.workspaceController` / `ctx.remote.workspace` |
-| [`workspace-files/`](workspace-files/README.zh.md) | 拥有有界的工作区文件访问——`stat`、分页 `read`、`list` 与已埋点操作的 `changes` 流——以及其上的 Client `file` 资源提供者。 | `ctx.workspaceFiles` / `ctx.remote.workspaceFiles` |
+| [`terminal-controller/`](terminal-controller/README.zh.md) | Session 拥有的交互式 shell、屏幕恢复和浏览器终端控制。 | `ctx.terminalController` / `ctx.remote.terminal` |
+| [`workspace-files/`](workspace-files/README.zh.md) | 拥有有界的工作区文件访问——`stat`、分页 `read`、`list` 与已埋点操作的 `changes` 流——以及其上的 Client `file` 资源提供方。 | `ctx.workspaceFiles` / `ctx.remote.workspaceFiles` |
 
-Remote 调用沿 Client → Host 方向运行在应用共享的 Connection 之上。API Gateway 拥有 Remote 传输，各 controller 包分别拥有 Session、配置界面与 Workspace 行为。流式下载等不适合 Remote 调用的响应由功能包注册精确的 Connection Fetch 路由。
+Remote 调用沿 Client → Host 方向运行在应用共享的 Connection 之上；流项沿 Host → Client 方向经 Gateway mux 传输，流的上行项则沿 Client → Host 方向走同一条逻辑流。API Gateway 拥有 Remote 传输，各控制器包分别拥有 Session、配置界面与 Workspace 行为。流式下载等不适合 Remote 调用的响应由功能包注册精确的 Connection Fetch 路由。
 
 -----
 

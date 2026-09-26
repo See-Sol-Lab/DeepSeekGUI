@@ -33,6 +33,8 @@ The startup provider binds stdin EOF to the launcher's bounded successful shutdo
 
 The SDK uses the base `read`, `write`, and `edit` defaults. To add `str_replace_editor`, use the explicit insertion patch in the [base configuration guide](../base/README.md#use-this-package). The standalone `sdk-minimal` profile owns its separate tool selection.
 
+The packaged Python runtime enables the [Office runtime query and skills](../../skill/tool-workspace-dependencies/README.md#use-this-package) by default. `DSH_PRIMARY_RUNTIME` overrides its bundled payload; an empty value disables both rows. Source launches without a carrier default remain opt-in. The tool reads the payload in place. Profile patches can disable `skill-office` or replace its `assetRoot` independently of `workspace-dependencies`; filesystem skills with the same name take precedence over bundled skills. See the [runtime package](../../../python/sdk-runtime/README.md) for packaging and configuration.
+
 -----
 
 <a id="model-experience"></a>
@@ -58,7 +60,7 @@ Stable for a fixed profile, provider, model, and tool roster. Profile changes ta
 
 - **A profile can omit the SDK server** — a custom profile selected by the TypeScript client must retain this bundle or another `dsh-sdk-jsonrpc-server` row; client initialization fails when no peer answers.
 - **User plugins can violate stdout purity** — profile and per-launch patches are trusted application composition. The shipped bundle writes no non-protocol stdout, but it cannot contain an arbitrary inserted plugin.
-- **Configuration changes require restart** — the shipped `sdk` profile uses `patchReload: startup` so one stdio connection never observes a replacement server or Agent dependency.
+- **Configuration changes require restart** — the `sdk-app` bundle disables HMR in YAML so one stdio connection never observes a replacement server or Agent dependency.
 
 
 <a id="dev-note"></a>

@@ -39,6 +39,7 @@ export function portConnectable(port: number): Promise<boolean> {
  * 泄漏实例会让后续 launch 全部撞 fail-loud 端口占用）。
  * @param timeoutMs - 等端口释放的上限。
  */
+// 在 launch **之前**调用:按端口收割上一个用例泄漏的测试实例。launch 之后调用会把当前用例自己的 dsh 杀掉(B7-P10 监工窗实测踩坑)。
 export async function ensureCleanStage(timeoutMs = 20_000): Promise<void> {
   if (!await portConnectable(TEST_APP_PORT)) return
   // 只收割占用**测试端口**的进程（上一个用例泄漏的测试实例）——按端口
@@ -220,11 +221,14 @@ export async function clickChromeButton(app: ElectronApplication, id: string): P
 //     是内联样式 + 随 locale 变的文案，这个属性是唯一的契约（见
 //     settings-plugin/lib/client.js 的 btn()）。
 
-/** DeepSeekGUI 的三个设置分区，值是导航行上的可见文本（zh/en 各一）。 */
+/** DeepSeekGUI 的设置分区，值是导航行上的可见文本（zh/en 各一）。 */
 export const DEEPSEEKGUI_SECTIONS = {
   harness: ['Harness（桌面）', 'Harness (Desktop)'],
-  plugins: ['插件管理（本地）', 'Plugins (Local)'],
   feedback: ['BUG 诊断与反馈', 'Diagnostics & Feedback'],
+  /** B7-P3「用量与余额」：内容依赖内置浏览器里的开放平台登录态，e2e 只能驱到未登录降级态。 */
+  usage: ['用量与余额', 'Usage & balance'],
+  /** B7-P4「技能（本地）」：由 skills-plugin 注册，Compatibility View 里同样可见。 */
+  skills: ['Skill', 'Skills'],
 } as const
 
 /** 在 Compatibility View 里执行脚本（官方 UI + DeepSeekGUI 分区都在这一层）。 */

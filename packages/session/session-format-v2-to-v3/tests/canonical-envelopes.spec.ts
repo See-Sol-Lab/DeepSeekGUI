@@ -84,7 +84,7 @@ function toolLog(isError: boolean, error?: SessionFormatJsonValue): SessionForma
 }
 
 describe('canonical V2 to V3 envelopes', () => {
-  it('renames replacement keys after structural insertion and remaps provenance', () => {
+  it('renames replacement keys after structural insertion and remaps source-event references', () => {
     const first = user(2)
     const replacement = user(3, { surfaceOp: { op: 'replace', start: 2, end: 2 }, sourceEventSeqs: [2] })
     const source = [...opening(), first, replacement]
@@ -232,14 +232,14 @@ describe.each(['migration', 'native V3'] as const)('%s event admission', (mode) 
   ] satisfies [string, SessionFormatJsonValue][])('forbids assistant sourceEventSeqs: %s', (_name, sourceEventSeqs) => {
     const events = toolLog(false)
     events[2] = { ...events[2]!, sourceEventSeqs }
-    expect(() => admit(events)).toThrow(mode === 'migration' ? /retains obsolete chunk provenance/ : /cannot carry sourceEventSeqs/)
+    expect(() => admit(events)).toThrow(mode === 'migration' ? /chunk references/ : /cannot carry sourceEventSeqs/)
   })
 
   it.each([
     ['empty', []], ['scalar', 0], ['null', null], ['negative', [-1]], ['fractional', [0.5]],
     ['unsafe integer', [Number.MAX_SAFE_INTEGER + 1]], ['current', [3]], ['future', [4]], ['duplicate', [0, 0]],
   ] satisfies [string, SessionFormatJsonValue][])(
-    'refuses invalid provenance: %s', (_name, sourceEventSeqs) => {
+    'refuses invalid source-event references: %s', (_name, sourceEventSeqs) => {
       expect(() => admit([...opening(), user(2), user(3, { surfaceOp: 'append', sourceEventSeqs })]))
         .toThrow(/sourceEventSeqs/)
     },
@@ -299,7 +299,7 @@ describe('native V3 opaque event preservation', () => {
   )
 
   it.each(['external/future', 'tool/code-dispatch-start', 'tool/code-dispatch'])(
-    'round-trips ignorable %s with physical provenance and arbitrary data', (type) => {
+    'round-trips ignorable %s with physical source-event ranges and arbitrary data', (type) => {
       for (const data of [null, false, ['opaque'], { nested: { sourceEventSeqs: null } }]) {
         const source = event(type, 1, data, { ignorable: true, sourceEventSeqs: [0], surfaceOp: { future: ['opaque'] } })
         const row = releasedV3SessionFormatCodec.encodeEvent(source)
@@ -497,8 +497,8 @@ describe('V3 full artifact relationships', () => {
   it.each([
     ['shadowed endpoint', 2, 4, [2, 4], /range is not on the current surface/],
     ['reversed surface order', 4, 5, [4, 5], /range is not on the current surface/],
-    ['missing provenance', 5, 4, undefined, /omit a shadowed surface node/],
-    ['incomplete provenance', 5, 4, [5], /omit a shadowed surface node/],
+    ['missing source-event references', 5, 4, undefined, /omit a shadowed surface node/],
+    ['incomplete source-event references', 5, 4, [5], /omit a shadowed surface node/],
   ] as const)('retains range and source-coverage validation: %s', (_name, start, end, sources, message) => {
     const source = [
       ...opening(), user(2), user(3), user(4),

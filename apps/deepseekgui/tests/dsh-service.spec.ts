@@ -22,6 +22,7 @@ import {
   PROBE_INTERVAL_MS,
   MANAGED_HOME_BLOCKED_ENV,
   resolveDshCommand,
+  safetyEnv,
   classifyLinkOpen,
   createServiceLogWriter,
   BROWSER_PLUGIN_PACKAGE,
@@ -675,9 +676,9 @@ describe('Workbench overlay（B3-P1）与模块 fallback', () => {
     rmSync(home, { recursive: true, force: true })
   })
 
-  it('Compatibility View：四条产品 overlay 全可解析也一条都不带', () => {
+  it('Compatibility View：五条产品 overlay 全可解析也一条都不带', () => {
     // 逃生通道的意义在于「切过去不带我们的任何产品层」，所以这里把开发态能
-    // 解析的四个插件全部铺好再切——只铺 workbench 一个的话，其余三条本来就
+    // 解析的五个插件全部铺好再切——只铺 workbench 一个的话，其余几条本来就
     // 解析不到，断言 0 条 patch 证明不了任何事。
     const root = mkdtempSync(join(tmpdir(), 'deepseekgui-root-'))
     const home = mkdtempSync(join(tmpdir(), 'deepseekgui-home-'))
@@ -686,6 +687,7 @@ describe('Workbench overlay（B3-P1）与模块 fallback', () => {
       { devDir: 'theme-plugin', patch: THEME_PATCH_FILENAME },
       { devDir: 'settings-plugin', patch: BUNDLED_PLUGINS.settings.overlay[0] },
       { devDir: 'browser-plugin', patch: BUNDLED_PLUGINS.browser.overlay[0] },
+      { devDir: 'skills-plugin', patch: BUNDLED_PLUGINS.skills.overlay[0] },
     ]
     for (const { devDir, patch } of staged) {
       const pluginDir = join(root, 'apps', 'deepseekgui', devDir)
@@ -762,6 +764,38 @@ describe('inheritedEnv：Managed Home 不把宿主的模型密钥透传给 DSH�
     })
     expect(launch.env.DSH_HOME).toBe('E:\\data\\dsh')
     expect(typeof launch.env.DSH_PNPM_ENTRY).toBe('string')
+  })
+
+  it('开发态与打包态都关掉官方「点反馈即上传会话」（住户 2026-09-23）', () => {
+    for (const packaged of [true, false]) {
+      const launch = resolveDshCommand({
+        packaged,
+        resourcesPath: 'E:\\app\\resources',
+        dshHome: 'E:\\data\\dsh',
+        args: [],
+        managedHome: true,
+      })
+      expect(launch.env.DSH_TELEMETRY_DISABLED).toBe('1')
+    }
+  })
+
+  it('安全加固（住户 2026-09-24）：告诉 Harness 自己的代码在哪、是否以管理员身份运行', () => {
+    expect(safetyEnv(false, 'C:\\Program Files\\DeepSeekGUI')).toEqual({ DEEPSEEKGUI_PROTECTED_ROOTS: 'C:\\Program Files\\DeepSeekGUI' })
+    expect(safetyEnv(true, 'E:\\DeepSeekGUI')).toEqual({ DEEPSEEKGUI_PROTECTED_ROOTS: 'E:\\DeepSeekGUI', DEEPSEEKGUI_ELEVATED: '1' })
+    const packaged = resolveDshCommand({
+      packaged: true,
+      resourcesPath: 'C:\\Program Files\\DeepSeekGUI\\resources',
+      packagedExecutable: 'C:\\Program Files\\DeepSeekGUI\\DeepSeekGUI.exe',
+      dshHome: 'E:\\data\\dsh',
+      args: [],
+      managedHome: true,
+      elevated: true,
+    })
+    expect(packaged.env.DEEPSEEKGUI_PROTECTED_ROOTS).toBe('C:\\Program Files\\DeepSeekGUI')
+    expect(packaged.env.DEEPSEEKGUI_ELEVATED).toBe('1')
+    const dev = resolveDshCommand({ packaged: false, root: 'E:\\DeepSeekGUI', dshHome: 'E:\\data\\dsh', args: [], managedHome: true })
+    expect(dev.env.DEEPSEEKGUI_PROTECTED_ROOTS).toBe('E:\\DeepSeekGUI')
+    expect(dev.env.DEEPSEEKGUI_ELEVATED).toBeUndefined()
   })
 
   it('绝不改动调用方传入的环境对象', () => {

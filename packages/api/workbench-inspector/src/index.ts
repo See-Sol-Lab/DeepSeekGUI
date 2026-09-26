@@ -11,10 +11,12 @@ import type {} from '@deepseek-ai/dsh-git'
 import type { DiffResult, DiffScope } from '@deepseek-ai/dsh-git/types'
 import Schema from '@deepseek-ai/schemastery'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
+import { installDesktopAccountBridge } from './desktop-account.ts'
 import { projectMemoryFileName, type WorkbenchFileText, type WorkbenchLastReply, type WorkbenchMemory, type WorkbenchOverview, type WorkbenchRepository, type WorkbenchWorktree } from './types.ts'
 
 export type * from './types.ts'
 export { projectMemoryFileName } from './types.ts'
+export { ACCOUNT_BRIDGE_ENV, type DesktopAccountFrame } from './desktop-account.ts'
 
 /** Deployment bounds for inspection responses. */
 export interface Config {
@@ -60,6 +62,8 @@ export class WorkbenchInspector extends TypertRemoteService {
       return publicKey !== undefined && home !== undefined
         && verify(null, Buffer.from(`${home}\0${sessionId}`), publicKey, Buffer.from(signature, 'base64'))
     })
+    // Official account UI inside the DeepSeekGUI window (inert outside it).
+    installDesktopAccountBridge(ctx)
   }
 
   private async cwd(sessionId: SessionId, signal: AbortSignal): Promise<string> {

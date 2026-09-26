@@ -1,4 +1,5 @@
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import type { ContextFormed } from '@deepseek-ai/dsh-llm'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mkdtempSync, rmSync, writeFileSync, chmodSync, existsSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -17,13 +18,23 @@ import SubagentRuntime, { SubagentRunId } from '@deepseek-ai/dsh-subagent'
 import * as HooksClaude from '@deepseek-ai/dsh-hooks-claude-code'
 import { MockAdapter, textResponse, toolCallResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
 
+declare module '@deepseek-ai/dsh-llm' {
+  interface MessageSourceMap {
+    'policy': { kind: 'policy' } & ContextFormed
+  }
+}
+
 const testToolSignal = new AbortController().signal
 
 /** Targeted branch coverage for the CC bridge: option arms, warn paths, no-agent
  * fallbacks, contextFrom-empty, and the detached-listener catch handlers. */
 
 const dirs: string[] = []
-afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }) })
+const contexts: Context[] = []
+afterEach(async () => {
+  for (const ctx of contexts.splice(0)) await ctx.fiber.dispose()
+  for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true })
+})
 
 function subagentCarrier(ctx: Context) {
   return scopeTarget(ctx as unknown as SubagentRuntime, undefined)
@@ -40,6 +51,7 @@ function hooks(d: string, h: unknown): string {
 type HarnessOpts = { pluginRoot?: string; projectDir?: string; stderrSummaryMaxChars?: number; sessionRoot?: string }
 async function harness(configPath: string, adapter: MockAdapter, opts: HarnessOpts = {}): Promise<Context> {
   const ctx = new Context()
+  contexts.push(ctx)
   await mountAgentLoopTestDependencies(ctx)
   if (opts.sessionRoot !== undefined) await ctx.plugin(JsonlSessionPersistence, { root: opts.sessionRoot })
   await ctx.plugin(AgentLoop, { agents: [] })
@@ -238,7 +250,7 @@ export function defineCoverageCases(group: CoverageGroup): void {
         },
         session: { id: SessionId('child-x'), header: { id: 'child-x' } },
       } as unknown as Parameters<typeof ctx.agents.register>[0]
-      ctx.agents.register(child)
+      await ctx.agents.register(child)
       ctx.emit(subagentCarrier(ctx), 'subagent/start', { runId: SubagentRunId('run-x'), provider: 'p', id: SessionId('child-x'), local: true })
       await waitFor(() => injected.includes('child guidance'))
       expect(injected).toContain('child guidance')
@@ -254,7 +266,7 @@ export function defineCoverageCases(group: CoverageGroup): void {
       const ctx = await harness(path, new MockAdapter([]))
       const warn = vi.fn(); ctx.logger.warn = warn as never
       const child = { id: SessionId('child-y'), inject: () => { throw new Error('inject boom') }, session: { id: SessionId('child-y'), header: { id: 'child-y' } } } as unknown as Parameters<typeof ctx.agents.register>[0]
-      ctx.agents.register(child)
+      await ctx.agents.register(child)
       ctx.emit(subagentCarrier(ctx), 'subagent/start', { runId: SubagentRunId('run-y'), provider: 'p', id: SessionId('child-y'), local: true })
       await waitFor(() => warn.mock.calls.some(c => String(c[0]).includes('SubagentStart hook failed')))
       expect(warn).toHaveBeenCalledWith(expect.stringContaining('SubagentStart hook failed'))
@@ -273,7 +285,7 @@ export function defineCoverageCases(group: CoverageGroup): void {
       agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
       await waitForIdle(ctx, agent)
       const result = events(agent).find(e => e.type === 'tool/result')
-      expect(result?.type === 'tool/result' && result.data.message.content[0].content.some(b => b.type === 'text' && b.text.includes('blocked by PreToolUse hook'))).toBe(true)
+      expect(result?.type === 'tool/result' && result.data.message.content.some(b => b.type === 'text' && b.text.includes('blocked by PreToolUse hook'))).toBe(true)
     })
 
     it('PostToolUse deny with EMPTY stderr + no context uses the default feedback', async () => {
@@ -287,7 +299,7 @@ export function defineCoverageCases(group: CoverageGroup): void {
       agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
       await waitForIdle(ctx, agent)
       const result = events(agent).find(e => e.type === 'tool/result')
-      expect(result?.type === 'tool/result' && result.data.message.content[0].content.some(b => b.type === 'text' && b.text.includes('blocked by PostToolUse hook'))).toBe(true)
+      expect(result?.type === 'tool/result' && result.data.message.content.some(b => b.type === 'text' && b.text.includes('blocked by PostToolUse hook'))).toBe(true)
     })
 
     it('SubagentStop with no registered child runs the hook cleanly (fire-and-forget)', async () => {
@@ -333,7 +345,7 @@ export function defineCoverageCases(group: CoverageGroup): void {
       await waitForIdle(ctx, agent)
       // ask (no reason) → degrades to deny with the registry's generic message.
       expect(ran).toBe(false)
-      expect(events(agent).some(e => e.type === 'tool/result' && e.data.message.content[0].isError)).toBe(true)
+      expect(events(agent).some(e => e.type === 'tool/result' && e.data.message.isError)).toBe(true)
     })
 
     it('a recorded clean exit-0 hook with no stderr omits exitCode-extra/stderrSummary fields', async () => {
@@ -403,7 +415,7 @@ export function defineCoverageCases(group: CoverageGroup): void {
       agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
       await waitForIdle(ctx, agent)
       const result = events(agent).find(e => e.type === 'tool/result')
-      expect(result?.type === 'tool/result' && result.data.message.content[0].isError).toBe(true)
+      expect(result?.type === 'tool/result' && result.data.message.isError).toBe(true)
     })
   })
 
@@ -439,8 +451,8 @@ export function defineCoverageCases(group: CoverageGroup): void {
       agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
       await waitForIdle(ctx, agent)
       const result = events(agent).find(e => e.type === 'tool/result')
-      expect(result?.type === 'tool/result' && result.data.message.content[0].isError).toBe(true)
-      expect(result?.type === 'tool/result' && result.data.message.content[0].content.some(b => b.type === 'text' && b.text.includes('bad'))).toBe(true)
+      expect(result?.type === 'tool/result' && result.data.message.isError).toBe(true)
+      expect(result?.type === 'tool/result' && result.data.message.content.some(b => b.type === 'text' && b.text.includes('bad'))).toBe(true)
       // additionalContext also injected (the block + context arm).
       expect(events(agent).some(e => e.type === 'user/message' && e.data.source.kind !== 'user' && e.data.content.some(b => b.type === 'text' && b.text.includes('context too')))).toBe(true)
     })
@@ -520,7 +532,7 @@ export function defineCoverageCases(group: CoverageGroup): void {
           content: [{ type: 'text' as const, text: 'rewritten-prompt' }],
         }, createUserMessage({
           content: [{ type: 'text' as const, text: 'from-downstream' }],
-          source: { kind: 'plugin' as const, plugin: 'policy' },
+          source: { kind: 'policy' as const },
         })],
       }))
       const agent = await ctx.agentLoop.create(SessionId('a1'), { provider: 'mock', model: 'mock' })
@@ -535,8 +547,8 @@ export function defineCoverageCases(group: CoverageGroup): void {
       expect(userMsg?.type === 'user/message' && userMsg.data.content.some(b => b.type === 'text' && b.text === 'rewritten-prompt')).toBe(true)
       const contexts = events(agent).filter(event => event.type === 'user/message' && event.data.source.kind !== 'user')
       expect(contexts.map(event => event.type === 'user/message' && event.data.source)).toEqual([
-        { kind: 'plugin', plugin: 'policy' },
-        { kind: 'plugin', plugin: 'hooks-claude-code' },
+        { kind: 'policy' },
+        { kind: 'hooks-claude-code' },
       ])
     })
 
@@ -554,7 +566,7 @@ export function defineCoverageCases(group: CoverageGroup): void {
       agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
       await waitForIdle(ctx, agent)
       const result = events(agent).find(e => e.type === 'tool/result')
-      expect(result?.type === 'tool/result' && result.data.message.content[0].content.some(b => b.type === 'text' && b.text === 'rewritten-result')).toBe(true)
+      expect(result?.type === 'tool/result' && result.data.message.content.some(b => b.type === 'text' && b.text === 'rewritten-result')).toBe(true)
       expect(events(agent).some(e => e.type === 'user/message' && e.data.source.kind !== 'user' && e.data.content.some(b => b.type === 'text' && b.text.includes('bridge-note')))).toBe(true)
     })
 
@@ -569,7 +581,7 @@ export function defineCoverageCases(group: CoverageGroup): void {
         kind: 'accept' as const,
         additionalContexts: [createUserMessage({
           content: [{ type: 'text' as const, text: 'downstream-note' }],
-          source: { kind: 'plugin' as const, plugin: 'policy' },
+          source: { kind: 'policy' as const },
         })],
       }))
       const agent = await ctx.agentLoop.create(SessionId('a1'), { provider: 'mock', model: 'mock' })
@@ -578,8 +590,8 @@ export function defineCoverageCases(group: CoverageGroup): void {
 
       const contexts = events(agent).filter(event => event.type === 'user/message' && event.data.source.kind !== 'user')
       expect(contexts.map(event => event.type === 'user/message' && event.data.source)).toEqual([
-        { kind: 'plugin', plugin: 'hooks-claude-code' },
-        { kind: 'plugin', plugin: 'policy' },
+        { kind: 'hooks-claude-code' },
+        { kind: 'policy' },
       ])
     })
 
@@ -598,8 +610,8 @@ export function defineCoverageCases(group: CoverageGroup): void {
       agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
       await waitForIdle(ctx, agent)
       const result = events(agent).find(e => e.type === 'tool/result')
-      expect(result?.type === 'tool/result' && result.data.message.content[0].isError).toBe(true)
-      expect(result?.type === 'tool/result' && result.data.message.content[0].content.some(b => b.type === 'text' && b.text.includes('downstream-block'))).toBe(true)
+      expect(result?.type === 'tool/result' && result.data.message.isError).toBe(true)
+      expect(result?.type === 'tool/result' && result.data.message.content.some(b => b.type === 'text' && b.text.includes('downstream-block'))).toBe(true)
       // the bridge's context still landed (folded onto the block)
       expect(events(agent).some(e => e.type === 'user/message' && e.data.source.kind !== 'user' && e.data.content.some(b => b.type === 'text' && b.text.includes('bridge-note')))).toBe(true)
     })
@@ -616,7 +628,7 @@ export function defineCoverageCases(group: CoverageGroup): void {
       // Force the executor to reject (an infrastructure fault) so runHook's catch
       // yields a HookOutput with exitCode undefined → the `exitCode` spread false arm.
       const bash = ctx.shell
-      bash.run = (() => Promise.reject(new Error('executor down')))
+      bash.execute = (() => ({ result: () => Promise.reject(new Error('executor down')) }) as never)
       ctx.tools.register(defineContentToolFixture({ name: 'echo', description: 'e', parameters: {}, async execute() { return [{ type: 'text', text: 'ok' }] } }))
       const agent = await ctx.agentLoop.create(SessionId('a1'), { provider: 'mock', model: 'mock' })
       agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
@@ -627,24 +639,29 @@ export function defineCoverageCases(group: CoverageGroup): void {
 
   })
 
-  if (group === 'edge-paths') describe('hooks-claude-code coverage — detached-listener catch handlers', () => {
+  if (group === 'edge-paths') describe('hooks-claude-code coverage — lifecycle error handling', () => {
     it('a throwing SessionStart inject is contained (logged, agent still runs)', async () => {
       const d = dir()
       const s = sh(d, 'start.sh', '#!/usr/bin/env bash\necho \'{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"x"}}\'\n')
       const path = hooks(d, { SessionStart: [{ hooks: [{ type: 'command', command: s }] }] })
       const adapter = new MockAdapter([textResponse('ok')])
       const ctx = await harness(path, adapter)
-      const agent = await ctx.agentLoop.create(SessionId('a1'), { provider: 'mock', model: 'mock' })
-      // Make inject throw, forcing the SessionStart .catch path.
-      const original = agent.inject.bind(agent)
-      let threw = false
-      agent.inject = (() => { threw = true; throw new Error('inject boom') })
-      await waitFor(() => threw)
-      expect(threw).toBe(true)
-      agent.inject = original
-      agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
-      await waitForIdle(ctx, agent)
-      expect(adapter.requests).toHaveLength(1) // loop survived the thrown inject
+      const warn = vi.fn(); ctx.logger.warn = warn as never
+      try {
+        const { agent } = await ctx.agents.create({
+          sessionId: SessionId('a1'),
+          agentOptions: { provider: 'mock', model: 'mock' },
+          setup(_agentCtx, agent) {
+            vi.spyOn(agent, 'inject').mockImplementationOnce(() => { throw new Error('inject boom') })
+          },
+        })
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining('SessionStart hook failed'))
+        agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
+        await waitForIdle(ctx, agent)
+        expect(adapter.requests).toHaveLength(1)
+      } finally {
+        await ctx.fiber.dispose()
+      }
     })
   })
 

@@ -43,7 +43,7 @@ The main process still owns every mutable fact and the Electron lifecycle; the e
 
 The update and migration sequences are unchanged by construction: their functions were not moved, and their call sites still run in the same order. The migration delete entry remains gated by a manifest written by a previous run.
 
-The repository keeps its existing dynamic-entry surface. Knip stays the fork's ad-hoc baseline rather than a gate — upstream removed it in [Remove Knip from repository gates](../process/2026-08-19-remove-knip.md), and this fork re-added `knip.json` in commit `4e7868d671`. Its remaining findings are snapshot fixtures, e2e drivers, and corpus files loaded by name, plus module data shapes; none is dead code.
+The repository keeps its existing dynamic-entry surface. Knip stays the fork's ad-hoc baseline rather than a gate — upstream removed it in [Remove Knip from repository gates](../process/2026-08-19-remove-knip.md), and this fork re-added `knip.json`. Its remaining findings are snapshot fixtures, e2e drivers, and corpus files loaded by name, plus module data shapes; none is dead code.
 
 ## Verification
 

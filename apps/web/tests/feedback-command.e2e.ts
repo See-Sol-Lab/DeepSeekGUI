@@ -82,7 +82,7 @@ describe('web e2e: /feedback command acknowledgement', () => {
     await page.getByText(/Feedback recorded for session/).waitFor({ timeout: 10_000 })
     expect(await page.getByText(/Anonymous user: [0-9a-f-]+\.$/i).count()).toBe(1)
     await expect.poll(() => input.textContent(), { timeout: 10_000 }).toBe('')
-    await expect.poll(() => page.getByRole('button', { name: 'Add attachment' }).isEnabled(), { timeout: 10_000 }).toBe(true)
+    await expect.poll(() => page.getByRole('button', { name: 'Add files or run commands' }).isEnabled(), { timeout: 10_000 }).toBe(true)
     const snapshot = await captureStableAria(page, '[class*="centerCol"]', scaffold.workspaceCwd)
     await compareOrRefreshGolden(ACK_EXPECTED, snapshot, MODE)
     const expanded = await captureExpandedTurnProcessAria(

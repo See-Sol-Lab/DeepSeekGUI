@@ -33,12 +33,12 @@ afterEach(async () => {
 })
 
 class PassthroughSandbox extends SandboxProvider {
-  confine(argv: readonly string[], _policy: SandboxPolicy): ConfinedArgv {
+  async confine(argv: readonly string[], _policy: SandboxPolicy): Promise<ConfinedArgv> {
     return { argv: [...argv], enforcement: 'full', denialSignatures: [], runnerFailureRules: [] }
   }
 }
 
-function agent(ctx: Context, cwd: string): Agent {
+async function agent(ctx: Context, cwd: string): Promise<Agent> {
   const id = SessionId('persistent-bash-loader-agent')
   const scope = ctx.plugin(() => {})
   const session = Session.create(id, [], {
@@ -59,7 +59,7 @@ function agent(ctx: Context, cwd: string): Agent {
     runMaintenance: task => task(new AbortController().signal),
     whenIdle: () => Promise.resolve(),
   }
-  ctx.agents.register(value)
+  await ctx.agents.register(value)
   return value
 }
 
@@ -129,7 +129,7 @@ suite('persistent Bash through a real cordis.yml Loader composition', () => {
     await context.loader.create({ name: 'cordis:include', config: { path: pathToFileURL(configPath).href } })
     await context.loader.await()
 
-    const owner = agent(context, root)
+    const owner = await agent(context, root)
     const signal = new AbortController().signal
     const execute = (id: string, command: string) => context!.tools.execute({
       signal,

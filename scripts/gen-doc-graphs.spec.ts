@@ -2,7 +2,9 @@
  * Tests for the event-relation collector's demand-driven call-site indexing:
  * the single-file fast path and the global fallback must recover the same
  * helper-parameter event names, including shapes that defeat the locality
- * proof (alias escapes and global script files).
+ * proof (alias escapes and global script files), and every Context dispatch
+ * mode must register as a dispatcher — a mode missing from the method set
+ * would report a declared event as dead vocabulary.
  */
 
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
@@ -61,6 +63,15 @@ const FIXTURE: Record<string, string> = {
   'packages/fix/pkgc/src/helper.ts':
     "function scriptFire(args: [string]): void { void gEvents.dispatch('emit', args) }\n",
   'packages/fix/pkgc/src/caller.ts': "scriptFire(['pkgc/script-event'])\n",
+  // Context bail dispatch: the receiver classifies as 'context', so the event
+  // must register through the bail branch of the method set — a set missing
+  // 'bail' silently drops the dispatch before any branch runs.
+  'packages/fix/pkgd/src/index.ts': [
+    "import { Context } from '../../../../vendor/cordis/src/context.ts'",
+    'declare const ctx: Context & { bail(type: string, ...args: unknown[]): unknown }',
+    "void ctx.bail('pkgd/bail-event', 'payload')",
+    '',
+  ].join('\n'),
 }
 
 const root = mkdtempSync(join(tmpdir(), 'gen-doc-graphs-'))
@@ -81,6 +92,12 @@ function dispatchersOf(pkgs: readonly string[], event: string): string[] {
   return [...(relations.get(event)?.dispatchers.keys() ?? [])]
 }
 
+function dispatchMethodsOf(pkgs: readonly string[], event: string, pkg: string): string[] {
+  const subset = sources.filter(source => pkgs.includes(source.pkg))
+  const relations = new EventRelationCollector(project, subset).collect()
+  return [...(relations.get(event)?.dispatchers.get(pkg) ?? [])]
+}
+
 describe('event relation call-site indexing', () => {
   it('recovers a proven-local helper through the single-file fast path', () => {
     expect(dispatchersOf(['pkga', 'pkgb'], 'pkga/local-event')).toEqual(['pkga'])
@@ -94,5 +111,10 @@ describe('event relation call-site indexing', () => {
     // pkgc alone: the script helper is the first demand, so a wrongly passing
     // proof would index helper.ts only and lose the caller.ts call site.
     expect(dispatchersOf(['pkgc'], 'pkgc/script-event')).toEqual(['pkgc'])
+  })
+
+  it('records a Context bail dispatch as a dispatcher', () => {
+    expect(dispatchersOf(['pkgd'], 'pkgd/bail-event')).toEqual(['pkgd'])
+    expect(dispatchMethodsOf(['pkgd'], 'pkgd/bail-event', 'pkgd')).toEqual(['bail'])
   })
 })

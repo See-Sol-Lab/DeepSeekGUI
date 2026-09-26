@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-DeepSeek Harness 的 Git capability Service Definition（`ctx.git`，B4-P2 Git Read Model）：通过稳定机器格式提供仓库 identity、HEAD/分支/upstream、worktree 列表、status 与 diff 摘要，以及 B4-P3 的 worktree 生命周期写入、B4-P4 的 index/revert 操作与 B4-P5 的受控 commit。Git 拥有仓库；读模型绝不写入，seam 仅有的写入是 worktree 生命周期（`worktreeAdd`/`worktreeRemove`）、index 操作（`applyIndexPatch`、`stageFile`、`unstageFile`、`revertFile`）与受控 `commit`——任何地方都没有 push、clean 或 `reset --hard`。本地实现位于 [@deepseek-ai/dsh-git-local](../git-local/README.zh.md)，经 subprocess seam 以精确 executable + argv 执行系统 git，绝不用 shell 字符串。
+DeepSeek Harness 的 Git capability Service Definition（`ctx.git`）：通过稳定机器格式提供仓库 identity、HEAD/分支/upstream、worktree 列表、status 与 diff 摘要，以及 worktree 生命周期写入、index/revert 操作与受控 commit。Git 拥有仓库；读模型绝不写入，seam 仅有的写入是 `worktreeAdd`/`worktreeRemove`、`applyIndexPatch`/`stageFile`/`unstageFile`/`revertFile` 与受控 `commit`——任何地方都没有 push、clean 或 `reset --hard`。本地实现 [@deepseek-ai/dsh-git-local](../git-local/README.zh.md) 经 subprocess seam 以精确 executable + argv 执行系统 git，绝不用 shell 字符串。
 
 ## 目录
 

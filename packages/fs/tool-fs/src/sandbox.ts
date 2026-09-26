@@ -13,7 +13,11 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { ToolExecution } from '@deepseek-ai/dsh-tools'
 import type { SandboxExecutionPolicy, SandboxMode } from '@deepseek-ai/dsh-sandbox'
-import { ESCALATION_TARGETS, approveEscalation, escalationHintMarker, sandboxDenialMarker, validateEscalationArgs } from '@deepseek-ai/dsh-sandbox'
+import { isAbsolute, resolve } from 'node:path'
+import {
+  ESCALATION_TARGETS, approveEscalation, approveProtectedAction, escalationHintMarker, sandboxDenialMarker,
+  sandboxPermissionsDescription, validateEscalationArgs,
+} from '@deepseek-ai/dsh-sandbox'
 import type { SandboxPolicyService } from '@deepseek-ai/dsh-sandbox-policy'
 import { FsError } from '@deepseek-ai/dsh-fs'
 
@@ -61,13 +65,12 @@ export class FsSandboxController {
       sandbox_permissions: {
         type: 'string',
         enum: [...this.escalationModes],
-        description: 'The wider sandbox mode this file operation needs. Only valid as a one-shot retry '
-          + 'of an operation the sandbox just denied; requires justification and user approval.',
+        description: sandboxPermissionsDescription('operation'),
       },
       justification: {
         type: 'string',
         description: 'Required with sandbox_permissions: one sentence for the user explaining '
-          + 'why this exact file operation needs the wider access.',
+          + 'why this exact file operation needs the wider access. Use the language of the user’s current request.',
       },
     }
   }
@@ -75,19 +78,36 @@ export class FsSandboxController {
   /**
    * The policy to stamp onto this mutation: an approved escalation grant (a
    * strictly wider retry resolved through `ctx.approval` before anything
-   * executes), else the session's standing mode. The calling session's cwd is
+   * executes), else the session's standing mode. Repeating the standing mode
+   * requires no approval. The calling session's cwd is
    * always carried as the workspace root. Validates the escalation argument
    * pairing first.
    * @param toolName - the mutating tool's name, for the approval audit trail.
    * @param args - the call's escalation arguments.
    * @param exec - the tool-execution context (agent, callId, signal).
+   * @param filePath - the mutation's target as the model gave it; lets a
+   *   protected location stop for a person (DeepSeekGUI).
    * @returns the policy to pass to the mutation, or undefined for an
    *   unsandboxed backend.
    */
-  async resolvePolicy(toolName: string, args: FsEscalationArgs, exec: ToolExecution): Promise<SandboxExecutionPolicy | undefined> {
+  async resolvePolicy(
+    toolName: string,
+    args: FsEscalationArgs,
+    exec: ToolExecution,
+    filePath?: string,
+  ): Promise<SandboxExecutionPolicy | undefined> {
     validateEscalationArgs(args.sandbox_permissions, args.justification)
     const standingPolicy = this.policy?.resolve({ ...exec.agent ? { session: exec.agent.session } : {} })
+    // DeepSeekGUI: the target, absolute, so protected locations can be judged.
+    const paths = standingPolicy === undefined || filePath === undefined
+      ? undefined
+      : [isAbsolute(filePath) ? filePath : resolve(standingPolicy.workspaceRoot, filePath)]
+    const approvalIngredients = { approver: this.ctx.get('approval'), agent: exec.agent, callId: exec.callId, toolName, signal: exec.signal }
     if (args.sandbox_permissions === undefined || args.justification === undefined) {
+      // Standing full access confines nothing: a protected target stops for a person first.
+      if (standingPolicy?.mode === 'danger-full-access' && paths !== undefined) {
+        await approveProtectedAction({ workspaceRoot: standingPolicy.workspaceRoot, paths }, 'operation', approvalIngredients)
+      }
       return standingPolicy
     }
     if (this.escalationModes.length === 0) {
@@ -95,14 +115,14 @@ export class FsSandboxController {
     }
     const policy = standingPolicy as SandboxExecutionPolicy
     const approvedMode = await approveEscalation(
-      { requestedMode: args.sandbox_permissions, justification: args.justification, effectiveMode: policy.mode, subject: 'operation' },
       {
-        approver: this.ctx.get('approval'),
-        agent: exec.agent,
-        callId: exec.callId,
-        toolName,
-        signal: exec.signal,
+        requestedMode: args.sandbox_permissions,
+        justification: args.justification,
+        effectiveMode: policy.mode,
+        subject: 'operation',
+        action: { workspaceRoot: policy.workspaceRoot, ...paths === undefined ? {} : { paths } },
       },
+      approvalIngredients,
     )
     return { ...policy, mode: approvedMode }
   }

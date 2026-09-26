@@ -39,7 +39,7 @@ export {
 } from './launcher.ts'
 export {
   extractSnapshotSpillPaths,
-  normalizeSessionFormatProvenance,
+  normalizeSessionFormatMetadata,
   normalizeSessionLog,
   normalizeSessionSnapshot,
   normalizeSessionSnapshots,
@@ -98,6 +98,7 @@ export {
   parseSystemPromptSnapshot,
   parseToolSchemasSnapshot,
   refreshFixtureReplacements,
+  reconcileCatalogCreationTimes,
   restorePinnedToolSchemas,
   stabilizeFixtureMessageIds,
   stabilizeRefreshLog,

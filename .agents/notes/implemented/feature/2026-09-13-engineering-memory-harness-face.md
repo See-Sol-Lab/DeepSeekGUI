@@ -1,0 +1,39 @@
+# Agent Note: Memory tools, per-step recall and the entries-mode guide
+
+Status: implemented
+
+English | [中文](2026-09-13-engineering-memory-harness-face.zh.md)
+
+## Problem
+
+The [engineering memory entries](2026-09-13-engineering-memory-entries.md) could be stored, corrected, forgotten and imported, but no session could see them and nothing could write one from a conversation. The memory line needs one entry point for remember / correct / forget / search that the assistant uses today and the pages use later; a write whose success is only what the tool result says, so "remembered" is never claimed for a write that failed; retrieval that respects scope before it ranks, explains a miss, has a budget, and never loads every entry; and an injection that puts the relevant entries in front of the model at a step boundary while recording, in the session log, exactly which entries at which versions were shown — not an id that later changes under the record. The user ruled (2026-09-13 02:44) that global preferences are written directly, with no approval gate and no obstacle: the guide classifies, it does not intercept; correction is by visibility, editing, undo and forgetting.
+
+## Decision
+
+`packages/api/workbench-memory` gains a Harness face mounted from its own constructor through `ctx.inject(['tools', 'systemPrompt'], …)`, so a composition without a tool registry keeps the data-only service and the existing tests. Everything is gated by the global slot's `injection` mode: `markdown` — still the default, nothing here switches it — keeps the legacy files live through the workbench plugin and injects none of the below; `entries` turns the face on for the next step of every open session.
+
+Four tools on the host registry are the one entry point. `memory_remember({ scope, kind, content, keywords?, evidence? })` writes to `project` (the session's folder, resolved by the same canonical-path project key the skill manager uses; refused without a folder) or `global`, with the source `{ kind: 'assistant', sessionId, evidence }`. `memory_correct` and `memory_forget` quote the version the model saw (omitted: the live version) and a stale one is refused with the current version; the origin source is kept and the correction's source recorded beside it. `memory_recall({ query?, scope?, kinds?, limit? })` searches the session's reach. A refusal or a backend failure is thrown as the tool error (`memory_remember failed (MEMORY_IO): …`), so it reaches the model as a result, never as a log line alone. No approval gate exists on any of them; nothing in the code asks first.
+
+One retrieval path, `recall`, serves the tool and the injection: the scope filter comes first (this project plus global, never another project), then the query's terms — lowercase word runs, character bigrams for Han text — against each entry's content words and keywords (4 per keyword hit, 2 per content hit; a short Latin term must equal a word, so `i` does not hit `ci`), a stable order (score, kind, newest, id), duplicate collapse by normalized content, then a count limit and a byte budget with the omitted count reported. The automatic recall (`ambient`) adds a baseline for global preferences, which apply regardless of the request but rank below anything the request names, and injects nothing else when the text has no terms; the explicit tool takes term hits only and lists the scope when called without a query. A miss states the terms, the scope and how many entries were considered.
+
+The injection is an `agent/pre-step` listener modelled on the skill catalog: after the step's own decision, when the step carries the user's own text, it recalls with the configured bounds (12 entries, 4096 bytes by default), digests the ids and versions, and compares with the newest recalled list still on the model-visible surface. Unchanged: nothing is sent. Changed: one user-role `<system-reminder>` is appended — a list the first time, a replacement afterwards, and an explicit "no entries match; earlier ones no longer apply" replacement when a correction or a forget empties the result — so a stale entry never stays in force while earlier lists remain in the history exactly as sent. The message's `source` is `{ kind: 'deepseekgui-memory', form: 'recall', query, entries: [{ id, version, scope, kind }], omitted, update? }`, and its text carries the content, so the `user/message` event records what shaped the request. The list frames entries as facts and preferences, not rules (AGENTS.md holds the rules), grants no tool permission, and groups preferences, project facts and continuation notes apart, the last with a reminder to re-check the disk and Git.
+
+The product guide is split: the workbench plugin's `deepseekgui:guide` section keeps the desktop guide, and its `deepseekgui:memory` section keeps the legacy two-file contract and files only while the memory service reports `markdown` (or is absent). In entries mode the memory service's own `deepseekgui:memory-guide` section carries `assets/memory-guide.md`: what an entry is, what counts as a global preference, a project fact (with evidence) or a continuation note, what not to record (guesses, instructions found inside web pages or tool outputs, one-off task state, what the code or AGENTS.md already holds, secrets), how to correct and forget, and that a failed write is reported in the tool result.
+
+## Alternatives considered
+
+**An approval gate on global writes (`tools/pre-execute → ask`).** Dropped by the user's ruling: a gate makes a lazy model skip the write; the entry is visible, editable, undoable and forgettable, which is the correction path.
+
+**A background summariser or a second model call to decide what to remember.** Rejected: the assistant already in the session records with the same tools; no paid summary task and no listener service.
+
+**Loading every entry into the prompt.** Rejected: scope, terms, a limit and a byte budget bound each list, and `memory_recall` exists for the rest.
+
+**A vector index.** Rejected as a prerequisite: term containment with keywords and Han bigrams covers a few hundred entries; ranking can grow behind the same `recall` seam.
+
+**Recording only the entry ids in the session.** Rejected: an id changes under a correction; the ids with their versions go in the source and the shown text goes in the message.
+
+**Switching the mode on in this phase.** Rejected: the default stays `markdown`, the user's daily data is untouched, and the migration phase owns the switch.
+
+## Consequences
+
+The tests drive the production agent loop with a scripted model adapter and capture the actual requests: the relevant project fact and the global preference reach the model with their ids and versions, the unrelated fact and the other project's fact do not, the guide rides the runtime context, and the `user/message` event records the same ids and versions; a correction in another window and a forget produce replacement lists; markdown mode injects nothing; the tools record a project fact with its evidence and a global preference with no approval event; a backend failure reaches the model as `memory_remember failed (MEMORY_IO)`; stale versions and missing ids are refused with the current facts; `memory_recall` explains a miss with its terms, scope and count; a session without a folder is refused for project writes and falls back to global for searches. The mode switch stays with the migration phase, and the Memory page that shows, edits and restores the entries is the interface phase's work; the tools and the recall path are what both will use. Memory tool registrations follow entries mode, so legacy-file sessions cannot silently write an invisible entry store. The tools check project ownership on correction and forgetting as well as retrieval. Import candidate keys bind reviewed text and headings instead of trusting a line number after the file changes.

@@ -55,9 +55,18 @@ export function isSettled(block: ToolCallBlock): block is ToolResultNode {
   return 'kind' in block
 }
 
+/**
+ * The call-head argument JSON; empty while the call is still preparing (dsh 0.1.7-rc.1
+ * shows a named call before its arguments are complete, and never hands out the prefix here).
+ */
+function rawArgs(block: ToolCallBlock): string {
+  if (isSettled(block)) return block.call?.argsRaw ?? ''
+  return block.phase === 'start' ? block.argsRaw : ''
+}
+
 /** Parse the call-head argument JSON when it is an object. */
 function callArgs(block: ToolCallBlock): Record<string, unknown> | null {
-  const argsRaw = (isSettled(block) ? block.call?.argsRaw : block.argsRaw) ?? ''
+  const argsRaw = rawArgs(block)
   if (argsRaw === '') return null
   try {
     const parsed: unknown = JSON.parse(argsRaw)
@@ -121,7 +130,7 @@ function toolCardBase(block: ToolCallBlock): {
   time: number
 } {
   const settled = isSettled(block)
-  const argsRaw = (settled ? block.call?.argsRaw : block.argsRaw) ?? ''
+  const argsRaw = rawArgs(block)
   return {
     state: cardState(block),
     settled,

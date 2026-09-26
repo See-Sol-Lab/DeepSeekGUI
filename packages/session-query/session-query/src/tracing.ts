@@ -1,5 +1,6 @@
 /** One-shot session-lineage and event-relationship tracing helpers. */
 
+import { currentSessionMessageProjections } from '@deepseek-ai/dsh-session-format-catalog/message-projections'
 import { foldSurface, isSurfaceEvent, snapshotSessionEvent } from '@deepseek-ai/dsh-session'
 import type {
   SessionEvent,
@@ -183,7 +184,7 @@ function analyzeEventLog(
 ): EventLogAnalysis {
   let folded: ReturnType<typeof foldSurface>
   try {
-    folded = foldSurface(events)
+    folded = foldSurface(events, currentSessionMessageProjections)
   } catch (error: unknown) {
     throw new SessionQueryError(
       /* v8 ignore next -- foldSurface throws Error instances */

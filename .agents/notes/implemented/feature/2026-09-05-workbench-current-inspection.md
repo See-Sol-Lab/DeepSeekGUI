@@ -14,7 +14,7 @@ The [Workbench inspector](../../../../packages/api/workbench-inspector/README.md
 
 Forms call the official Session prompt with queue mode and their own text, leaving draft text and attachments untouched. Push defaults use tool presentation metadata. Notifications use correlated call ids or the official pending-request identity, and only the Session-aware Web consumer suppresses the currently viewed fact.
 
-This partially supersedes the history-only scope in [B5-P5](../architecture/2026-09-04-b5-p5-tool-cards-and-on-demand-inspectors.md). That note remains active for card presentation and provenance; no note is fully superseded or archived.
+This partially supersedes the history-only scope in [B5-P5](../architecture/2026-09-04-b5-p5-tool-cards-and-on-demand-inspectors.md). That note remains active for card presentation and each row's tool, time, and sequence; no note is fully superseded or archived.
 
 ## Alternatives considered
 

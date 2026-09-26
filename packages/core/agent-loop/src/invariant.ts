@@ -28,6 +28,7 @@ const install: InvariantInstaller = Object.assign((ctx: Context, fail: Invariant
       fail('a loop-built request must carry a frozen messages array')
     }
 
+    // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
     const events = session.snapshotEvents()
     if (!events.some(event => event.type === 'step/start')) {
       return fail('a loop-built request with no step/start in its session log')

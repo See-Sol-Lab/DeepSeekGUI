@@ -14,6 +14,11 @@
  *
  * 凭证不对、路径不对，一律回同一个 404：不给探测者任何可区分的信号。
  *
+ * 第三把钥匙（2026-09-25）给 Host 推账号状态：account 路由只收
+ * `{ view, session }` 一帧，内容由 main 严格校验（见 desktop-account.ts）。它同样经
+ * env 进子进程，所以同样只开这一扇门。页面里的 platform 路由用页面自己的
+ * 控制凭证：那是官方账号界面请求打开/移动/关闭内嵌平台页的出口。
+ *
  * pane 那条路由的具体行为（开面板、设代理、收起）经注入面传入——那些要
  * 摸 WebContentsView 句柄，属于入口。这个模块只负责「谁能进、进哪扇门」。
  * @module @see-sol-lab/deepseekgui/control-bridge
@@ -26,6 +31,8 @@ import { parseControlCommand, parseModelSinceParam, type DesktopControlCommand, 
 
 /** pane 路由的请求体上限：那是几个短字段，没有合法的大载荷。 */
 const PANE_BODY_MAX_BYTES = 16 * 1024
+/** account 路由的请求体上限：一帧账号视图加平台会话。 */
+const ACCOUNT_BODY_MAX_BYTES = 64 * 1024
 /** 命令的请求体上限：容纳两份各 20 万字符的记忆原文与草稿（含 JSON 转义），超长直接掐。 */
 const COMMAND_BODY_MAX_BYTES = 3 * 1024 * 1024
 
@@ -50,6 +57,10 @@ export interface ControlBridgeDeps {
    * 的请求体递过去。
    */
   readonly handlePaneRequest: (body: Record<string, unknown>) => Promise<ControlBridgeReply>
+  /** Host 推来的一帧账号状态（未校验）。 */
+  readonly handleAccountFrame: (body: Record<string, unknown>) => ControlBridgeReply
+  /** 页面请求打开 / 移动 / 关闭内嵌平台页（未校验）。 */
+  readonly handlePlatformRequest: (body: Record<string, unknown>) => Promise<ControlBridgeReply>
   /** pane 通道的地址与凭证写进这里（必须在 spawn DSH 之前）。 */
   readonly env: NodeJS.ProcessEnv
 }
@@ -62,6 +73,8 @@ export interface ControlBridge {
   readonly controlToken: string
   /** pane 通道凭证：经 env 进子进程，只能开 pane 这一扇门。 */
   readonly paneToken: string
+  /** account 通道凭证：经 env 进子进程，只能推账号状态。 */
+  readonly accountToken: string
   /** 关停（测试用；生产里进程退出即可，服务器已 unref）。 */
   readonly close: () => void
 }
@@ -102,6 +115,7 @@ async function readBody(
 export async function startControlBridge(deps: ControlBridgeDeps): Promise<ControlBridge> {
   const controlToken = randomUUID()
   const paneToken = randomUUID()
+  const accountToken = randomUUID()
   const corsHeaders = {
     'access-control-allow-origin': deps.appOrigin,
     'access-control-allow-headers': 'content-type, x-deepseekgui-control-token',
@@ -122,9 +136,11 @@ export async function startControlBridge(deps: ControlBridgeDeps): Promise<Contr
         return
       }
       // 凭证或路径不对一律同一个 404：不给探测者可区分信号（picker 桥同则）。
-      // 两条通道各自一把钥匙：pane 路由认 paneToken，其余认 controlToken。
+      // 三条通道各自一把钥匙：pane 认 paneToken，account 认 accountToken，其余认 controlToken。
       const paneRoute = request.method === 'POST' && request.url === '/control/browser-pane'
-      if (request.headers['x-deepseekgui-control-token'] !== (paneRoute ? paneToken : controlToken)) {
+      const accountRoute = request.method === 'POST' && request.url === '/control/account'
+      const expected = paneRoute ? paneToken : accountRoute ? accountToken : controlToken
+      if (request.headers['x-deepseekgui-control-token'] !== expected) {
         reply(404, { error: 'not found' })
         return
       }
@@ -144,6 +160,20 @@ export async function startControlBridge(deps: ControlBridgeDeps): Promise<Contr
         const body = await readBody(request, PANE_BODY_MAX_BYTES)
         if (body === null) { reply(400, { error: 'invalid JSON' }); return }
         const answer = await deps.handlePaneRequest(body)
+        reply(answer.status, answer.body)
+        return
+      }
+      if (accountRoute) {
+        const body = await readBody(request, ACCOUNT_BODY_MAX_BYTES)
+        if (body === null) { reply(400, { error: 'invalid JSON' }); return }
+        const answer = deps.handleAccountFrame(body)
+        reply(answer.status, answer.body)
+        return
+      }
+      if (request.method === 'POST' && request.url === '/control/platform') {
+        const body = await readBody(request, PANE_BODY_MAX_BYTES)
+        if (body === null) { reply(400, { error: 'invalid JSON' }); return }
+        const answer = await deps.handlePlatformRequest(body)
         reply(answer.status, answer.body)
         return
       }
@@ -171,7 +201,9 @@ export async function startControlBridge(deps: ControlBridgeDeps): Promise<Contr
   // （dsh-service 的 inheritedEnv 透传 process.env），browser-plugin 由此
   // 找到 pane 通道。只进子进程环境，不落盘、不进任何窗口。
   deps.env.DEEPSEEKGUI_BROWSER_BRIDGE = `127.0.0.1:${String(address.port)}#${paneToken}`
+  // 账号推送通道（Host 的 workbench-inspector 读它，见 packages/api/workbench-inspector/src/desktop-account.ts）。
+  deps.env.DEEPSEEKGUI_ACCOUNT_BRIDGE = `127.0.0.1:${String(address.port)}#${accountToken}`
   // 桥不该拖住退出：它没有要 flush 的状态，进程该走就走。
   server.unref()
-  return { port: address.port, controlToken, paneToken, close: () => { server.close() } }
+  return { port: address.port, controlToken, paneToken, accountToken, close: () => { server.close() } }
 }

@@ -1,0 +1,5 @@
+- tree "Sessions":
+  - treeitem "{{workspace}}" [expanded]
+  - treeitem "Newest conversation now" [selected]
+  - treeitem "Middle conversation 1min"
+  - treeitem "Oldest conversation 2min"

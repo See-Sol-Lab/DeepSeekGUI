@@ -126,6 +126,23 @@ export function inheritedEnv(managedHome: boolean, base: NodeJS.ProcessEnv): Nod
 }
 
 /**
+ * 安全加固（2026-09-24，住户定）交给 Harness 的两条事实：桌面是否以管理员身份
+ * 运行（此时完全访问禁用、越界一律红色审批），以及 DeepSeekGUI 自己的代码在
+ * 哪（打包态是安装目录，开发态是仓库根；源码仓库另由 Harness 按
+ * apps/deepseekgui/package.json 自动认出）。判断与拦截在
+ * `@deepseek-ai/dsh-sandbox` 的 protected zones。
+ * @param elevated - 桌面进程是否持有管理员令牌。
+ * @param guiRoot - DeepSeekGUI 自己的代码根。
+ * @returns 追加到 DSH 环境里的键。
+ */
+export function safetyEnv(elevated: boolean, guiRoot: string): Record<string, string> {
+  return {
+    DEEPSEEKGUI_PROTECTED_ROOTS: guiRoot,
+    ...elevated ? { DEEPSEEKGUI_ELEVATED: '1' } : {},
+  }
+}
+
+/**
  * 组装运行任意 `@deepseek-ai/dsh` 入口命令的 spawn 参数。开发态与打包态
  * 共用同一个入口（源码入口 `apps/cli/src/bin.ts` 经 tsx，发行目录内已安装的
  * `@deepseek-ai/dsh/lib/bin.js` 由 Electron 可执行文件自身以
@@ -153,6 +170,8 @@ export function resolveDshCommand(options: {
   nodeExecutable?: string
   /** 是否托管 Home：true 时不向 DSH 透传宿主的模型密钥（见 {@link inheritedEnv}）。 */
   managedHome?: boolean
+  /** 桌面是否以管理员身份运行（见 {@link safetyEnv}）。 */
+  elevated?: boolean
 }): { command: string; args: string[]; cwd: string; env: NodeJS.ProcessEnv } {
   if (options.packaged) {
     const entry = join(
@@ -172,6 +191,10 @@ export function resolveDshCommand(options: {
         // 应用专属数据目录：凭据、设置与会话全部落在 launcher selection
         // 决定的 DSH_HOME，不触碰全局 ~/.dsh。
         DSH_HOME: options.dshHome,
+        ...safetyEnv(options.elevated === true, dirname(options.packagedExecutable ?? process.execPath)),
+        // 住户 2026-09-23：官方「点反馈即上传整段会话」（OTel FEEDBACK_ONLY）
+        // 默认关。官方开关：任意非空值都会在启动时禁用那一行。
+        DSH_TELEMETRY_DISABLED: '1',
         // 内嵌 pnpm 的自我升级提示对用户毫无意义：那份 pnpm 是我们打包进
         // 去的，用户既升不了也不该管它的版本。而它会把「Update available!
         // 11.7.0 → 11.22.0」直接插进插件安装的输出里，让人以为那是插件操作
@@ -200,6 +223,9 @@ export function resolveDshCommand(options: {
       ...inheritedEnv(options.managedHome === true, process.env),
       // 开发态与打包态同一语义：DSH_HOME 只由 launcher selection 决定。
       DSH_HOME: options.dshHome,
+      ...safetyEnv(options.elevated === true, options.root ?? process.cwd()),
+      // 同打包态：反馈不上传会话。
+      DSH_TELEMETRY_DISABLED: '1',
       // 同打包态：不让 pnpm 把自己的升级提示混进插件操作输出。
       npm_config_update_notifier: 'false',
     },
@@ -327,6 +353,12 @@ const WORKBENCH_PLUGIN_PACKAGE = '@see-sol-lab/deepseekgui-workbench'
 /** Workbench overlay 的文件名（随包发行，非用户资产）。 */
 export const WORKBENCH_PATCH_FILENAME = 'deepseekgui-workbench.patch.yml'
 
+/** 技能管理器插件的包名，也是它在模块 fallback 里的链接名（B7-P4）。 */
+const SKILLS_PLUGIN_PACKAGE = '@see-sol-lab/deepseekgui-skills'
+
+/** 技能管理器 overlay 的文件名（随包发行，非用户资产）。 */
+export const SKILLS_PATCH_FILENAME = 'deepseekgui-skills.patch.yml'
+
 /** 一个随发行走的内置插件：两种形态下各住在哪，overlay 叫什么。 */
 export interface BundledPlugin {
   /** npm 包名，同时是模块 fallback 目录里的链接名。 */
@@ -338,7 +370,7 @@ export interface BundledPlugin {
 }
 
 /**
- * 五个内置插件的全部差异都在这张表里。
+ * 六个内置插件的全部差异都在这张表里。
  *
  * 它们的定位规则本来一模一样——打包态在 DSH 运行时的 node_modules 里，开发态
  * 在仓库的插件目录里；只有两处例外，都在表里当列写着，而不是各写一份函数。
@@ -379,6 +411,8 @@ export const BUNDLED_PLUGINS = {
   browser: { pkg: BROWSER_PLUGIN_PACKAGE, devDir: 'browser-plugin', overlay: ['cordis.patch.yml', BROWSER_PATCH_FILENAME] },
   /** Workbench 产品插件（B3-P1）：品牌与 Workbench 标识。 */
   workbench: { pkg: WORKBENCH_PLUGIN_PACKAGE, devDir: 'workbench-plugin', overlay: [WORKBENCH_PATCH_FILENAME, WORKBENCH_PATCH_FILENAME] },
+  /** 技能管理器（B7-P4）：设置 → Skill 的安装管理分区；宿主侧服务由 web-app bundle 挂载。 */
+  skills: { pkg: SKILLS_PLUGIN_PACKAGE, devDir: 'skills-plugin', overlay: [SKILLS_PATCH_FILENAME, SKILLS_PATCH_FILENAME] },
 } as const satisfies Record<string, BundledPlugin>
 
 /** 定位一个内置插件要知道的形态事实。 */
@@ -482,6 +516,8 @@ export function resolveDshLaunch(options: {
   nodeExecutable?: string
   /** 是否托管 Home：true 时不向 DSH 透传宿主的模型密钥（见 {@link inheritedEnv}）。 */
   managedHome?: boolean
+  /** 桌面是否以管理员身份运行（见 {@link safetyEnv}）。 */
+  elevated?: boolean
   /**
    * Compatibility View：true 时不带任何产品 overlay，跑的就是官方 profile
    * 自己的组合。
@@ -496,7 +532,7 @@ export function resolveDshLaunch(options: {
    */
   compatibility?: boolean
 }): { command: string; args: string[]; cwd: string; env: NodeJS.ProcessEnv } {
-  // 五条 overlay 同一个模式：**先确认插件能被 profile 解析，再决定要不要带
+  // 六条 overlay 同一个模式：**先确认插件能被 profile 解析，再决定要不要带
   // 它的 overlay**。顺序不能反——overlay 指向一个加载不了的插件会让整个
   // Harness 起不来，而少一个插件只是少个功能（实机抓获：链接缺失时启动直接
   // 失败）。所以每一条的失败后果都写在下面，且一律是「不传 --patch」。
@@ -544,6 +580,9 @@ export function resolveDshLaunch(options: {
   // DeepSeekGUI 品牌与 Workbench 标识，官方 UI 照常完整。Compatibility View
   // 由 overlayOf 那道闸统一跳过，这里不再单独判断。
   const workbenchPatch = overlayOf(BUNDLED_PLUGINS.workbench)
+  // 技能管理器（B7-P4）：解析不了就不带 overlay——没有它只是设置页里少了
+  // 「Skill」分区；官方技能根与会话照常。
+  const skillsPatch = overlayOf(BUNDLED_PLUGINS.skills)
   return resolveDshCommand({
     packaged: options.packaged,
     ...options.root === undefined ? {} : { root: options.root },
@@ -552,6 +591,7 @@ export function resolveDshLaunch(options: {
     ...options.packagedCwd === undefined ? {} : { packagedCwd: options.packagedCwd },
     ...options.nodeExecutable === undefined ? {} : { nodeExecutable: options.nodeExecutable },
     managedHome: options.managedHome === true,
+    elevated: options.elevated === true,
     dshHome: options.dshHome,
     args: [
       '--profile', options.profile,
@@ -570,6 +610,8 @@ export function resolveDshLaunch(options: {
       ...browserPatch === undefined ? [] : ['--patch', browserPatch],
       // Workbench overlay（B3-P1）：注册 DeepSeekGUI 品牌与 Workbench 标识。
       ...workbenchPatch === undefined ? [] : ['--patch', workbenchPatch],
+      // 技能管理器 overlay（B7-P4）：只注册 settings.section 一个分区。
+      ...skillsPatch === undefined ? [] : ['--patch', skillsPatch],
       '--host', options.host ?? DEFAULT_HOST,
       '--port', String(options.port ?? DEFAULT_PORT),
       // DeepSeekGUI owns the browser surface inside its Compatibility View.

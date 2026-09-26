@@ -1,7 +1,7 @@
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import LlmRuntime, { createUserMessage, ToolCallId, HarnessError  } from '@deepseek-ai/dsh-llm'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
@@ -17,15 +17,18 @@ import { LocalBashExecutor } from '@deepseek-ai/dsh-bash-local'
 import * as BashEnvPlugin from '@deepseek-ai/dsh-shell-env'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import * as ToolBash from '@deepseek-ai/dsh-tool-bash'
-import * as LlmDeepSeek from '@deepseek-ai/dsh-llm-deepseek'
-import { WorkerThreadCodeRuntime } from '@deepseek-ai/dsh-code-runtime-worker-thread'
+import * as LlmDeepSeek from '@deepseek-ai/dsh-llm-deepseek-api-key'
+import NodeRuntime from '@deepseek-ai/dsh-ptc-runtime-node'
+import Sandbox from '@deepseek-ai/dsh-sandbox-local'
+import SandboxPolicy from '@deepseek-ai/dsh-sandbox-policy'
 import LocalFileSystem from '@deepseek-ai/dsh-fs-local'
 import * as ToolFs from '@deepseek-ai/dsh-tool-fs'
-import * as WorkspaceContext from '@deepseek-ai/dsh-agent-instructions'
+import * as AgentInstructions from '@deepseek-ai/dsh-agent-instructions'
 import LocalJobRegistry from '@deepseek-ai/dsh-jobs-local'
-import * as ToolTasks from '@deepseek-ai/dsh-tool-jobs'
+import * as ToolJobs from '@deepseek-ai/dsh-tool-jobs'
 import CordisHostRunner from '@deepseek-ai/dsh-cordis-host-runner'
 import * as ToolCordis from '@deepseek-ai/dsh-tool-cordis'
+import * as CordisInspectProviders from '@deepseek-ai/dsh-tool-cordis/host'
 
 /**
  * With-key PTC mode proof: a real model receives only `run_code`, composes two
@@ -42,7 +45,7 @@ let workdir: string | undefined
 
 afterEach(async () => {
   // Always dispose, even on failure/retry/timeout: agent-loop teardown stops
-  // the loop, the executor kills stray processes, and the code runtime's
+  // the loop, the executor kills stray processes, and the PTC runtime's
   // dispose awaits worker exits.
   await ctx?.fiber.dispose()
   ctx = undefined
@@ -60,11 +63,11 @@ async function ptcModeHarness(cwd: string): Promise<Context> {
   await harness.plugin(AgentRegistry)
   await harness.plugin(AgentLoop, { agents: [] })
   await harness.plugin(LlmDeepSeek)
-  await harness.plugin(LocalSubprocessRuntime)
+  if (harness.get('subprocess') === undefined) await harness.plugin(LocalSubprocessRuntime)
   await harness.plugin(BashEnvPlugin)
   await harness.plugin(LocalBashExecutor, { cwd, timeoutMs: 30_000 })
   await harness.plugin(ToolBash)
-  await harness.plugin(WorkerThreadCodeRuntime, {})
+  await mountRuntime(harness)
   return harness
 }
 
@@ -78,17 +81,17 @@ async function workspacePtcModeHarness(): Promise<Context> {
   await harness.plugin(AgentRegistry)
   await harness.plugin(LocalFileSystem, { cwd: '/' })
   await harness.plugin(ToolFs)
-  await harness.plugin(WorkspaceContext, { maxBytes: 65536 })
+  await harness.plugin(AgentInstructions, { maxBytes: 65536 })
   await harness.plugin(AgentLoop, { agents: [] })
   await harness.plugin(LlmDeepSeek, { models: [{ id: 'deepseek-v4-flash' }] })
-  await harness.plugin(WorkerThreadCodeRuntime, {})
+  await mountRuntime(harness)
   return harness
 }
 
 let keylessCall = 0
 const testToolSignal = new AbortController().signal
 
-/** Execute one outer PTC mode call through the real registry and worker. */
+/** Execute one outer PTC mode call through the real registry and Node process. */
 function runCode(
   harness: Context,
   code: string,
@@ -114,28 +117,39 @@ function completion(result: ToolExecutionResult): unknown {
   return value.result
 }
 
-/** Keyless real-worker harness for direct typed-binding acceptance tests. */
+async function mountRuntime(harness: Context): Promise<void> {
+  onTestFinished(async () => { await harness.fiber.dispose() })
+  if (!harness.get('sessions')) await harness.plugin(SessionStore)
+  if (!harness.get('fs')) await harness.plugin(LocalFileSystem)
+  if (!harness.get('subprocess')) await harness.plugin(LocalSubprocessRuntime)
+  if (!harness.get('sandbox')) await harness.plugin(Sandbox, {})
+  if (!harness.get('sessionProjections')) await harness.plugin(SessionProjectionRegistry)
+  if (!harness.get('sandboxPolicy')) await harness.plugin(SandboxPolicy, { mode: 'danger-full-access' })
+  await harness.plugin(NodeRuntime, {})
+}
+
+/** Keyless real-process harness for direct typed-binding acceptance tests. */
 async function typedPtcModeHarness(): Promise<Context> {
   const harness = new Context()
   await harness.plugin(SystemPrompt)
   await harness.plugin(ToolRuntime, { mode: 'ptc' })
-  await harness.plugin(WorkerThreadCodeRuntime, {})
+  await mountRuntime(harness)
   return harness
 }
 
-/** Keyless real-worker harness with the task-owned bash lifecycle. */
+/** Keyless real-process harness with the task-owned bash lifecycle. */
 async function backgroundPtcModeHarness(cwd: string): Promise<Context> {
   const harness = await typedPtcModeHarness()
   await harness.plugin(LocalJobRegistry)
-  await harness.plugin(ToolTasks, {})
-  await harness.plugin(LocalSubprocessRuntime)
+  await harness.plugin(ToolJobs, {})
+  if (harness.get('subprocess') === undefined) await harness.plugin(LocalSubprocessRuntime)
   await harness.plugin(BashEnvPlugin)
   await harness.plugin(LocalBashExecutor, { cwd, timeoutMs: 30_000 })
   await harness.plugin(ToolBash)
   return harness
 }
 
-describe('PTC mode typed values: keyless real-worker contracts', () => {
+describe('PTC mode typed values: keyless real-process contracts', () => {
   it('crosses a large intermediate value intact and exposes only typed tool failure fields', async () => {
     ctx = await typedPtcModeHarness()
     ctx.tools.register(defineTool({
@@ -264,80 +278,26 @@ describe('PTC mode typed values: keyless real-worker contracts', () => {
     expect(ctx.jobs.list()).toEqual([])
   }, 15_000)
 
-  it('uses versioned Cordis DTO ids directly for running and pending Plugins, then confirms removal', async () => {
+  it('uses runtime inspection results directly through PTC', async () => {
     ctx = await typedPtcModeHarness()
     await ctx.plugin(CordisHostRunner)
+    await ctx.plugin(CordisInspectProviders)
     await ctx.plugin(ToolCordis)
     const agent = {
       id: SessionId('ptc-cordis'),
-      session: { append: vi.fn() },
+      session: ctx.sessions.create(SessionId('ptc-cordis'), { meta: { cwd: process.cwd() } }),
     } as unknown as Agent
 
     const value = completion(await runCode(ctx, `
-      const activeDefinition = await tools.cordis_define({
-        plugin: { kind: 'new', idPrefix: 'active' },
-        name: 'active-ptc-plugin',
-        purpose: 'prove an active Host half',
-        code: { host: "return { name: 'active-ptc-plugin', apply(ctx) {} }" },
+      const listed = await tools.cordis_inspect_list({});
+      const provider = listed.providers.find(item => item.id === 'Tool');
+      const inspected = await tools.cordis_inspect_query({
+        platform: provider.platform, provider: provider.id, method: provider.methods[0].name,
       });
-      const active = await tools.cordis_run({
-        pluginId: activeDefinition.pluginId,
-        packageId: activeDefinition.packageId,
-        mode: 'run',
-      });
-      const pendingDefinition = await tools.cordis_define({
-        plugin: { kind: 'new', idPrefix: 'queue' },
-        name: 'pending-ptc-plugin',
-        purpose: 'prove a Host half waiting for a Service',
-        code: { host: "return { name: 'pending-ptc-plugin', inject: ['missing-ptc-service'], apply(ctx) {} }" },
-      });
-      const pending = await tools.cordis_run({
-        pluginId: pendingDefinition.pluginId,
-        packageId: pendingDefinition.packageId,
-        mode: 'run',
-      });
-      const before = await tools.cordis_inspect_self({});
-      const removed = await tools.cordis_undefine({ pluginId: active.pluginId });
-      const after = await tools.cordis_inspect_self({});
-      await tools.cordis_undefine({ pluginId: pending.pluginId });
-      return {
-        active: {
-          pluginId: active.pluginId,
-          packageId: active.packageId,
-          pluginRunId: active.pluginRunId,
-          status: active.host.status,
-        },
-        pending: {
-          pluginId: pending.pluginId,
-          packageId: pending.packageId,
-          pluginRunId: pending.pluginRunId,
-          status: pending.host.status,
-          waitingFor: pending.host.waitingFor,
-        },
-        removed,
-        beforeContainsId: before.plugins.some(plugin => plugin.pluginId === active.pluginId),
-        afterContainsId: after.plugins.some(plugin => plugin.pluginId === active.pluginId),
-      };
+      return { provider: provider.id, names: inspected.data.tools.map(tool => tool.name) };
     `, testToolSignal, agent))
 
-    expect(value).toEqual({
-      active: {
-        pluginId: 'active-1',
-        packageId: 'pkg-1',
-        pluginRunId: 'run-1',
-        status: 'running',
-      },
-      pending: {
-        pluginId: 'queue-2',
-        packageId: 'pkg-2',
-        pluginRunId: 'run-2',
-        status: 'waiting',
-        waitingFor: ['missing-ptc-service'],
-      },
-      removed: { pluginId: 'active-1', wasRunning: true },
-      beforeContainsId: true,
-      afterContainsId: false,
-    })
+    expect(value).toEqual({ provider: 'Tool', names: ['cordis_inspect_list', 'cordis_inspect_query', 'run_code'] })
   })
 })
 

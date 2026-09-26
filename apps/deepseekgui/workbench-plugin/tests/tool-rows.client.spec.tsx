@@ -45,7 +45,7 @@ const settled = (over: Partial<ToolResultNode> & { name: string; text?: string }
 } as unknown as ToolCallBlock)
 
 const running = (name: string, argsRaw: string): ToolCallBlock => ({
-  callId: 'c1', name, argsRaw, turn: 1, step: 1, time: 1_000, subCalls: [],
+  phase: 'start', callId: 'c1', name, argsRaw, turn: 1, step: 1, time: 1_000, subCalls: [],
 } as unknown as ToolCallBlock)
 
 const toolsProps = (over: Record<string, unknown> = {}) => ({

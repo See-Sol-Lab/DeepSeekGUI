@@ -9,12 +9,14 @@ export function WorkbenchBadge() {
     <span
       title="DeepSeekGUI Workbench"
       style={{
-        border: '1px solid currentColor',
+        // Glass pass batch 2: the solid currentColor stroke was the darkest
+        // line on the whole header; the l4 hairline keeps it a quiet tag.
+        border: '1px solid var(--dsw-alias-border-l4)',
         borderRadius: 999,
         fontSize: 11,
         lineHeight: '18px',
         padding: '0 8px',
-        opacity: 0.75,
+        color: 'var(--dsw-alias-label-secondary)',
         whiteSpace: 'nowrap',
       }}
     >

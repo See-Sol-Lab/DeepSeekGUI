@@ -76,7 +76,7 @@ Goal Round 驱动器为每个特定的实时 agent 至多拥有一个待定预�
 
 Ralph 是位于自有插件中的一等模型工具，展示了复杂固定执行策略可以在没有新 loop 核心的情况下组合完成。该插件拥有构建在 `ctx.workflowEngine` 与 `ctx.subagents` 之上的固定工作流脚本；它不会创建会话目标状态，也不会为 `dsh-agent-loop` 增加分支。
 
-每个 Round 都使用显式 `WorkflowStartRequest.subagentProvider`，默认为 `spawn`。该提供方必须存在、支持结构化输出，并声明不继承父上下文。Ralph 还会把解析后的 Round 上限作为 `WorkflowStartRequest.maxTotalAgents` 传递；工作线程引擎会在发布工作前验证两项每次运行策略，因此提供方配置错误或低于所请求 Ralph 规模的引擎上限会在运行创建前失败。子 agent 继承 cwd 与谱系，但只接收不可变目标、当前 Round/上限、以工作区为权威的指令和上一份规范化报告。
+每个 Round 都使用显式 `WorkflowStartRequest.subagentProvider`，默认为 `spawn`。该提供方必须存在、支持结构化输出，并声明不继承父上下文。Ralph 还会把解析后的 Round 上限作为 `WorkflowStartRequest.maxTotalAgents` 传递；PTC 工作流引擎会在发布工作前验证两项每次运行策略，因此提供方配置错误或低于所请求 Ralph 规模的引擎上限会在运行创建前失败。子 agent 继承 cwd 与谱系，但只接收不可变目标、当前 Round/上限、以工作区为权威的指令和上一份规范化报告。
 
 报告包含状态、摘要、证据、下一步与阻塞文本。固定脚本内部和消费方边界都会验证状态专用不变量与序列化大小。`maxRounds` 可配置，默认为 `256`，并作为调用覆盖值的上限。`maxHandoffChars` 默认为 `16384`；过大报告会失败，而不会被静默截断。`maxResultChars` 单独默认为 `16384`，并限制面向父级的完整成功文本，包括外层文本与截断标记。
 

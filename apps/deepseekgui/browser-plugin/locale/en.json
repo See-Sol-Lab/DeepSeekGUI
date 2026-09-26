@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Built-in browser",
+    "description": "Lets the assistant open and operate web pages in the in-window browser pane or Edge; local and private-network addresses are blocked."
+  }
+}

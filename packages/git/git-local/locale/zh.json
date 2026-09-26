@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "本地 Git",
+    "description": "通过本机 git 命令读取仓库信息。"
+  }
+}

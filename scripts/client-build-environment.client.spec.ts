@@ -28,7 +28,6 @@ const roots: string[] = []
 const dshBuildWorkflows = [
   'build-exe-for-python-sdk.yml',
   'ci.yml',
-  'e2b-e2e.yml',
   'e2e.yml',
   'release.yml',
   'release-publish.yml',
@@ -276,6 +275,10 @@ describe('client build environment', () => {
 
     write(join(official, 'apps/web/dist/index.html'), '<main>changed</main>')
     expect(() => { readClientBuildRecord(official) }).toThrow(/artifacts differ/)
+
+    const chunked = buildFixture(officialEnvironment)
+    write(join(chunked, 'packages/client/example/lib/client.pdf.js'), 'module.exports = {}\n')
+    expect(() => { readClientBuildRecord(chunked) }).toThrow(/artifacts differ/)
   })
 
   it('keeps public client values out of workflow-wide environments', () => {

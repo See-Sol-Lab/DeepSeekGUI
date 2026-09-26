@@ -29,7 +29,7 @@ kind: "package-reference"
 
 ### 何时选择
 
-当插件或工具必须搜索或抓取、又不希望硬编码厂商时选择本服务；只使用已交付的 `web_search`／`web_fetch` 工具的组合会通过 `dsh-tool-web` 免费获得它。当组合从不访问 web 时，你不需要它。服务本身不增加任何网络访问能力：没有至少一个可用提供方时，每次调用都会以结构化 `WebError` 失败。
+当插件或工具必须搜索或抓取、又不希望硬编码厂商时选择本服务；只使用已交付的 `web_search`／`web_fetch` 工具的组合会通过 `dsh-tool-web` 自动加载本服务。当组合从不访问 web 时，你不需要它。服务本身不增加任何网络访问能力：没有至少一个可用提供方时，每次调用都会以结构化 `WebError` 失败。
 
 ### 最小配置
 
@@ -105,11 +105,11 @@ const page = await ctx.web.fetch({ url: 'https://example.com' })
 |---|---|
 | [`src/index.ts`](src/index.ts) | 插件入口：`WebRuntime` 服务、两个提供方注册表与执行时选择 |
 | [`src/types.ts`](src/types.ts) | 词汇：请求／结果类型、封闭的 `WebFetchBody` 联合与 `WebError` 分类体系 |
-| — | 不发布运行时不变式伴生入口；约定在服务处强制执行。 |
+| — | 不发布运行时不变式配套项；提供方映射是私有数据，服务会在每次调用时执行提供方选择并强制执行结果上限；该 seam 不发布独立注册表，也不发布请求／结果观测流。 |
 
 ### 数据模型
 
-请求与结果类型定义了调用方赖以构建的规范化词汇——一组 `Search` 对与一组 `Fetch` 对——穷尽式字段与 JSDoc 见 [`src/types.ts`](src/types.ts) 与 [web 子系统](../../../docs/subsystems/web.zh.md) 参考。两个刻意的选择塑造了它们：`WebFetchBody` 是这里拥有的封闭联合（`html` | `text`），因此新增类型会破坏编译，直到每个消费方都处理它；`WebError` 继承 `HarnessError`，携带开放的字符串 `code`，因此消费方必须容忍提供方专有的取值。来源字段保持可选，因为并非每个提供方都返回全部字段。
+请求与结果类型定义了调用方赖以构建的规范化词汇——`Search` 请求／结果对与 `Fetch` 请求／结果对各一组——穷尽式字段与 JSDoc 见 [`src/types.ts`](src/types.ts) 与 [web 子系统](../../../docs/subsystems/web.zh.md) 参考。两个刻意的选择塑造了它们：`WebFetchBody` 是这里拥有的封闭联合（`html` | `text`），因此新增类型会破坏编译，直到每个消费方都处理它；`WebError` 继承 `HarnessError`，携带开放的字符串 `code`，因此消费方必须容忍提供方专有的取值。来源字段保持可选，因为并非每个提供方都返回全部字段。
 
 ### 选择流程
 

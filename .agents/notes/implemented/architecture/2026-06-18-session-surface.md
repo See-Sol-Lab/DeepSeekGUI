@@ -37,7 +37,7 @@ Delta processing is O(1) when no new events and O(new events) when new events ar
 
 ### Persistence
 
-The fields are serialized as top-level JSON properties. JSONL preserves placement and provenance without a separate column mapping. The [V3 canonical-envelope decision](2026-09-06-v3-canonical-session-envelopes.md) owns exact replacement keys and strict-acceptance rationale; the [V2-to-V3 specification](../../../../packages/session/session-format-v2-to-v3/README.md#canonical-envelopes) owns historical conversion. This note retains ordered-projection ownership and replacement rationale.
+The fields are serialized as top-level JSON properties. JSONL preserves placement and source-event references without a separate column mapping. The [V3 canonical-envelope decision](2026-09-06-v3-canonical-session-envelopes.md) owns exact replacement keys and strict-acceptance rationale; the [V2-to-V3 specification](../../../../packages/session/session-format-v2-to-v3/README.md#canonical-envelopes) owns historical conversion. This note retains ordered-projection ownership and replacement rationale.
 
 ### Crash recovery
 

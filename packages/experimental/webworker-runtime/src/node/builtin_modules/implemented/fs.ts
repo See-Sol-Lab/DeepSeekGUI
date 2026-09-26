@@ -226,6 +226,25 @@ export function realpathSync(path: PathArg): string {
 }
 
 /**
+ * Resolve a UTF-8 path through Node's callback form and its native alias.
+ * @param path - Path in the symlink-free VFS.
+ * @param callback - Asynchronous completion with the canonical path or filesystem error.
+ */
+export function realpath(path: PathArg, callback: (error: NodeJS.ErrnoException | null, path?: string) => void): void {
+  queueMicrotask(() => {
+    let result: string
+    try {
+      result = realpathSync(path)
+    } catch (error) {
+      callback(error as NodeJS.ErrnoException)
+      return
+    }
+    callback(null, result)
+  })
+}
+realpath.native = realpath
+
+/**
  * List a directory.
  * @param path - directory path.
  * @param options - `withFileTypes` selects Dirent objects.
@@ -828,13 +847,13 @@ export const __esModule = true
  * (`readFileSync` answering `Buffer` XOR `string`, `statSync` answering `Stats`
  * XOR `BigIntStats`, `mkdirSync` answering `string` XOR `void`). This module
  * answers the union its VFS actually produces from one signature, which no single
- * signature can present as all of Node's overloads; `realpathSync` additionally
+ * signature can present as all of Node's overloads; `realpath` additionally
  * carries Node's `.native` member, and `constants`, `promises`, and `Dirent` hold
  * the subsets the host tree reads.
  */
 type OwnSignature =
   | 'constants' | 'promises' | 'Dirent' | 'FSWatcher' | 'StatWatcher' | 'ReadStream' | 'WriteStream'
-  | 'readFileSync' | 'writeFileSync' | 'appendFileSync' | 'statSync' | 'lstatSync' | 'realpathSync'
+  | 'readFileSync' | 'writeFileSync' | 'appendFileSync' | 'statSync' | 'lstatSync' | 'realpathSync' | 'realpath'
   | 'readdirSync' | 'mkdirSync' | 'mkdtempSync' | 'rmSync' | 'opendirSync'
   | 'openSync' | 'readSync' | 'writeSync' | 'stat' | 'lstat' | 'watch' | 'watchFile' | 'unwatchFile'
   | 'createReadStream' | 'createWriteStream'
@@ -850,7 +869,7 @@ type NodeFace = Partial<Omit<typeof import('node:fs'), OwnSignature>>
 /** CommonJS default export: the members `require()` hands a caller of this module. */
 export default {
   constants, promises, Dirent, FSWatcher, StatWatcher, ReadStream, WriteStream,
-  readFileSync, writeFileSync, appendFileSync, existsSync, statSync, stat, lstatSync, lstat, realpathSync, chmodSync,
+  readFileSync, writeFileSync, appendFileSync, existsSync, statSync, stat, lstatSync, lstat, realpathSync, realpath, chmodSync,
   readdirSync, mkdirSync, mkdtempSync, rmSync, unlinkSync, renameSync, accessSync, opendirSync,
   openHandleSync, linkSync,
   openSync, readSync, writeSync, closeSync, watch, watchFile, unwatchFile,

@@ -1,43 +1,26 @@
 /**
  * User patch-layer behavior of `dsh-app-boot`: the optional patch-list loader
  * (a profile's `cordis.patch.yml`) and `boot()` applying the user layer over
- * a real Loader tree, kept live through transactional HMR.
+ * a real Loader tree with live file watching.
  */
 
-import { mkdirSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { afterAll, afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
-import { FSWatcher, type ChokidarOptions } from 'chokidar'
+import { afterAll, afterEach, describe, expect, it, onTestFinished } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import Hmr from '@deepseek-ai/cordis-plugin-hmr'
 import Include, { type PatchOptions } from '@deepseek-ai/cordis-plugin-include'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
-import Timer from '@deepseek-ai/cordis-plugin-timer'
 import {
   boot,
   loadOptionalPatches,
   loadOverlayPatches,
   PROFILE_PATCH_FILENAME,
-  watchUserPatches,
+  reconcileProfilePatches,
 } from '../src/index.ts'
 
 const NAME = 'dsh-test-bin'
-
-const configWatch = vi.hoisted(() => ({
-  create: undefined as ((options?: ChokidarOptions) => FSWatcher) | undefined,
-}))
-
-vi.mock('chokidar', async (importOriginal) => {
-  const native = await importOriginal<typeof import('chokidar')>()
-  return {
-    ...native,
-    watch: (paths: string | string[], options?: ChokidarOptions) => configWatch.create === undefined
-      ? native.watch(paths, options)
-      : configWatch.create(options),
-  }
-})
 
 const tempRoots: string[] = []
 afterAll(() => {
@@ -48,14 +31,6 @@ const tmp = (): string => {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-user-patches-'))
   tempRoots.push(dir)
   return dir
-}
-
-async function eventually(test: () => boolean, message: string): Promise<void> {
-  const deadline = Date.now() + 10_000
-  while (!test()) {
-    if (Date.now() >= deadline) throw new Error(message)
-    await new Promise(resolve => setTimeout(resolve, 10))
-  }
 }
 
 describe('loadOptionalPatches', () => {
@@ -190,15 +165,15 @@ describe('loadOptionalPatches', () => {
   })
 })
 
-function writeTree(dir: string): string {
+function writeTree(dir: string, id = 'noop', asyncApply = false): string {
   writeFileSync(join(dir, 'noop.mjs'), [
     'export const name = "noop"',
-    'export function apply(_ctx, config = {}) {',
+    `export ${asyncApply ? 'async ' : ''}function apply(_ctx, config = {}) {`,
     '  if (config.fail) throw new Error("candidate config failed")',
     '}',
     '',
   ].join('\n'))
-  writeFileSync(join(dir, 'cordis.yml'), '- id: noop\n  name: ./noop.mjs\n  config:\n    value: base\n')
+  writeFileSync(join(dir, 'cordis.yml'), `- id: ${id}\n  name: ./noop.mjs\n  config:\n    value: base\n`)
   return join(dir, 'cordis.yml')
 }
 
@@ -282,7 +257,9 @@ describe('Loader config interpolation', () => {
       await provider?.update({ disabled: true })
       await provider?.update({ config: { fail: true } })
       await provider?.update({ disabled: false })
-      await expect(ctx.loader.await()).rejects.toThrow('rejected provider')
+      await ctx.loader.await()
+      const reader = [...ctx.loader.entries()].find(entry => entry.options.id === 'reader')
+      await expect(reader?.fiber?.await()).rejects.toThrow('rejected provider')
       expect(ctx.get('readerResult')).toBeUndefined()
 
       await provider?.update({ disabled: true })
@@ -354,13 +331,107 @@ describe('Loader entry disabled interpolation', () => {
       const disabledFalse = { __jsExpr: 'process.version.length === 0' } as unknown as boolean
       await entry?.update({ disabled: disabledTrue })
       expect(entry?.disabled).toBe(true)
-      expect(entry?.fiber).toBeUndefined()
+      await ctx.loader.await()
+      expect(entry?.fiber?.uid).toBeNull()
       await entry?.update({ disabled: disabledFalse })
       expect(entry?.disabled).toBe(false)
       expect(entry?.fiber).toBeDefined()
     } finally {
       await ctx.fiber.dispose()
     }
+  })
+})
+
+describe('profile reconciliation settlement', () => {
+  it('retains unchanged import diagnostics across profile reconciliation', async () => {
+    const dir = tmp()
+    writeFileSync(join(dir, 'cordis.yml'), '[]\n')
+    const patches = [{ insert: [{ id: 'missing-plugin', name: './missing.mjs' }] }]
+    const ctx = await boot(NAME, join(dir, 'cordis.yml'), patches)
+    onTestFinished(() => ctx.fiber.dispose())
+    expect(await reconcileProfilePatches(ctx, patches, NAME)).toEqual(['missing-plugin (./missing.mjs): failed to import'])
+  })
+
+  it('rejects a context without the launcher root Include', async () => {
+    const ctx = new Context()
+    onTestFinished(() => ctx.fiber.dispose())
+    await expect(reconcileProfilePatches(ctx, [], NAME)).rejects.toThrow('profile reload requires the root Include entry')
+    // A Loader without the pinned root id is no better.
+    await ctx.plugin(Loader)
+    await expect(reconcileProfilePatches(ctx, [], NAME)).rejects.toThrow('profile reload requires the root Include entry')
+  })
+
+  it('removes a previously failed entry without reporting its old activation error', async () => {
+    const dir = tmp()
+    writeFileSync(join(dir, 'cordis.yml'), '[]\n')
+    writeFileSync(join(dir, 'candidate.mjs'), 'export function apply(_ctx, config) { if (config.fail) throw new Error("candidate activation failed") }\n')
+    const ctx = await boot(NAME, join(dir, 'cordis.yml'), [{ insert: [{ id: 'candidate', name: './candidate.mjs', config: { fail: false } }] }])
+    onTestFinished(() => ctx.fiber.dispose())
+    const entry = [...ctx.loader.entries()].find(row => row.options.id === 'candidate')
+    if (entry === undefined) throw new Error('candidate entry missing')
+    await entry.update({ config: { fail: true } })
+    await ctx.loader.await()
+    await reconcileProfilePatches(ctx, [], NAME)
+    expect([...ctx.loader.entries()].some(row => row.options.id === 'candidate')).toBe(false)
+    await reconcileProfilePatches(ctx, [], NAME)
+  })
+
+  it('reports an unchanged failed entry as a warning but rejects a changed configuration with the same failure', async () => {
+    const dir = tmp()
+    writeFileSync(join(dir, 'cordis.yml'), '[]\n')
+    writeFileSync(join(dir, 'candidate.mjs'), 'export function apply() { throw new Error("candidate activation failed") }\n')
+    const patches = [{ insert: [{ id: 'candidate', name: './candidate.mjs', config: { revision: 1 } }] }]
+    const ctx = await boot(NAME, join(dir, 'cordis.yml'), patches)
+    onTestFinished(() => ctx.fiber.dispose())
+    expect(await reconcileProfilePatches(ctx, patches, NAME)).toEqual([expect.stringContaining('candidate activation failed')])
+    await expect(reconcileProfilePatches(ctx, [...patches, { id: 'candidate', config: { revision: 2 } }], NAME))
+      .rejects.toThrow('candidate activation failed')
+  })
+
+  it('reports an activation failure that settles while its entry is being removed', async () => {
+    const dir = tmp()
+    const entered = Promise.withResolvers<undefined>()
+    const release = Promise.withResolvers<undefined>()
+    writeFileSync(join(dir, 'cordis.yml'), '[]\n')
+    writeFileSync(join(dir, 'candidate.mjs'), 'export async function apply(ctx, config) { if (config.fail) { ctx.get("pendingFailure").entered(); await ctx.get("pendingFailure").release; throw new Error("in-flight failure") } }\n')
+    const ctx = await boot(NAME, join(dir, 'cordis.yml'), [{ insert: [{ id: 'candidate', name: './candidate.mjs', config: { fail: false } }] }], (host) => {
+      host.provide('pendingFailure', { entered: () => { entered.resolve(undefined) }, release: release.promise })
+    })
+    onTestFinished(async () => { release.resolve(undefined); await ctx.fiber.dispose() })
+    const entry = [...ctx.loader.entries()].find(row => row.options.id === 'candidate')!
+    await entry.update({ config: { fail: true } })
+    await entered.promise
+    const result = expect(reconcileProfilePatches(ctx, [], NAME)).rejects.toThrow('in-flight failure')
+    release.resolve(undefined)
+    await result
+  })
+
+  it('waits for a removed plugin to release its resources', async () => {
+    const dir = tmp()
+    const started = Promise.withResolvers<undefined>()
+    const release = Promise.withResolvers<undefined>()
+    writeFileSync(join(dir, 'cordis.yml'), '[]\n')
+    writeFileSync(join(dir, 'held.mjs'), [
+      'export function apply(ctx) {',
+      '  ctx.effect(() => async () => {',
+      '    ctx.get("reloadProbe").started()',
+      '    await ctx.get("reloadProbe").release',
+      '  })',
+      '}',
+      '',
+    ].join('\n'))
+    const ctx = await boot(NAME, join(dir, 'cordis.yml'), [{ insert: [{ id: 'held', name: './held.mjs' }] }], (host) => {
+      host.provide('reloadProbe', { started: () => { started.resolve(undefined) }, release: release.promise })
+    })
+    onTestFinished(async () => { release.resolve(undefined); await ctx.fiber.dispose() })
+    let settled = false
+    const operation = reconcileProfilePatches(ctx, [], NAME).then(() => { settled = true })
+    await started.promise
+    expect([...ctx.loader.entries()].some(entry => entry.options.id === 'held')).toBe(false)
+    expect(settled).toBe(false)
+    release.resolve(undefined)
+    await operation
+    expect(settled).toBe(true)
   })
 })
 
@@ -415,127 +486,4 @@ describe('boot with user patches', () => {
     }
   })
 
-  it('watches add, failure, recovery, and removal through transactional HMR', { timeout: 20_000 }, async () => {
-    const dir = tmp()
-    const userDir = tmp()
-    const filename = join(userDir, PROFILE_PATCH_FILENAME)
-    const basePatches = [{ id: 'noop', config: { value: 'generated' } }]
-    const ctx = await boot(NAME, writeTree(dir), basePatches)
-    onTestFinished(() => ctx.fiber.dispose())
-    await ctx.plugin(Timer)
-    await ctx.plugin(Hmr, { root: [], ignored: [], debounce: 0 })
-    // Native notifications belong to hmr-config.spec.ts; this case owns the
-    // real HMR/Include transaction after each delivered filesystem event.
-    const watchers: FSWatcher[] = []
-    const previousFactory = configWatch.create
-    onTestFinished(() => { configWatch.create = previousFactory })
-    configWatch.create = (options) => {
-      const watcher = new FSWatcher(options)
-      watchers.push(watcher)
-      queueMicrotask(() => { watcher.emit('ready') })
-      return watcher
-    }
-    const failures: Array<{ filename: string; error: Error }> = []
-    ctx.on('hmr/config-update-failed', (failedFilename, error) => {
-      failures.push({ filename: failedFilename, error })
-    })
-    const dispose = await watchUserPatches(ctx, {
-      binName: NAME,
-      filename,
-      compose: userPatches => [...basePatches, ...userPatches],
-    })
-    expect(watchers).toHaveLength(1)
-    const watcher = watchers[0]!
-    try {
-      writeFileSync(filename, '- id: noop\n  config:\n    value: live\n')
-      watcher.emit('add', filename)
-      await eventually(() => (entryConfig(ctx, 'noop') as { value?: string }).value === 'live', 'user patch addition was not applied')
-
-      writeFileSync(filename, '- id: noop\n  config:\n    fail: true\n')
-      watcher.emit('change', filename)
-      await eventually(() => failures.length === 1, 'failed candidate was not broadcast')
-      expect(failures[0]).toMatchObject({ filename })
-      expect(failures[0]?.error).toBeInstanceOf(Error)
-      expect((entryConfig(ctx, 'noop') as { value?: string }).value).toBe('live')
-
-      writeFileSync(filename, 'invalid: [unclosed\n')
-      watcher.emit('change', filename)
-      await eventually(() => failures.length === 2, 'parse failure was not broadcast')
-      expect(failures[1]?.error).toBeInstanceOf(Error)
-      expect((entryConfig(ctx, 'noop') as { value?: string }).value).toBe('live')
-
-      writeFileSync(filename, '- id: noop\n  config:\n    value: recovered\n')
-      watcher.emit('change', filename)
-      await eventually(() => (entryConfig(ctx, 'noop') as { value?: string }).value === 'recovered', 'valid recovery was not applied')
-
-      unlinkSync(filename)
-      watcher.emit('unlink', filename)
-      await eventually(() => (entryConfig(ctx, 'noop') as { value?: string }).value === 'generated', 'user patch removal did not restore the app-owned patch')
-      expect(failures).toHaveLength(2)
-
-      // Default compose: the user layer IS the whole patch list, so a
-      // fresh generation replaces the app-owned layer instead of stacking on it.
-      await dispose()
-      const disposeDefault = await watchUserPatches(ctx, { binName: NAME, filename })
-      expect(watchers).toHaveLength(2)
-      try {
-        writeFileSync(filename, '- id: noop\n  config:\n    value: identity\n')
-        watchers[1]!.emit('add', filename)
-        await eventually(() => (entryConfig(ctx, 'noop') as { value?: string }).value === 'identity', 'default-compose user patch was not applied')
-      } finally {
-        await disposeDefault()
-      }
-    } finally {
-      await dispose()
-    }
-  })
-
-  it('fails loud when the exact watcher lacks HMR or a root Include', async () => {
-    const dir = tmp()
-    const withoutHmr = await boot(NAME, writeTree(dir))
-    await expect(watchUserPatches(withoutHmr, { binName: NAME, filename: join(tmp(), PROFILE_PATCH_FILENAME) })).rejects.toThrow('requires the Cordis HMR service')
-    await withoutHmr.fiber.dispose()
-
-    const withoutInclude = new Context()
-    withoutInclude.baseUrl = pathToFileURL(`${tmp()}/`).href
-    await withoutInclude.plugin(Loader)
-    await withoutInclude.plugin(Timer)
-    await withoutInclude.plugin(Hmr, { root: [], ignored: [], debounce: 0 })
-    await expect(watchUserPatches(withoutInclude, { binName: NAME, filename: join(tmp(), PROFILE_PATCH_FILENAME) })).rejects.toThrow('requires the root Include entry')
-    await withoutInclude.fiber.dispose()
-  })
-
-  it('returns a no-op disposer when the tree is disposed while the watcher opens', async () => {
-    // A surface can dispose the whole tree while registerConfig's effect
-    // registration is still in flight (the HMR effect then fails with
-    // INACTIVE_EFFECT); the app is exiting exactly as asked, so the watcher
-    // must not crash the process. The stub makes the race deterministic — the
-    // live-teardown ordering itself is not stageable.
-    const dir = tmp()
-    const ctx = await boot(NAME, writeTree(dir))
-    try {
-      const teardown = Object.assign(new Error('cannot create effect on inactive context'), { code: 'INACTIVE_EFFECT' })
-      ctx.provide('hmr', { registerConfig: () => Promise.reject(teardown) })
-      const dispose = await watchUserPatches(ctx, { binName: NAME, filename: join(tmp(), PROFILE_PATCH_FILENAME) })
-      await expect(dispose()).resolves.toBeUndefined()
-    } finally {
-      await ctx.fiber.dispose()
-    }
-  })
-
-  it('propagates registration failures other than mid-teardown', async () => {
-    const dir = tmp()
-    const filename = join(tmp(), PROFILE_PATCH_FILENAME)
-    const ctx = await boot(NAME, writeTree(dir))
-    try {
-      await ctx.plugin(Timer)
-      await ctx.plugin(Hmr, { root: [], ignored: [], debounce: 0 })
-      const dispose = await watchUserPatches(ctx, { binName: NAME, filename })
-      // Same user-layer path registered twice: HMR refuses; not a teardown race.
-      await expect(watchUserPatches(ctx, { binName: NAME, filename })).rejects.toThrow('already registered')
-      await dispose()
-    } finally {
-      await ctx.fiber.dispose()
-    }
-  })
 })

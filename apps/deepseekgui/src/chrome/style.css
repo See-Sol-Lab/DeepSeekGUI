@@ -20,15 +20,19 @@
      模糊糊不到它，半透明只会把官方页面的字漏上来（实测 0.92 与 0.985
      都能看见下层大标题）。玻璃感由内描边 + 外阴影承担。 */
   --surface: #0a0a0a;
-  --surface-raised: #191919;
+  --surface-raised: #1a1c20;
   --surface-hover: rgba(255, 255, 255, 0.06);
-  --border: rgba(255, 255, 255, 0.10);
-  --border-subtle: rgba(255, 255, 255, 0.08);
+  /* 线条（2026-09-16 玻璃化第二批）：统一收淡一档，玻璃感靠高光棱线与
+     散影而不是描边；胶囊底半透——顶栏底图与胶囊同在这一层，模糊在这里有效。 */
+  --border: rgba(255, 255, 255, 0.08);
+  --border-subtle: rgba(255, 255, 255, 0.06);
   --text: #ffffff;
   --text-dim: rgba(255, 255, 255, 0.56);
   --brand: #6799fe;
   --focus: #6799fe;
-  --shadow-card: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 8px 24px rgba(0, 0, 0, 0.22);
+  --shadow-card: inset 0 1px 0 rgba(255, 255, 255, 0.10), 0 12px 32px rgba(0, 0, 0, 0.40);
+  --pill-bg: rgba(25, 25, 25, 0.55);
+  --pill-highlight: rgba(255, 255, 255, 0.10);
   --dot-grey: #6e6e78;
   --dot-blue: #6799fe;
   --dot-green: #3fae6a;
@@ -43,15 +47,19 @@
 
 :root[data-theme='light'] {
   --surface: #f9f8f8;
-  --surface-raised: #ffffff;
-  --surface-hover: rgba(0, 0, 0, 0.03);
-  --border: rgba(0, 0, 0, 0.10);
-  --border-subtle: rgba(0, 0, 0, 0.06);
+  /* 面板底：背后是另一个 view，糊不到、半透会漏字，只能实色——取极浅的
+     冷白而不是纯白，与页面里的玻璃同一色温。 */
+  --surface-raised: #fafbfd;
+  --surface-hover: rgba(38, 49, 72, 0.05);
+  --border: rgba(38, 49, 72, 0.10);
+  --border-subtle: rgba(38, 49, 72, 0.07);
   --text: #1e232c;
   --text-dim: rgba(0, 0, 0, 0.65);
   --brand: #4d6bfe;
   --focus: #3a65c2;
-  --shadow-card: 0 0 0 1px #f1f5f9, 0 2px 4px rgba(0, 0, 0, 0.05), 0 12px 24px rgba(0, 0, 0, 0.05);
+  --shadow-card: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 4px 12px rgba(38, 49, 72, 0.05), 0 16px 40px rgba(38, 49, 72, 0.08);
+  --pill-bg: rgba(255, 255, 255, 0.62);
+  --pill-highlight: rgba(255, 255, 255, 0.8);
   --dot-grey: #8691a1;
   --dot-blue: #4d6bfe;
   --dot-green: #1f8a4c;
@@ -126,11 +134,13 @@ html, body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  transition: background-color 150ms ease;
 }
-.icon-button:hover { background: var(--surface-raised); }
+.icon-button:hover { background: var(--surface-hover); }
 
-.hamburger-lines { display: inline-flex; flex-direction: column; gap: 4px; }
-.hamburger-lines i { display: block; width: 16px; height: 2px; background: var(--text); border-radius: 1px; }
+/* 三条线细一档、间距稍开：同一个图标，少一点"粗黑"。 */
+.hamburger-lines { display: inline-flex; flex-direction: column; gap: 4.5px; }
+.hamburger-lines i { display: block; width: 16px; height: 1.5px; background: var(--text); border-radius: 1px; opacity: 0.9; }
 
 #brand { display: flex; align-items: center; gap: 8px; }
 #brand-icon { width: 20px; height: 20px; }
@@ -151,13 +161,35 @@ html, body {
   padding: 0 12px;
   border: 1px solid var(--border-subtle);
   border-radius: var(--r-pill);
-  background: var(--surface-raised);
+  /* 玻璃胶囊：底图与胶囊同在本层，backdrop-filter 在这里是真模糊。 */
+  background: var(--pill-bg);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  backdrop-filter: blur(16px) saturate(140%);
+  box-shadow: inset 0 1px 0 var(--pill-highlight);
   color: var(--text);
   font-size: 12px;
   white-space: nowrap;
   /* 没有 cursor:pointer、没有 :hover —— 它是指示灯不是按钮（P8-D19）。
      鼠标样式和悬停反馈都会让人以为能点。 */
 }
+
+/* 更新气泡（R10）：汉堡/品牌旁的一枚半透明小气泡，只在有更新时出现；
+   下载与就绪状态换文案。半透明品牌底让它"冒出来"但不抢注意力。 */
+#update-hint {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid color-mix(in srgb, var(--brand) 40%, transparent);
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--brand) 12%, transparent);
+  color: var(--brand);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+#update-hint:hover { background: color-mix(in srgb, var(--brand) 20%, transparent); }
 
 #status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dot-grey); }
 #status-pill[data-tone='grey'] #status-dot { background: var(--dot-grey); }
@@ -203,6 +235,7 @@ html, body {
   text-align: left;
   padding: 8px 10px;
   cursor: pointer;
+  transition: background-color 150ms ease;
 }
 .menu-item:hover:not(:disabled) { background: var(--surface-hover); }
 /* 禁用态必须一眼可辨（P8-D38③ 通则：控件状态不外显=控件装死）：
@@ -235,8 +268,9 @@ html, body {
 .recovery-block {
   margin: 4px 8px;
   padding: 8px 10px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--r-small);
+  background: var(--surface-hover);
   font-size: 12px;
   color: var(--text-dim);
   white-space: pre-wrap;
@@ -244,10 +278,41 @@ html, body {
   user-select: text;
 }
 
-/* 焦点环清晰可见。 */
+/* ---- 更新面板（R10 收窄）：更新说明不再进面板（「新功能」跳外部
+   Release 页），面板回到与一级菜单同宽。 ---- */
+#update-panel {
+  width: 300px;
+  max-height: calc(100% - 12px);
+  display: flex;
+  flex-direction: column;
+}
+#update-panel > #update-back,
+#update-panel > .separator,
+#update-panel > #update-info,
+#update-panel > #update-actions { flex: 0 0 auto; }
+#update-status {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* 说明区之外的短提示（分区说明、SmartScreen、操作消息）。 */
+.update-note {
+  margin: 4px 8px;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--text-dim);
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+}
+
+/* 焦点环清晰可见：1px 半透环 + 一圈柔光，与输入卡的聚焦态同一语言。 */
 button:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 1px;
+  outline: 1px solid color-mix(in srgb, var(--focus) 60%, transparent);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--focus) 10%, transparent);
 }
 
 /* ---- 恢复提示横幅（顶栏内，非阻断） ---- */
@@ -286,13 +351,14 @@ button:focus-visible {
 }
 
 .mini-button {
-  border: 1px solid currentColor;
+  border: 1px solid color-mix(in srgb, currentColor 45%, transparent);
   border-radius: var(--r-small);
-  background: transparent;
+  background: color-mix(in srgb, currentColor 8%, transparent);
   color: inherit;
   font-size: 12px;
   padding: 3px 9px;
   cursor: pointer;
   white-space: nowrap;
+  transition: background-color 150ms ease;
 }
-.mini-button:hover { background: var(--surface-hover); }
+.mini-button:hover { background: color-mix(in srgb, currentColor 16%, transparent); }

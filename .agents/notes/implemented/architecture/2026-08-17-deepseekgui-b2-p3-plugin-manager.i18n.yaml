@@ -1,6 +1,34 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-08-17-deepseekgui-b2-p3-plugin-manager.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-08-17-deepseekgui-b2-p3-plugin-manager.md
-2026-08-17-deepseekgui-b2-p3-plugin-manager.md: 4e9677d6d74254bd1f20c6533b9e3e232c421dec
-2026-08-17-deepseekgui-b2-p3-plugin-manager.zh.md: cedda86e12a4d5fafe994887cfad4ecc810206b0
+/agent-note-deepseekgui-b2-p3-harness-native-profile-plugin-manager-v1:
+  en: 0232e92673e47010
+  zh: fc889182ca5c29af
+/agent-note-deepseekgui-b2-p3-harness-native-profile-plugin-manager-v1/problem:
+  en: 3b9c66f987ef3700
+  zh: 8d80bc95689e7189
+/agent-note-deepseekgui-b2-p3-harness-native-profile-plugin-manager-v1/decision:
+  en: 96765a8db2ce3b8e
+  zh: ef64da5d2d3b9313
+/agent-note-deepseekgui-b2-p3-harness-native-profile-plugin-manager-v1/alternatives-considered:
+  en: 42da2fa54ab21ae8
+  zh: c91683a42570c12a
+/agent-note-deepseekgui-b2-p3-harness-native-profile-plugin-manager-v1/consequences:
+  en: 02ae99b7a29ff49d
+  zh: c739d356aa6f841b
+/agent-note-deepseekgui-b2-p3-harness-native-profile-plugin-manager-v1/verification-notes-for-the-acceptance-stage:
+  en: 20c89054f64efbf3
+  zh: a82a3aef93743c11
+/agent-note-deepseekgui-b2-p3-harness-native-profile-plugin-manager-v1/work-order-traceability-map:
+  en: 570a330695d99f13
+  zh: ceaadb6e0354cb54
+/agent-note-deepseekgui-b2-p3-harness-native-profile-plugin-manager-v1/upstream-delta:
+  en: ad898147734c5460
+  zh: 3a6c8a8d69cb996f
+/agent-note-deepseekgui-b2-p3-harness-native-profile-plugin-manager-v1/deferred:
+  en: 52e6fb973d68fce3
+  zh: d78a5ef1e02712ab
+/agent-note-deepseekgui-b2-p3-harness-native-profile-plugin-manager-v1/acceptance-gate-additions-verifier:
+  en: 9d289af2f7285573
+  zh: 70ef0c1e1a3a7e80

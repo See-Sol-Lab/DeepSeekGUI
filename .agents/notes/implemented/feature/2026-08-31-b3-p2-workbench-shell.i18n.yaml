@@ -1,6 +1,19 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-08-31-b3-p2-workbench-shell.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-31-b3-p2-workbench-shell.md
-2026-08-31-b3-p2-workbench-shell.md: 71036b2302556aea25b70f92b1104e530482c812
-2026-08-31-b3-p2-workbench-shell.zh.md: f9e7d68af627df898d19d7663eea0c7ab0ed73ef
+/agent-note-b3-p2-workbench-shell-desktop-actions-and-the-built-in-plugin-source:
+  en: d60299f30c19ceae
+  zh: f20b00f9378edcf9
+/agent-note-b3-p2-workbench-shell-desktop-actions-and-the-built-in-plugin-source/problem:
+  en: e48f2a68d206d80a
+  zh: 94cf55f91567e1f3
+/agent-note-b3-p2-workbench-shell-desktop-actions-and-the-built-in-plugin-source/decision:
+  en: 41fa5be154aef3fb
+  zh: 98b06f44f82bf3b1
+/agent-note-b3-p2-workbench-shell-desktop-actions-and-the-built-in-plugin-source/alternatives-considered:
+  en: 8106291a54022aa5
+  zh: 4276ef0d6357c200
+/agent-note-b3-p2-workbench-shell-desktop-actions-and-the-built-in-plugin-source/consequences:
+  en: 17fa09b73a54e817
+  zh: 5e29e3bb071905a3

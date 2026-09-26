@@ -1,1 +1,1 @@
-Error: mcp-client(pagination-cycle): server repeated a tools/list continuation cursor — invalid tool list
+SdkError: tools/list: exceeded listMaxPages (64); server pagination did not terminate

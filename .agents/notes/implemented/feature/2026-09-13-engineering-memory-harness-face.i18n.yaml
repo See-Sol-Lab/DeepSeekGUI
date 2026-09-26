@@ -1,0 +1,19 @@
+# Bilingual-pair consistency record for 2026-09-13-engineering-memory-harness-face.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-13-engineering-memory-harness-face.md
+/agent-note-memory-tools-per-step-recall-and-the-entries-mode-guide:
+  en: e833f012af9a45dc
+  zh: 5fd44e4285212c2b
+/agent-note-memory-tools-per-step-recall-and-the-entries-mode-guide/problem:
+  en: 48cad352dc0da407
+  zh: ca94253445a6954c
+/agent-note-memory-tools-per-step-recall-and-the-entries-mode-guide/decision:
+  en: 3f8e9550dc98c490
+  zh: 0947e8b03fe841ae
+/agent-note-memory-tools-per-step-recall-and-the-entries-mode-guide/alternatives-considered:
+  en: 7a20a77d6864396d
+  zh: 2516e887dabd9e73
+/agent-note-memory-tools-per-step-recall-and-the-entries-mode-guide/consequences:
+  en: 646fda85c9816792
+  zh: e6848b7f676937b8

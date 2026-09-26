@@ -1,6 +1,55 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for README.en.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write README.en.md
-README.en.md: 5d8fef53fc9f35e7249b75932f713f08f2db7788
-README.md: 7f655c567df7e1aa2952719378c35ef49a4e3fee
+/:
+  en: f783038c7258d592
+  zh: f783038c7258d592
+/deepseekgui-v1-1-2:
+  en: ab5b9e9ce5e99b98
+  zh: a50e3155f5e932de
+/deepseekgui-v1-1-2/download:
+  en: 7d38263417526499
+  zh: 7a60b2a0a7214cd2
+/deepseekgui-v1-1-2/quick-start:
+  en: 201d41a4919a88a7
+  zh: c9ec28bb8cb47408
+/deepseekgui-v1-1-2/screenshots:
+  en: 67bdccb67ac6067c
+  zh: 8c31aca5f4a37cc8
+/deepseekgui-v1-1-2/workbench-features:
+  en: 4b624912ae25e40d
+  zh: 77cc9c80f46270d1
+/deepseekgui-v1-1-2/workbench-features/local-projects-and-git-collaboration:
+  en: 2f67ee7742e1be52
+  zh: 311b0ef47e30a982
+/deepseekgui-v1-1-2/workbench-features/memory-and-collaboration-rules:
+  en: e1fba42657852d32
+  zh: d0b0136a8c170bd7
+/deepseekgui-v1-1-2/workbench-features/models-and-desktop-tools:
+  en: 8f3ee2806689537f
+  zh: 59b69cfe2e49a7c3
+/deepseekgui-v1-1-2/documentation:
+  en: b8c94921899f36d7
+  zh: 3c2d710508c55e6a
+/deepseekgui-v1-1-2/data-and-privacy:
+  en: dc42e362363d057e
+  zh: 1eb122c33b7b03f0
+/deepseekgui-v1-1-2/build-from-source:
+  en: ec70be593a7af015
+  zh: d310e0af0d4eaf43
+/deepseekgui-v1-1-2/build-from-source/run-deepseekgui-from-source:
+  en: ab6458ece33c0e86
+  zh: 90dacf4905e05068
+/deepseekgui-v1-1-2/build-from-source/run-harness-from-npm:
+  en: e0bb6d4e7a56d547
+  zh: 934f9bdd46c524b0
+/deepseekgui-v1-1-2/build-from-source/run-harness-from-source:
+  en: aa42adc935ca6d7c
+  zh: 9188dd4a1c97bdd7
+/deepseekgui-v1-1-2/contributing-and-support:
+  en: 594bca4b86af3c9e
+  zh: 3b7e2d5ffd53c9cc
+/deepseekgui-v1-1-2/license:
+  en: 3be7f6c3ba6abf70
+  zh: 5783b11fba3a1d20

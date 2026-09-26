@@ -1,6 +1,19 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-08-31-b3-p4-files.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-31-b3-p4-files.md
-2026-08-31-b3-p4-files.md: 781925d7e626e50c97cdda560805769c03213d83
-2026-08-31-b3-p4-files.zh.md: 1a4b304e8f4a64b0df93458e6061422e3f7e3a7b
+/agent-note-b3-p4-files-session-addressed-read-only-workspace-access:
+  en: 2f61ada814bc8774
+  zh: f83f40260f7c192c
+/agent-note-b3-p4-files-session-addressed-read-only-workspace-access/problem:
+  en: 1f3e27785acb7bd1
+  zh: dde451d9c7e5a1b9
+/agent-note-b3-p4-files-session-addressed-read-only-workspace-access/decision:
+  en: af9644177fbd0996
+  zh: 7f8d49b009d4aa05
+/agent-note-b3-p4-files-session-addressed-read-only-workspace-access/alternatives-considered:
+  en: e523ed600e011688
+  zh: 5c5a45d515ad3d59
+/agent-note-b3-p4-files-session-addressed-read-only-workspace-access/consequences:
+  en: bcbdc0f3ccd2bb61
+  zh: 97cf2f3b6f21fa20

@@ -9,6 +9,7 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
+import { CommandDefinitionId } from '@deepseek-ai/dsh-commands/brand'
 import type { CommandInvocation, CommandResult } from '@deepseek-ai/dsh-commands'
 import type { Session } from '@deepseek-ai/dsh-session'
 import { getOrCreateAnonymousUserId } from '@deepseek-ai/dsh-anonymous-user-id'
@@ -116,8 +117,9 @@ export class SessionFeedbackService extends TypertRemoteService {
 export function apply(ctx: Context): void {
   ctx.plugin(SessionFeedbackService)
   ctx.commands.register({
+    definitionId: CommandDefinitionId('@deepseek-ai/dsh-command-feedback'),
     name: 'feedback',
-    description: 'record feedback about this session',
+    description: 'Record feedback about this session',
     input: { hint: '<text>' },
     recordInput: false,
     handler: executeFeedbackCommand,

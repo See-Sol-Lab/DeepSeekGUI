@@ -22,12 +22,16 @@
   width: max-content;
   max-width: min(640px, calc(100vw - 48px));
   padding: 12px 16px;
-  border-radius: 14px;
-  background: var(--dsw-alias-button-contrast-fill);
-  color: var(--dsw-alias-label-primary-inverted);
+  border-radius: var(--dsw-radius-lg);
+  /* DeepSeekGUI (住户 2026-09-23): same family as the tooltip — a floating
+     notice that follows the scheme (light glass in light mode, set by the
+     skin's tooltip token) instead of the always-dark toast surface, so the
+     label and the action text follow the theme too. */
+  background: var(--dsw-alias-tooltip-bg);
+  color: var(--dsw-alias-label-primary);
   font-size: 14px;
   line-height: 22px;
-  box-shadow: var(--dsw-shadow-lv3);
+  box-shadow: inset 0 1px 0 var(--dsh-glass-edge, transparent), var(--dsw-shadow-lv3);
   transform: translateX(-50%);
   animation:
     dsh-toast-in 160ms ease-out,
@@ -41,8 +45,33 @@
   color: var(--dsw-alias-state-warn-label);
 }
 
+.icon.success {
+  color: var(--dsw-alias-state-success-primary);
+}
+
 .text {
   min-width: 0;
+}
+
+.action {
+  display: inline;
+  padding: 0;
+  border: 0;
+  background: none;
+  /* DeepSeekGUI: the theme's link colour, since the surface follows the
+     scheme (deepseek-400 was tuned for the always-dark surface). */
+  color: var(--dsw-alias-link);
+  font: inherit;
+  cursor: pointer;
+  /* Breathing room where the action text meets the surrounding copy. */
+  margin-inline: 3px;
+  /* The banner surface stays click-through (`pointer-events: none` above);
+     only its action text takes the pointer. */
+  pointer-events: auto;
+}
+
+.action:hover {
+  opacity: 0.8;
 }
 
 @keyframes dsh-toast-in {
@@ -60,6 +89,7 @@
 @keyframes dsh-toast-fade {
   to {
     opacity: 0;
+    visibility: hidden;
   }
 }
 

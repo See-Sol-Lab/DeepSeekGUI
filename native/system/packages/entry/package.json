@@ -5,7 +5,7 @@
   "description": "Prebuilt system primitives: a Linux Landlock launcher and asynchronous POSIX flock through stable Node-API",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/deepseek-harness/deepseek-harness.git",
+    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
     "directory": "native/system/packages/entry"
   },
   "exports": {
@@ -38,9 +38,9 @@
     "access": "public"
   },
   "optionalDependencies": {
-    "@deepseek-ai/node-addon-system-darwin-arm64": "workspace:*",
-    "@deepseek-ai/node-addon-system-darwin-x64": "workspace:*",
-    "@deepseek-ai/node-addon-system-linux-arm64": "workspace:*",
-    "@deepseek-ai/node-addon-system-linux-x64": "workspace:*"
+    "@deepseek-ai/node-addon-system-darwin-arm64": "workspace:~",
+    "@deepseek-ai/node-addon-system-darwin-x64": "workspace:~",
+    "@deepseek-ai/node-addon-system-linux-arm64": "workspace:~",
+    "@deepseek-ai/node-addon-system-linux-x64": "workspace:~"
   }
 }

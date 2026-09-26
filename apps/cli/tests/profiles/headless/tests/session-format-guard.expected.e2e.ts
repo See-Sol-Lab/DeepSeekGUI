@@ -32,6 +32,10 @@ const binScript = fileURLToPath(new URL('../../../../../../packages/test-support
 const tsconfigPath = fileURLToPath(new URL('../../../../../../tsconfig.json', import.meta.url))
 // The resumed-agent fixture in the shared config resumes exactly this id.
 const sessionId = SessionId('workspace-context-resume')
+const fixtureEnv = {
+  DSH_SNAPSHOT_FILE: replayFixture,
+  DSH_LOADER_SMOKE_REQUIRED_ENTRY_ID: 'resumed-agent',
+}
 
 /** Persist one session with the given header version and events, returning its log path. */
 async function seedSession(root: string, cwd: string, version: number, events: SessionEvent[]): Promise<string> {
@@ -84,7 +88,7 @@ describe('session format guard through the assembled app', () => {
       configPath,
       binArgs: [configPath, 'Continue the migrated session.'],
       tsconfigPath,
-      env: { DSH_SNAPSHOT_FILE: replayFixture },
+      env: fixtureEnv,
       prepare: async (runCwd) => {
         sourcePath = await seedSession(join(runCwd, '.sessions'), runCwd, 0, closedTurn())
         source = await readFile(sourcePath)
@@ -124,7 +128,7 @@ describe('session format guard through the assembled app', () => {
       configPath,
       binArgs: [configPath, 'Try to resume.'],
       tsconfigPath,
-      env: { DSH_SNAPSHOT_FILE: replayFixture },
+      env: fixtureEnv,
       expectedExitCode: 1,
       prepare: async (runCwd) => {
         sessionPath = await seedSession(join(runCwd, '.sessions'), runCwd, SESSION_FORMAT_VERSION + 99, closedTurn())
@@ -151,7 +155,7 @@ describe('session format guard through the assembled app', () => {
       configPath,
       binArgs: [configPath, 'Try to resume.'],
       tsconfigPath,
-      env: { DSH_SNAPSHOT_FILE: replayFixture },
+      env: fixtureEnv,
       expectedExitCode: 1,
       prepare: async (runCwd) => {
         sourcePath = generationLogPath(join(runCwd, '.sessions'), runCwd, sessionId, 2, 'none')
@@ -197,7 +201,7 @@ describe('session format guard through the assembled app', () => {
       configPath,
       binArgs: [configPath, 'Try to resume.'],
       tsconfigPath,
-      env: { DSH_SNAPSHOT_FILE: replayFixture },
+      env: fixtureEnv,
       expectedExitCode: 1,
       prepare: async (runCwd) => {
         sessionPath = await seedSession(join(runCwd, '.sessions'), runCwd, SESSION_FORMAT_VERSION, [

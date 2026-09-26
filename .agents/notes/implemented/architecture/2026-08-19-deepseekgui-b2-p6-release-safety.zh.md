@@ -10,7 +10,7 @@ P6 是 V1.0.0 之前的最后一个 Windows 产品门禁。四类发布级风险
 
 ## 决策
 
-**P6-0——继续钉 embedded DSH rc.5。** rc.5 → rc.7 定向审查（fork 点 `47f943859b` → 上游 tag `dsh-v0.1.0-rc.7`）按规格 §4 的格式存档于此：
+**P6-0——继续钉 embedded DSH rc.5。** rc.5 → rc.7 定向审查（本 fork 的 rc.5 分叉点 → 上游 tag `dsh-v0.1.0-rc.7`）按规格 §4 的格式存档于此：
 
 P6-required delta:
 - 无。`user-approval`、`permission-presets`、`tool-sandbox-modes`、`pwsh-sandbox`、`sandbox-policy`、`sandbox-windows-acl`、`directory-picker*`、`client/runtime`、`ui-permission-presets` 的 `src` 在 rc.5 → rc.7 之间只有 package.json 版本号变化。`permission` 与 `ui-theme` 两个 settings 命名空间在 rc.5 的暴露名单（`WEB_SETTINGS_NAMESPACES`）里就已存在，P6 的 `settings.mutate` 权限/主题路径在 rc.5 上完全可用——rc.7 对 P6 不提供任何新增能力。

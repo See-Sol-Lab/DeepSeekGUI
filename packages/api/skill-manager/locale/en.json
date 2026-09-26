@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Skill library",
+    "description": "Manages the local skill library: import, inspect and uninstall skill packages, and record which skills each project may use."
+  }
+}

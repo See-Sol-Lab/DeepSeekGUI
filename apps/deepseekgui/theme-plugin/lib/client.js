@@ -59,8 +59,8 @@ window.__ModuleLoader__.load({
       // D20（2026-09-06）：0.86 时底图文字透上来干扰阅读，提到 0.95——玻璃感
       // 留给侧栏，读字的面板要实。
       '--dsw-alias-bg-layer-2': {
-        light: 'rgba(252, 252, 252, 0.95)',
-        dark: 'rgba(24, 27, 33, 0.95)',
+        light: 'rgba(252, 252, 252, 0.90)',
+        dark: 'rgba(24, 27, 33, 0.92)',
       },
       // 侧栏自己的 --dsw-specific-sidebar-fill：半透深色让底图透上来——
       // 这是「玻璃感」的正确开关。深色 0.42 与浅色 0.38 均住户实机定稿。
@@ -74,12 +74,62 @@ window.__ModuleLoader__.load({
       '--dsh-approval-accent': { light: '#4d6bfe', dark: '#6799fe' },
       '--dsh-approval-accent-soft': { light: 'rgba(77, 107, 254, 0.08)', dark: 'rgba(103, 153, 254, 0.12)' },
       '--dsh-approval-border': { light: 'rgba(77, 107, 254, 0.28)', dark: 'rgba(103, 153, 254, 0.35)' },
-      // P8-D46（住户定）：浅色用户气泡从官方浅紫（deepseek-50）改纯白，
-      // 视觉更干净；深色保持官方原值（neutral-bluish-850）不动。
+      // 玻璃化第一批（2026-09-16，住户定：质感/克制/呼吸感）。下面三个表面
+      // 从实色改半透：token 只管「透多少」，模糊、高光棱线与阴影在 workbench
+      // 插件的 skin 层用官方属性钩子加（气泡数量多、刻意不模糊）。
+      // P8-D46 的浅色气泡纯白改为半透白，深色沿官方 850 的色相取半透。
+      // 浅色 alpha 曾试过再降一档（气泡 0.58/输入卡 0.68），住户实机否决：
+      // 没有模糊撑着的半透只是"漏字"。alpha 维持，玻璃感靠模糊与高光。
       '--dsw-specific-bubble': {
-        light: 'rgb(255, 255, 255)',
-        dark: 'rgb(44, 44, 46)',
+        light: 'rgba(255, 255, 255, 0.70)',
+        dark: 'rgba(44, 44, 46, 0.70)',
       },
+      // 输入卡片与审批卡的底：与设置弹窗同一档实度（住户 2026-09-16 定：
+      // "对话框不能这么透"）。它在官方 sticky 座里，Chromium 的 backdrop 模糊
+      // 在那里采样错位、用不了，所以正文滚到卡片下面时只能靠实度不漏字；
+      // 玻璃感由 skin 层的高光棱线与散影承担。
+      '--dsw-specific-input-major': {
+        light: 'rgba(255, 255, 255, 0.86)',
+        dark: 'rgba(30, 34, 41, 0.84)',
+      },
+      // 「新会话」等悬浮按钮：从实白改半透，与半透侧栏同一材质。
+      '--dsw-alias-button-elevated-fill': {
+        light: 'rgba(255, 255, 255, 0.62)',
+        dark: 'rgba(255, 255, 255, 0.07)',
+      },
+      // 一级表面（设置分区卡、轨迹表、输入框、JSON 树等 15 处）：官方实白/实深，
+      // 改半透——浅色下这些是最后一批"死白"。深色取与侧栏同系的白 6%。
+      '--dsw-alias-bg-layer-1': {
+        light: 'rgba(255, 255, 255, 0.72)',
+        dark: 'rgba(255, 255, 255, 0.06)',
+      },
+      // 滚动条（住户 2026-09-16 实机：官方浅色 neutral-200 压在浅底图上
+      // 几乎不可见）：滑块改半透并提一档对比，skin 层再加 1px 内高光成玻璃块。
+      '--dsw-alias-scrollbar-bg-l1': { light: 'rgba(38, 49, 72, 0.30)', dark: 'rgba(255, 255, 255, 0.30)' },
+      '--dsw-alias-scrollbar-bg-l2': { light: 'rgba(38, 49, 72, 0.30)', dark: 'rgba(255, 255, 255, 0.30)' },
+      '--dsw-alias-scrollbar-hover-l1': { light: 'rgba(38, 49, 72, 0.46)', dark: 'rgba(255, 255, 255, 0.46)' },
+      '--dsw-alias-scrollbar-hover-l2': { light: 'rgba(38, 49, 72, 0.46)', dark: 'rgba(255, 255, 255, 0.46)' },
+      // 线条（玻璃化第二批）：官方四档边线是纯黑/纯白的 4/10/12/16%，压在
+      // 底图上显硬。统一换成冷灰蓝（与 interactive-bg-hover 同色相）并各降
+      // 一小档——线条退成"透出来的棱"，层次仍靠四档档差保住。
+      '--dsw-alias-border-l1': { light: 'rgba(38, 49, 72, 0.05)', dark: 'rgba(255, 255, 255, 0.05)' },
+      '--dsw-alias-border-l2': { light: 'rgba(38, 49, 72, 0.08)', dark: 'rgba(255, 255, 255, 0.09)' },
+      '--dsw-alias-border-l2-darkmode-thin': { light: 'rgba(38, 49, 72, 0.08)', dark: 'rgba(255, 255, 255, 0.05)' },
+      '--dsw-alias-border-l3': { light: 'rgba(38, 49, 72, 0.10)', dark: 'rgba(255, 255, 255, 0.12)' },
+      '--dsw-alias-border-l4': { light: 'rgba(38, 49, 72, 0.14)', dark: 'rgba(255, 255, 255, 0.16)' },
+      // 弹出层（玻璃化第三批）：官方 tooltip 是反色深底（浅色模式也黑），
+      // 菜单/下拉是实色——都退成半透玻璃，与整体材质一致；文字色与模糊在
+      // skin 层按 role 钩子补。对话框 layer-2 从 0.95 退到 0.90：遮罩已把
+      // 底下页面模糊过，面板再加模糊后更透也仍可读。
+      // tooltip / HoverCard 跟随明暗（上游文字色已改为跟随主题的 label
+      // token，HoverCard 底改读本 token）。近实而非半透：它们是从 overflow
+      // 容器里伸出去的 fixed 弹层，Chromium 会把 backdrop 采样裁在容器内，
+      // 伸出去的部分模糊不到、只剩透字，所以玻璃感靠高光与阴影承担。
+      '--dsw-alias-tooltip-bg': { light: 'rgb(255, 255, 255)', dark: 'rgb(40, 42, 48)' },
+      // 玻璃棱线宿主钩子：上游气泡与 toast 读 var(--dsh-glass-edge, transparent)，
+      // 原版 dsh 不受影响；我们给顶部 1px 高光，深浅各自的强度。
+      '--dsh-glass-edge': { light: 'rgba(255, 255, 255, 0.85)', dark: 'rgba(255, 255, 255, 0.10)' },
+      '--dsw-specific-menu': { light: 'rgba(255, 255, 255, 0.84)', dark: 'rgba(46, 48, 52, 0.88)' },
     }
 
     /** 注入官方主题服务；与 package.json 的 dsh.client.inject 对应。 */

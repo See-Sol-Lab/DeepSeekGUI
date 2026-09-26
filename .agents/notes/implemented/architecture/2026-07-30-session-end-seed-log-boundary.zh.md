@@ -8,7 +8,7 @@ Status: implemented
 
 在会话日志中拥有独立开／闭括号的插件无法区分一个已死的标记和一个存活的标记。`compaction/start` … `compaction/end` 就是已发布的实例：当接手一份日志、而它最后的压缩（compaction）事件是一个未配对的 `compaction/start` 时，「上一个写入方在压缩中途死掉了」与「此刻正有一次压缩在运行」在存储历史中是逐字节相同的。该括号所有方只能二选一：拒绝压缩一份其实空闲的日志（把会话卡死），或者在一份确实繁忙的日志上继续压缩。
 
-日志中没有任何东西标出继承历史在哪里结束。`session/created`、`session/disposed` 与 `session/flush` 是 Cordis 运行时信号，不是日志事件；`agent/session-start` 只发射不落盘。`Session.firstLiveSeq` 本来就精确地持有这个答案——本生命周期第一次自有写入的 seq——但只存在于内存中，因此读取存储字节的消费方看不到它。
+日志中没有任何东西标出继承历史在哪里结束。`session/created`、`session/disposed` 与 `session/flush` 是 Cordis 运行时信号，不是日志事件；`agent/created` 同样是不落盘的运行时事件。`Session.firstLiveSeq` 本来就精确地持有这个答案——本生命周期第一次自有写入的 seq——但只存在于内存中，因此读取存储字节的消费方看不到它。
 
 崩溃修复既没有填上这个缺口，也不应该去填：`interruptedTurnClosers` 合成轮次、步骤与工具边界，是因为核心拥有那套词汇表，而 `compaction/*` 属于压缩 seam。一个会关闭插件括号的核心修复流程，等于把每个插件的括号语义都搬进核心。
 

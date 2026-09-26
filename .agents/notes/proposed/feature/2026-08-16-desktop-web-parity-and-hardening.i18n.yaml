@@ -1,6 +1,22 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-08-16-desktop-web-parity-and-hardening.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/proposed/feature/2026-08-16-desktop-web-parity-and-hardening.md
-2026-08-16-desktop-web-parity-and-hardening.md: cf5e9f84732b90edd4a1fde91cc98d4b7bed9d94
-2026-08-16-desktop-web-parity-and-hardening.zh.md: 697f04b84d22465a8702fdd4c613424c121f2120
+/agent-note-desktop-web-parity-stage-and-shell-hardening:
+  en: 83d3753ebb8f7ca3
+  zh: 8fafb5226a486ffc
+/agent-note-desktop-web-parity-stage-and-shell-hardening/problem:
+  en: 9a9a1cdab398aaba
+  zh: 0068b081260128f3
+/agent-note-desktop-web-parity-stage-and-shell-hardening/proposal:
+  en: b47e1a1f87fb3d6c
+  zh: 8edf3a5f9becbd03
+/agent-note-desktop-web-parity-stage-and-shell-hardening/alternatives-considered:
+  en: 280a6c4338fe727d
+  zh: eacfdea908b249f5
+/agent-note-desktop-web-parity-stage-and-shell-hardening/acceptance-criteria:
+  en: b3fb0c466593e668
+  zh: 1f3a3d3290bb2c1b
+/agent-note-desktop-web-parity-stage-and-shell-hardening/risks:
+  en: db50dec14d043b12
+  zh: 6edc3387d4d2ea62

@@ -13,9 +13,15 @@
  */
 
 import { spawnSync } from 'node:child_process'
+import { resolve } from 'node:path'
+import { repositoryClientBuildEnvironment } from './client-build-environment.ts'
 
 const brandEnvironment = {
   ...process.env,
+  // 仓库的公开构建信息（版本、commit、dirty），与官方 `pnpm run build`（scripts/build.ts）
+  // 同源。没有 DSH_CLIENT_VERSION，官方账号界面读资料、余额与登录都会直接失败
+  // （accountClientMetadata 拒绝空版本；2026-09-25 账号改用官方那套时实测抓到）。
+  ...repositoryClientBuildEnvironment(resolve(import.meta.dirname, '..'), process.env),
   DSH_CLIENT_BRAND_NAME: 'DeepSeek Harness',
   DSH_CLIENT_BRAND_BADGE: 'local',
   // 浏览器标签页标题一并对齐（机制早已存在，官方 official 构建也这么用）。

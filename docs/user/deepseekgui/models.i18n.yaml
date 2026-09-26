@@ -1,6 +1,34 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for models.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/user/deepseekgui/models.md
-models.md: 6d3422c588f05d555b35b87db9e82503d82cd17e
-models.zh.md: 097616f85cb29592b3ead010a32ae716a1de0dd2
+/models-and-vision:
+  en: 0539cdbbeb14c268
+  zh: 7cf7d5a88a96ba83
+/models-and-vision/configure-deepseek:
+  en: 20f897bbb36627e7
+  zh: 8f68bd0fc550fcc7
+/models-and-vision/use-image-input:
+  en: a38d73b0fd096a9a
+  zh: df46e9750d787f93
+/models-and-vision/add-a-custom-provider:
+  en: a68524a2d926022a
+  zh: c98cee47890f670a
+/models-and-vision/switch-models:
+  en: 5173d1f8a1618b99
+  zh: 951b868065871df0
+/models-and-vision/troubleshooting:
+  en: 659a188b36f9c326
+  zh: 73b45885ed92f2ea
+/models-and-vision/troubleshooting/the-model-list-does-not-include-the-model-i-need:
+  en: d36c96e6bd05e6ba
+  zh: f565059810ee723e
+/models-and-vision/troubleshooting/the-session-reports-a-missing-credential:
+  en: f15268086373423a
+  zh: b222f46db1e694e5
+/models-and-vision/troubleshooting/the-model-cannot-see-an-attached-image:
+  en: e65b58249e2729ba
+  zh: ee7d251d268add36
+/models-and-vision/related-guides:
+  en: ec73f024f96c4f34
+  zh: 0da8d7ee07b1c7e1

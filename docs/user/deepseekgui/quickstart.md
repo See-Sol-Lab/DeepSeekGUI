@@ -7,7 +7,7 @@ This tutorial takes a new Windows user from download to a working DeepSeek codin
 ## Before you begin
 
 - A Windows 10 or Windows 11 x64 computer.
-- A DeepSeek API key.
+- A DeepSeek account or a DeepSeek API key.
 - A folder you are comfortable letting the agent inspect and edit.
 
 ## 1. Download DeepSeekGUI
@@ -29,6 +29,13 @@ Run the installer. It installs for the current Windows user without administrato
 Closing the main window hides DeepSeekGUI in the system tray while Harness continues running. Use **Quit DeepSeekGUI** from the menu or tray when you want to stop Harness and exit completely.
 
 ## 3. Connect DeepSeek
+
+On first launch DeepSeekGUI shows a welcome screen with two ways in:
+
+- **Sign in** with your DeepSeek account. Your system browser opens the DeepSeek sign-in page; after you sign in, DeepSeekGUI returns to the front and a short setup introduces your credit, what you plan to use it for, and how much work detail to show. Account sessions use your account credit, so no API key is needed.
+- **Add API Key** and paste your DeepSeek API key.
+
+**Set up later** skips the screen for this run. You can sign in later from the account entry at the lower left, or add a key under **Settings → Models**:
 
 1. Open **Settings** from the lower-left corner.
 2. Open **Models**.
@@ -52,8 +59,6 @@ Create a new session and give the agent one concrete outcome, for example:
 > Read this project, explain how it starts, and identify the three files I should understand first. Do not edit anything yet.
 
 Once you are comfortable with the result, ask for a bounded change. DeepSeekGUI streams the reply and keeps the session in the selected Harness Home so you can resume it later.
-
-A fresh installation guides you through choosing a workspace, configuring a model, and sending your first message, with prompts while waiting for a reply or approval. You can skip it; existing users with session data are not treated as new.
 
 ![A completed DeepSeekGUI coding task that creates and runs a JavaScript file](assets/workbench-overview.png)
 

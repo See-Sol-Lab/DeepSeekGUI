@@ -1,6 +1,22 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-08-31-b3-p7-desktop-integration.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-31-b3-p7-desktop-integration.md
-2026-08-31-b3-p7-desktop-integration.md: 3b00ab1c9c855d97ce2bcc3180eae0c0250ab658
-2026-08-31-b3-p7-desktop-integration.zh.md: 2c537970d36b42127d660cdc576f285d43714d43
+/agent-note-b3-p7-desktop-integration-revision-gated-control-bridge-and-session-aligned-terminal-cwd:
+  en: d9c0958750975ecd
+  zh: 6d0fedb97e377be4
+/agent-note-b3-p7-desktop-integration-revision-gated-control-bridge-and-session-aligned-terminal-cwd/problem:
+  en: 889b290a0cdbef31
+  zh: dd07cb537cb6b955
+/agent-note-b3-p7-desktop-integration-revision-gated-control-bridge-and-session-aligned-terminal-cwd/decision:
+  en: dacc14c230c39f66
+  zh: e842c58e6d793256
+/agent-note-b3-p7-desktop-integration-revision-gated-control-bridge-and-session-aligned-terminal-cwd/verified-already-current-migration-table-items-checked-no-change-needed:
+  en: 098aed71b826f971
+  zh: 49b6460b259acb00
+/agent-note-b3-p7-desktop-integration-revision-gated-control-bridge-and-session-aligned-terminal-cwd/alternatives-considered:
+  en: ddbdb0e6c16b7e00
+  zh: 6571da792fed82d6
+/agent-note-b3-p7-desktop-integration-revision-gated-control-bridge-and-session-aligned-terminal-cwd/consequences:
+  en: 10ba53064f0ed0d9
+  zh: 4a6c6d0f8f7eed87

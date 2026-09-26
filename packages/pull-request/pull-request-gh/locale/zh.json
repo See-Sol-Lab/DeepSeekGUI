@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "GitHub Pull Request",
+    "description": "通过本机已登录的 gh 命令创建 Pull Request，不读取令牌。"
+  }
+}

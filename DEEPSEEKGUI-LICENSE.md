@@ -8,11 +8,17 @@ Upstream DeepSeek Harness code and upstream-derived material remain under DeepSe
 
 ## DeepSeekGUI product layer
 
-The original DeepSeekGUI desktop/product layer under [`apps/deepseekgui/`](apps/deepseekgui/) is licensed by See-Sol-Lab under the **PolyForm Perimeter License 1.0.1**. The full license text is in [`apps/deepseekgui/LICENSE`](apps/deepseekgui/LICENSE).
+Original See-Sol-Lab-authored DeepSeekGUI product code, documentation, and assets are licensed under the **PolyForm Perimeter License 1.0.1**, including components outside `apps/deepseekgui/`. The full license text is in [`apps/deepseekgui/LICENSE`](apps/deepseekgui/LICENSE).
 
-Unless a file states otherwise, this scope includes DeepSeekGUI-authored source code, documentation, and original assets inside `apps/deepseekgui/`. Third-party material keeps its own license.
+The product layer includes [`apps/deepseekgui/`](apps/deepseekgui/) and these original host packages, each carrying its own copy of the license:
 
-Future See-Sol-Lab-owned components outside `apps/deepseekgui/` are covered by the PolyForm Perimeter License only when they explicitly say so by referring to this file, `apps/deepseekgui/LICENSE`, or the PolyForm Perimeter License 1.0.1 by name and URL.
+- [Workbench inspector](packages/api/workbench-inspector/LICENSE)
+- [Local Skill manager](packages/api/skill-manager/LICENSE)
+- [Engineering memory](packages/api/workbench-memory/LICENSE)
+
+New original See-Sol-Lab product components use the same license and must declare it in their package metadata and include the license text in their distributed files. Upstream-derived code and third-party material retain their respective licenses; a directory location or package name does not change their ownership. This notice does not revoke rights already granted in earlier releases.
+
+**中文范围说明：** See-Sol-Lab 自研的 DeepSeekGUI 产品代码、文档和原创资源统一采用 PolyForm Perimeter License 1.0.1，包括桌面层及上述三个宿主包。后续新增自研组件同样适用，并须同步声明包许可、随包携带协议全文。上游及上游派生代码、第三方材料保留各自许可；本说明不撤销先前版本已经授予的权利。
 
 ## Permitted use and competition boundary
 

@@ -8,6 +8,7 @@
   "exports": {
     ".": "./lib/index.js",
     "./client": "./lib/client.js",
+    "./locale/*.json": "./locale/*.json",
     "./package.json": "./package.json"
   },
   "dsh": {
@@ -21,6 +22,7 @@
         "@deepseek-ai/dsh-client-ui-layout",
         "@deepseek-ai/dsh-client-ui-sidebar-right",
         "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-settings",
         "@deepseek-ai/dsh-client-ui-chat",
         "@deepseek-ai/dsh-client-ui-tool",
         "@deepseek-ai/dsh-api-session-controller",
@@ -32,21 +34,27 @@
   },
   "license": "SEE LICENSE IN ../../../DEEPSEEKGUI-LICENSE.md",
   "dependencies": {
+    "@deepseek-ai/dsh-api-job-controller": "workspace:*",
+    "@deepseek-ai/dsh-client-ui-workspace": "workspace:*",
     "koffi": "^3.1.0"
   },
   "devDependencies": {
-    "@deepseek-ai/dsh-api-remotes": "workspace:^",
-    "@deepseek-ai/dsh-client-ui-primitives": "workspace:^",
-    "@deepseek-ai/dsh-git": "workspace:^",
-    "@deepseek-ai/dsh-typert-protocol": "workspace:^",
-    "@deepseek-ai/dsh-workbench-inspector": "workspace:^",
+    "@deepseek-ai/dsh-api-remotes": "workspace:*",
+    "@deepseek-ai/dsh-client-ui-primitives": "workspace:*",
+    "@deepseek-ai/dsh-git": "workspace:*",
+    "@deepseek-ai/dsh-typert-protocol": "workspace:*",
+    "@deepseek-ai/dsh-workbench-inspector": "workspace:*",
+    "@deepseek-ai/dsh-workbench-memory": "workspace:*",
+    "@deepseek-ai/dsh-client-ui-settings": "workspace:*",
     "@testing-library/react": "^16.1.0",
     "@types/react": "~18.3.1",
     "@types/react-dom": "~18.3.1",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "@deepseek-ai/dsh-deepseek-account": "workspace:*"
   },
   "files": [
+    "locale/*.json",
     "lib/client.js",
     "lib/index.js",
     "assets"

@@ -22,7 +22,7 @@ Two hard blockers sat in the way. All 217 workspace manifests set `private: true
 
 | Sequence | Members | Version baseline | Tag | Workflow |
 |---|---|---|---|---|
-| dsh | Publish set: non-experimental `packages/*/*` + `apps/*`; private experimental packages join only the shared version bump | one version for the publish set, private dsh packages, and workspace root, `0.0.x` | `dsh-v<version>` | `release.yml` (pack) / `release-publish.yml` (publish) |
+| dsh | Publish set: public members of `packages/*/*` + `apps/*`, with [private experimental exceptions](2026-09-12-experimental-publication-denylist.md); private packages join only the shared version bump | one version for the publish set, private dsh packages, and workspace root, `0.0.x` | `dsh-v<version>` | `release.yml` (pack) / `release-publish.yml` (publish) |
 | vendored framework | the nine `vendor/*` packages | each package on its own version line | `vendor-<package>-v<version>` (one per package) | `release-vendor.yml` (pack) / `release-vendor-publish.yml` (publish) |
 | native | `native/system/packages/*` | its own `0.0.x` | `node-addon-system-v<version>` | `node-addon-system-release.yml` |
 
@@ -78,9 +78,9 @@ Two registry behaviours shape how a publish is attempted. Writes are spaced by a
 
 ### Workspace-internal references use the `workspace:` protocol
 
-Every reference to a workspace member uses `workspace:^`, so `pnpm pack` substitutes a range matching the target version: sibling `peerDependencies` follow the family version, and a reference to a vendored package follows that package's own line. The Landlock platform packages keep `workspace:*`, which publishes the exact version, because a platform package and its entry must agree exactly.
+Every reference to a workspace member uses the `workspace:` protocol. The [release-range policy](2026-09-22-workspace-release-ranges.md) requires exact `workspace:*` DSH references and `workspace:~` vendor/native references in every dependency section and consumer, including the native entry's optional platform packages. Local workspace linking is unchanged.
 
-`scripts/check-workspace-constraints.ts` requires the protocol, so a new package cannot reintroduce a hand-written range; the invariant-companion rule requires `workspace:^` for `@deepseek-ai/dsh-invariants` for the same reason.
+`scripts/check-workspace-constraints.ts` reads every member declared in `pnpm-workspace.yaml` plus the root manifest and enforces ranges by dependency target, not consumer directory. The invariant-companion rule requires `workspace:*` for `@deepseek-ai/dsh-invariants`; the dependency repairer preserves vendor/native tilde ranges. Published DSH peers therefore require the matching release instead of admitting later compatible versions.
 
 ### Published dependency faces use an explicit policy
 
@@ -95,6 +95,8 @@ A dependency in `optionalDependencies`, or a peer carrying `peerDependenciesMeta
 [`verify-optional-dependency-imports`](../../../../scripts/verify-optional-dependency-imports.ts) closes that hole. It reads each package's own manifest for what that package allows to be absent, then scans the files that ship — `packages/*/*/src/` and `apps/*/src/` — across both compiler faces. `vendor/` is out of scope, as pinned upstream source under the [vendoring policy](../../../../vendor/README.md). Value-versus-type is decided against a bound Program rather than the import syntax, because `verbatimModuleSyntax` is off: the compiler already erases an import whose bindings resolve to types, so `import type {}`, `import {}`, an inline `type` specifier, and a named binding that resolves to a type all emit nothing and are allowed, while a bare import, a value binding, and a star re-export are kept and rejected. Only the type phase erases an import: `import defer` still resolves and links its module, deferring evaluation alone, so the gate counts it as a load.
 
 A violation names the package, the declaration that made it optional, and the way out in order — import it as a type, which is all that declaration merging needs, or restructure so module scope does not need the package. A dynamic `import()` only moves the failure to first use, so it belongs to a caller that genuinely requires the package and handles its absence; reaching for it is a sign the dependency is not optional, and the gate does not offer it as the remedy.
+
+A required CommonJS-compatible Host dependency whose initialization is unrelated to startup may use `createLazyRequire(specifier, import.meta.url)`. The caller keeps a type-only import, supplies a literal dependency specifier, and invokes the returned loader at the owning operation. `verify-package-dependencies` recognizes that literal as a Host runtime edge, so Client/Host packages retain it in `dependencies` even though no static value import remains. The utility caches only a successful load and preserves caller-relative resolution; it does not make an optional dependency required or hide first-use failure.
 
 ### Release family objects
 
@@ -131,7 +133,7 @@ The installed-consumer probe captures npm's HTTP diagnostics and includes them w
 |---|---|
 | release-set manifests | `private: true` removed; `publishConfig.access` per sequence and `repository` with each package's `directory` added |
 | release-set boundary | every member of `packages/*/*`, `apps/*`, and `vendor/*` |
-| dependency protocol | workspace-internal references are `workspace:^`, with `check-workspace-constraints.ts` and the invariant-companion rule requiring it |
+| dependency protocol | every workspace consumer uses `workspace:*` for DSH targets and `workspace:~` for vendor/native targets |
 | root `AGENTS.md` | the convention that vendored packages are `private: true` no longer holds |
 | `vendor/README.md` | records `src` joining `cordis`'s `files` as a local modification |
 | the three native packages | `publishConfig.access: public`, and their workflow passes no `--access` |
@@ -178,7 +180,7 @@ What this costs:
 - **The change judgement depends on visible tags.** A shallow clone, or a checkout without tags, degrades the vendored judgement to "publish everything for the first time". `fetch-depth: 0` is a precondition, not an optimization.
 - **The protocol rewrite touched 1504 dependency declarations.** It does not change local resolution — pnpm already resolves from the workspace — but it changes the ranges that go out.
 - **Private packages need credentials to install.** Every consumer — CI, sandbox e2e, outside users — needs scope credentials, including for the Landlock packages, which have never been published and so cut off no existing anonymous path.
-- **`repository` names a different organization than the one running the workflows.** Token-based publication is unaffected; npm provenance (OIDC) requires the two to agree, so adopting it means either repointing `repository` or publishing from the organization it names.
+- **`repository` names a different organization than the one running the workflows.** Token-based publication is unaffected; npm's OIDC attestation requires the two to agree, so adopting it means either repointing `repository` or publishing from the organization it names.
 - **Byte reproducibility is assumed, not measured.** The skip-on-identical-integrity state rests on packing the same commit twice producing the same bytes. Nothing measures that yet: if the build embeds absolute paths or timestamps, a re-run reports a false failure. Measure it before the first publication a re-run might follow, and fall back to comparing per-file content hashes if it does not hold.
 - **Re-running publish over an older artifact can move `latest` backwards.** Publication is decided per version, so an older set republished after a newer one takes the stable dist-tag again. The rehearsals run from a prerelease version, which never takes `latest`.
 - **The first publication is one large step.** Nine vendored packages and the whole dsh set publish at once, so any payload defect surfaces in a single release, which is why a prerelease version drives the complete path first.

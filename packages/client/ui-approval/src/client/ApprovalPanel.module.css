@@ -10,7 +10,7 @@
   width: 100%;
   max-width: var(--dsh-chat-content-width);
   border: 1px solid var(--dsw-alias-state-warn-secondary);
-  border-radius: 20px;
+  border-radius: var(--dsw-radius-xl);
   background: var(--dsw-specific-input-major);
   box-shadow: var(--dsw-shadow-lv2);
   --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
@@ -26,14 +26,6 @@
   color: var(--dsw-alias-state-warn-primary);
   font-size: 13px;
   line-height: 18px;
-}
-
-.dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  corner-shape: round;
-  background: var(--dsw-alias-state-warn-primary);
 }
 
 .body {
@@ -72,4 +64,58 @@
   background: var(--dsw-alias-interactive-bg-hover-danger);
   color: var(--dsw-alias-state-error-primary);
   border-color: transparent;
+}
+
+/* DeepSeekGUI (2026-09-24): the red warning for protected actions. It covers
+   the page so the decision cannot be missed; rejecting is the primary button. */
+.dangerOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(20, 0, 0, 0.45);
+}
+
+.dangerOverlay .card {
+  max-width: 560px;
+}
+
+.dangerCard {
+  border: 2px solid var(--dsw-alias-state-error-primary);
+  box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.18), var(--dsw-shadow-lv2);
+}
+
+.dangerStrip {
+  background: var(--dsw-alias-state-error-primary);
+  color: #fff;
+  font-weight: 600;
+}
+
+.dangerList {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--dsw-alias-state-error-primary);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 22px;
+}
+
+.dangerHint {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.gitNote {
+  color: var(--dsw-alias-state-warn-primary);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.dangerAllow {
+  color: var(--dsw-alias-state-error-primary);
+  border-color: var(--dsw-alias-state-error-primary);
 }

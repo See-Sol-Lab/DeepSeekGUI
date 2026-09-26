@@ -1,6 +1,31 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-09-01-b4-p6-push-pull-request.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-01-b4-p6-push-pull-request.md
-2026-09-01-b4-p6-push-pull-request.md: d334514f05804cf371e88842f1ab76fddc9a93aa
-2026-09-01-b4-p6-push-pull-request.zh.md: 95a5264b1f50672595db7b4307700bcf635d00b9
+/agent-note-b4-p6-push-pull-request-previewed-external-writes-over-existing-git-gh-credentials:
+  en: 44564e216c982eab
+  zh: b63c8259c181cfa5
+/agent-note-b4-p6-push-pull-request-previewed-external-writes-over-existing-git-gh-credentials/problem:
+  en: e5f261aa899de65d
+  zh: 10713c0d7f4e6d47
+/agent-note-b4-p6-push-pull-request-previewed-external-writes-over-existing-git-gh-credentials/decision:
+  en: a15c7c13f167e5ac
+  zh: 63bcc2ef60c2f344
+/agent-note-b4-p6-push-pull-request-previewed-external-writes-over-existing-git-gh-credentials/decision/push-a-previewed-classified-external-write:
+  en: d338b1f3cff2b070
+  zh: e02289cc82cbd46b
+/agent-note-b4-p6-push-pull-request-previewed-external-writes-over-existing-git-gh-credentials/decision/pull-request-an-independent-provider-capability-over-the-existing-login:
+  en: 81473332f98a5d7e
+  zh: 3bd84008138fcba0
+/agent-note-b4-p6-push-pull-request-previewed-external-writes-over-existing-git-gh-credentials/decision/the-task-records-references-only:
+  en: 1db33cf59d98af29
+  zh: 3d4849bbbb2dfab9
+/agent-note-b4-p6-push-pull-request-previewed-external-writes-over-existing-git-gh-credentials/verification:
+  en: fdcdd6cc0d1f25a5
+  zh: 676eb9a009c966a0
+/agent-note-b4-p6-push-pull-request-previewed-external-writes-over-existing-git-gh-credentials/alternatives-considered:
+  en: 1a034dc55855378f
+  zh: b71e7d64a766b2d9
+/agent-note-b4-p6-push-pull-request-previewed-external-writes-over-existing-git-gh-credentials/consequences:
+  en: acf99e25583328af
+  zh: 429a161e73f3a101

@@ -92,7 +92,7 @@ Read these when the chooser's contract is not enough: the seam definition first,
 <a id="model-experience"></a>
 ## Model Experience
 
-None, as the GUI-host picking chooser only mounts a backend row and registers nothing model-facing.
+None, as the GUI host's directory-selection chooser only mounts a backend row and registers nothing model-facing.
 
 #### KV Cache effect
 

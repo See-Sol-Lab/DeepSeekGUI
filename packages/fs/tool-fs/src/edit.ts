@@ -78,7 +78,7 @@ export function applyEditTool(ctx: Context, sandbox: FsSandboxController): void 
     order: ctx.systemPrompt.getSectionOrder('TOOL_EDIT'),
     text: ({ scope }) => ctx.tools.get('edit', scope) === undefined
       ? ''
-      : 'Use the edit tool for targeted changes to existing UTF-8 text files. It replaces literal old_string with new_string; by default old_string must appear exactly once. If old_string appears multiple times, provide a more specific old_string or set replace_all to true. Read the file first (the default fs-observation-policy requires it), unless you just created or edited it in this session.',
+      : 'Read a file before editing it (the default fs-observation-policy requires it), unless you just created or edited it in this session.',
   })
 
   ctx.tools.register(defineTool({
@@ -86,7 +86,7 @@ export function applyEditTool(ctx: Context, sandbox: FsSandboxController): void 
     description: 'Edit an existing UTF-8 text file by replacing literal text.',
     parameters: {
       file_path: { type: 'string', required: true, description: 'Path to edit, resolved by the filesystem backend.' },
-      old_string: { type: 'string', required: true, description: 'Literal text to replace. Must match exactly.' },
+      old_string: { type: 'string', required: true, description: 'Literal text to replace.' },
       new_string: { type: 'string', required: true, description: 'Literal replacement text. Use an empty string to delete the match.' },
       replace_all: { type: 'boolean', description: 'Replace all matches. Defaults to false; when false, old_string must appear exactly once.' },
       ...sandbox.escalationModes.length > 0 ? sandbox.schemaFields() : {},
@@ -114,8 +114,8 @@ export function applyEditTool(ctx: Context, sandbox: FsSandboxController): void 
       const input = parseEditArgs(args)
       // Resolve the per-call sandbox policy (approved mode > session override
       // > backend default, plus the session cwd root) BEFORE anything executes.
-      const sandboxPolicy = await sandbox.resolvePolicy('edit', args, exec)
-      const target = await ctx.fs.resolve(input.filePath, sessionResolveOptions(exec, input.filePath, sandboxPolicy?.workspaceRoot))
+      const sandboxPolicy = await sandbox.resolvePolicy('edit', args, exec, input.filePath)
+      const target = await ctx.fs.resolve(input.filePath, sessionResolveOptions(exec, sandboxPolicy?.workspaceRoot))
       // Single-slot decision: the policy plugin returns { version: vObserved } or
       // throws FS_NOT_OBSERVED; the bare default is undefined (unconditional edit).
       // No stat — the bare default never manufactures a version basis. The intent

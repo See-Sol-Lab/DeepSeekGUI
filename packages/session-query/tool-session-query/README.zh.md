@@ -1,5 +1,5 @@
 ---
-description: "面向 agent 开发者与维护者的工作区授权模型会话历史工具，用于选择、配置或排查既往会话搜索、追踪与事件读取。"
+description: "面向 agent（智能体）开发者与维护者、经工作区授权且面向模型的会话历史工具，用于选择、配置或排查既往会话搜索、追踪与事件读取。"
 kind: "package-reference"
 ---
 
@@ -29,7 +29,7 @@ kind: "package-reference"
 
 ### 何时选择
 
-当部署需要模型驱动的既往工作检索时选择它——例如编程 agent 在开始任务前搜索更早会话中做过的事。只需要程序化检索时避免使用：`ctx.sessionQuery` 本身服务代码调用方，无需面向模型的 schema、提示词与授权层。
+当部署需要模型驱动的既往工作检索时选择它——例如 coding agent（编程智能体）在开始任务前搜索更早会话中做过的事。只需要程序化检索时避免使用：`ctx.sessionQuery` 本身服务代码调用方，无需面向模型的 schema、提示词与授权层。
 
 ### 配置
 
@@ -48,7 +48,7 @@ kind: "package-reference"
 | `session_event_search` | 一个已授权会话内匹配字面查询的事件；针对当前会话时，在调用它的步骤之前停止 |
 | `session_trace` | 一个会话的已授权祖先链与后代树；未授权边界以不含隐藏 id 的标记出现 |
 | `session_event_trace` | 一个事件的位置替换与被引用源事件关系 |
-| `session_event_read` | 一个完整未删节事件（JSON），加可选的事件邻接摘要 |
+| `session_event_read` | 一个完整未删节事件（JSON），以及可选的相邻事件摘要 |
 
 工作区授权是保守的：跨会话访问要求目标与调用方会话的 `cwd` 严格相等，没有 `cwd` 的调用方只能检查自己。请求的父 id 会在搜索前去重并按权限检查；缺失与跨工作区猜测行为完全相同。搜索结果无游标：结果达到上限时请模型缩小查询，绝不暴露提供方游标、偏移、分页大小或模型可控上限。工具边界的时间戳是带时区限定的 ISO 8601，并转换为包含端点的 epoch 毫秒过滤器。
 
@@ -72,7 +72,7 @@ kind: "package-reference"
 
 - **窄而只读的工具。** 五个带扁平 snake-case schema 的工具，每个都引导一个后续步骤；游标、偏移、分页大小或模型可控上限永远不会到达模型。
 - **授权来自调用方，绝不由模型提供。** 调用方身份来自 `ToolExecution.exec.agent`；工作区是字符串精确 `cwd` 相等，并对照每次结果观察到的 header 重新校验。
-- **一个模型边界净化器。** 每个可信 `ctx.sessionQuery` 调用都经过服务边界，它保留取消并包含诊断与分类失败。
+- **一个模型边界净化器。** 每个可信 `ctx.sessionQuery` 调用都经过服务边界，它保留取消，并将诊断与分类失败限制在边界内。
 - **不引入第二种截断格式。** 结果保持完整；通用 spill 策略负责有界内联输出。
 
 设计历史记录在[面向模型的会话查询工具笔记](../../../.agents/notes/archived/feature/2026-07-24-model-facing-session-query-tools.md)与 [session-search-not-shipped-default 笔记](../../../.agents/notes/archived/feature/2026-08-02-session-search-not-shipped-default.md)中。
@@ -185,6 +185,4 @@ Use session_search to find relevant work from prior sessions, or session_event_s
 
 </details>
 
-**运行时不变式：** 不发布伴生入口。这个只读模型 adapter 不持有其所属 registry 之外的事件或可变数据关系。
-
-精确查询在工作区授权后区分已删除会话与未知 ID。普通标题或 ID 搜索可以包含最小删除元数据，已清除的消息正文不参与搜索。
+**运行时不变式：** 不发布伴生入口。这个只读模型适配器不拥有任何超出注册表范围的事件关系或可变数据关系；这些注册表已经负责校验注册。

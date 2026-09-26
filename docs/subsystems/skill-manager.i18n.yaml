@@ -1,0 +1,7 @@
+# Bilingual-pair consistency record for skill-manager.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/subsystems/skill-manager.md
+/skill-manager:
+  en: 6e2bae6dad619aea
+  zh: 8a39140d7e86c73c

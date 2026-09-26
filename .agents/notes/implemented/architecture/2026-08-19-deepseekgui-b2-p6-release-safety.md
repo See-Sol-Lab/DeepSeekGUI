@@ -10,7 +10,7 @@ P6 is the last Windows product gate before V1.0.0. Four release-class risks had 
 
 ## Decision
 
-**P6-0 — keep embedded DSH rc.5.** The directed rc.5 → rc.7 review (fork point `47f943859b` → upstream tag `dsh-v0.1.0-rc.7`) is archived here in the spec §4 format:
+**P6-0 — keep embedded DSH rc.5.** The directed rc.5 → rc.7 review (this fork's rc.5 fork point → upstream tag `dsh-v0.1.0-rc.7`) is archived here in the spec §4 format:
 
 P6-required delta:
 - None. The `src` of `user-approval`, `permission-presets`, `tool-sandbox-modes`, `pwsh-sandbox`, `sandbox-policy`, `sandbox-windows-acl`, `directory-picker*`, `client/runtime`, and `ui-permission-presets` changed only package.json version numbers between rc.5 and rc.7. The `permission` and `ui-theme` settings namespaces were already inside rc.5's exposed list (`WEB_SETTINGS_NAMESPACES`), so P6's `settings.mutate` permission/theme paths work identically on rc.5 — rc.7 adds no P6 capability.

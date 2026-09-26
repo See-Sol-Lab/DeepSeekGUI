@@ -6,11 +6,11 @@ English | [中文](2026-09-07-file-content-scan.zh.md)
 
 ## Problem
 
-Every model dispatch checks complete message content for files, including nested tool results. A request-history CPU profile attributes 23.540 ms of self time to `contentHasFile` and 5.584 ms to its callback. This traversal remains necessary even after [loop-owned freeze provenance](2026-09-06-agent-request-freeze-provenance.md) removes repeated request freezing. The hot LLM source is identical at master `bd5917`, master `112a5`, and the measured `f834b002826453e7918eeb558d052b2c24c56a76`; these observations do not establish PR causality.
+Every model dispatch checks complete message content for files, including tool-role result content. A request-history CPU profile attributes 23.540 ms of self time to `contentHasFile` and 5.584 ms to its callback. This traversal remains necessary even after [loop-owned freeze evidence](2026-09-06-agent-request-freeze-evidence.md) removes repeated request freezing. The hot LLM source is identical at both sampled master revisions and the measured V3 integration revision; these observations do not establish PR causality.
 
 ## Decision
 
-[`contentHasFile`](../../../../packages/llm/llm/src/content.ts) uses direct iteration instead of recursive `Array.some` callbacks. It preserves early exit, nested tool-result traversal, and false results for other block kinds. It stores no identities, validation results, or freeze proofs. Image detection, file projection, and request construction keep their existing behavior. The [request-freeze calibration](2026-09-06-agent-request-freeze-provenance.md) owns the request-history budget.
+[`contentHasFile`](../../../../packages/llm/llm/src/content.ts) uses direct iteration instead of recursive `Array.some` callbacks. It preserves early exit, tool-role result traversal, and false results for other block kinds. It stores no identities, validation results, or freeze proofs. Image detection, file projection, and request construction keep their existing behavior. The [request-freeze evidence](2026-09-06-agent-request-freeze-evidence.md) owns the request-history budget.
 
 ## Measurement evidence
 
@@ -29,4 +29,4 @@ A weak negative-result cache needs proof that every relevant descendant is immut
 
 ## Consequences
 
-The scan remains linear in visited blocks and rereads mutable nested content on each call. [Content tests](../../../../packages/llm/llm/tests/content.spec.ts) cover empty, frozen, nested, and subsequently mutated arrays; service tests preserve file-handle projection, and request-freeze, reconstruction, and resume tests preserve native-history semantics. No model-visible text or Session format changes. The freeze-provenance and [backend-baseline](../testing/2026-09-06-backend-continuation-performance.md) notes retain independent ownership; neither is superseded.
+The scan remains linear in visited blocks and rereads mutable nested content on each call. [Content tests](../../../../packages/llm/llm/tests/content.spec.ts) cover empty, frozen, nested, and subsequently mutated arrays; service tests preserve file-handle projection, and request-freeze, reconstruction, and resume tests preserve native-history semantics. No model-visible text or Session format changes. The freeze-evidence and [backend-baseline](../testing/2026-09-06-backend-continuation-performance.md) notes retain independent ownership; neither is superseded.

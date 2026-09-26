@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Coding tools",
+    "description": "Git status, diff, staging, commit, push and pull-request tools for the assistant; write actions ask for approval."
+  }
+}

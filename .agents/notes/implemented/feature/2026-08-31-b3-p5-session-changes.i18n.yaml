@@ -1,6 +1,19 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-08-31-b3-p5-session-changes.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-31-b3-p5-session-changes.md
-2026-08-31-b3-p5-session-changes.md: 99aba35a547f03f68c314ab33779e7efd31e224a
-2026-08-31-b3-p5-session-changes.zh.md: 305ac82a318df07ca2d652bbfd57ebc8ee94be9a
+/agent-note-b3-p5-session-changes-per-session-changed-files-panel:
+  en: 6a594f75683b5afb
+  zh: abdc32d3e6bae556
+/agent-note-b3-p5-session-changes-per-session-changed-files-panel/problem:
+  en: b6484bb0d43e2b8e
+  zh: db0031e51bfe084b
+/agent-note-b3-p5-session-changes-per-session-changed-files-panel/decision:
+  en: 59efb35a4613ff08
+  zh: 577f9cfe22f3f018
+/agent-note-b3-p5-session-changes-per-session-changed-files-panel/alternatives-considered:
+  en: 95919d6314fee210
+  zh: 242ea30f5d7e5f05
+/agent-note-b3-p5-session-changes-per-session-changed-files-panel/consequences:
+  en: a25a7c01e1a25d95
+  zh: de89ef81f11aa560

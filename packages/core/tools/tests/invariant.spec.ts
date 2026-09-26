@@ -126,7 +126,7 @@ describe('tool-pipeline invariants', () => {
     })).not.toThrow()
   })
 
-  it('rejects a nested code dispatch that changes its parent chain root before append', async () => {
+  it('rejects a nested PTC dispatch that changes its parent chain root before append', async () => {
     const ctx = await setup()
     const session = ctx.sessions.create()
     session.append('turn/start', { turn: 1 })

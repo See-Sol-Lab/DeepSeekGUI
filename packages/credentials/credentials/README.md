@@ -151,7 +151,7 @@ The service is a Cordis `Service` registered by the provider: disposing the moun
 
 Read these pages when the package-level contract is not enough. They move from the shared subsystem vocabulary to the shipped store and the capability architecture.
 
-- [Credentials subsystem reference](../../../docs/subsystems/credentials.md) — `CredentialRef`/`CredentialKey`, per-operation resolution, UI-safe info, provider layers, and the generated cordis surface.
+- [Credentials subsystem reference](../../../docs/subsystems/credentials.md) — `CredentialRef`/`CredentialKey`, per-operation resolution, UI-safe info, provider layers, and the generated Cordis surface.
 - [Local credentials store](../credentials-local/README.md) — the default on-machine store: where keys and records live and how the environment layers rank.
 - [Capability seams](../../../docs/capability-seams.md) — the Service Definition / Service Provider / Consumer split this package follows.
 

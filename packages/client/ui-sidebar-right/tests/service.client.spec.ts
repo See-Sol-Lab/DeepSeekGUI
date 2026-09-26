@@ -61,7 +61,10 @@ function harness() {
     const surface = instance.getSnapshot().bySession[SESSION]
     if (surface !== undefined) controller.tabDomain.sync(SESSION, surface.layout)
     return controller.bind({
-      sessionId: SESSION, actions: instance.actions, surfaces: instance.getSnapshot().bySession, canSplitPane: () => room.allowed,
+      sessionId: SESSION, actions: instance.actions, surfaces: instance.getSnapshot().bySession,
+      closeWithFocus: (_paneId, close) => { close() },
+      openWithFocus: (open) => { open() },
+      canSplitPane: () => room.allowed,
     })
   }
   const titles = (): string[] => {
@@ -80,6 +83,25 @@ function harness() {
 }
 
 describe('SidebarRightController — opening', () => {
+  it('keeps independently opened instances distinct when they return to the same pane', () => {
+    const h = harness()
+    h.tabs.register({ id: 'test/terminal', kind: 'terminal', multiple: true, title: () => 'terminal' })
+    const release = h.publish()
+    try {
+      h.controller.openTab('terminal')
+      h.controller.openTab('terminal')
+      const terminals = Object.values(h.layout().tabs).filter(tab => tab.kind === 'terminal')
+      expect(terminals).toHaveLength(2)
+      expect(terminals[0]!.contentId).not.toBe(terminals[1]!.contentId)
+      const pane = findTabPane(h.layout(), terminals[0]!.id).id
+      h.instance.actions.floatTab(SESSION, terminals[0]!.id)
+      const floating = findTabPane(h.layout(), terminals[0]!.id).id
+      h.instance.actions.unfloatPane(SESSION, floating)
+      expect(getPane(h.layout(), pane).tabs).toContain(terminals[0]!.id)
+      expect(getPane(h.layout(), pane).tabs).toContain(terminals[1]!.id)
+    } finally { release() }
+  })
+
   it('refuses every write while no seat is mounted', () => {
     const { controller } = harness()
     expect(() => { controller.openResource('dsh-resource://file/session/s-test/a.txt') }).toThrow('no session surface is mounted')
@@ -90,6 +112,26 @@ describe('SidebarRightController — opening', () => {
     expect(() => { controller.split() }).toThrow('no session surface is mounted')
     expect(() => { controller.float('tab1' as TabId) }).toThrow('no session surface is mounted')
     expect(() => { controller.dock('pane1' as PaneId) }).toThrow('no session surface is mounted')
+  })
+
+  it('publishes the mounted session only on real transitions of the seat binding', () => {
+    const h = harness()
+    const seen: (string | undefined)[] = []
+    const unsubscribe = h.controller.mounted.subscribe(() => { seen.push(h.controller.mounted.getSnapshot()) })
+    try {
+      expect(h.controller.mounted.getSnapshot()).toBeUndefined()
+      const first = h.publish()
+      expect(h.controller.mounted.getSnapshot()).toBe(SESSION)
+      // The seat republishes on every store commit; the same session is silent.
+      const second = h.publish()
+      expect(seen).toEqual([SESSION])
+      // A stale release — the first seat's, after a newer one took over — changes nothing.
+      first()
+      expect(h.controller.mounted.getSnapshot()).toBe(SESSION)
+      second()
+      expect(h.controller.mounted.getSnapshot()).toBeUndefined()
+      expect(seen).toEqual([SESSION, undefined])
+    } finally { unsubscribe() }
   })
 
   it('refuses an address no registered type claims, before touching the surface', () => {
@@ -148,6 +190,39 @@ describe('SidebarRightController — opening', () => {
     if (left === undefined || right === undefined) throw new Error('expected two panes')
     controller.openResource('dsh-resource://file/session/s-test/a.txt', { paneId: left })
     expect(findTabPane(layout(), tabOf('a.txt')).id).toBe(left)
+  })
+
+  it('opens new content alone in a preferred pane and falls back to the current pane at the limit', () => {
+    const { controller, publish, layout, tabOf, entries, expand } = harness()
+    expand()
+    publish()
+    const before = entries()
+    controller.openResource('dsh-resource://file/session/s-test/a.txt', { preferNewPane: true })
+    const a = tabOf('a.txt')
+    const pane = findTabPane(layout(), a)
+    expect(dockPaneIds(layout())).toHaveLength(2)
+    expect(pane.tabs).toEqual([a])
+    expect(entries()).toBe(before + 1)
+
+    publish()
+    controller.openResource('dsh-resource://file/session/s-test/b.txt', { preferNewPane: true })
+    expect(dockPaneIds(layout())).toHaveLength(2)
+    expect(findTabPane(layout(), tabOf('b.txt')).id).toBe(pane.id)
+  })
+
+  it('falls back when the pane is too narrow and reveals existing content without splitting', () => {
+    const { controller, publish, layout, tabOf, room, expand } = harness()
+    expand()
+    publish()
+    room.allowed = false
+    controller.openResource('dsh-resource://file/session/s-test/a.txt', { preferNewPane: true })
+    expect(dockPaneIds(layout())).toHaveLength(1)
+    publish()
+
+    room.allowed = true
+    controller.openResource('dsh-resource://file/session/s-test/a.txt', { preferNewPane: true })
+    expect(dockPaneIds(layout())).toHaveLength(1)
+    expect(getPane(layout(), layout().activePaneId).activeTabId).toBe(tabOf('a.txt'))
   })
 
   it('takes the replaced tab\'s pane and slot, closes it, and records one entry', () => {
@@ -443,6 +518,23 @@ describe('SidebarRightController — a tab\'s own actions', () => {
   const A_TXT = 'dsh-resource://file/session/s-test/a.txt'
   const B_TXT = 'dsh-resource://file/session/s-test/b.txt'
 
+  it('opens into an adopted store before that store has created its session surface', () => {
+    const { controller, adopt, instance, titles } = harness()
+    const releaseOwn = adopt(SESSION, instance)
+    const other = createSidebarRightStore(() => ({ kind: 'guide', title: 'seed' })).create(OTHER)
+    const releaseBinding = controller.bind({
+      sessionId: OTHER,
+      actions: other.actions,
+      surfaces: other.getSnapshot().bySession,
+      closeWithFocus: (_paneId, close) => { close() },
+      openWithFocus: (open) => { open() }, canSplitPane: () => true,
+    })
+    controller.openResourceIn(SESSION, A_TXT)
+    expect(titles()).toContain('a.txt')
+    releaseBinding()
+    releaseOwn()
+  })
+
   it('land in the session the tab is in through its own adopted store, after another session\'s seat took over', () => {
     const { controller, adopt, instance, publish, layout, expand } = harness()
     const releaseOwn = adopt(SESSION, instance)
@@ -462,7 +554,12 @@ describe('SidebarRightController — a tab\'s own actions', () => {
     other.actions.setExpanded(OTHER, true)
     const otherSurface = other.getSnapshot().bySession[OTHER]
     if (otherSurface === undefined) throw new Error('expected the other surface')
-    controller.bind({ sessionId: OTHER, actions: other.actions, surfaces: other.getSnapshot().bySession, canSplitPane: () => true })
+    controller.bind({
+      sessionId: OTHER, actions: other.actions, surfaces: other.getSnapshot().bySession,
+      closeWithFocus: (_paneId, close) => { close() },
+      openWithFocus: (open) => { open() },
+      canSplitPane: () => true,
+    })
     fromOwn.openResource(B_TXT)
     fromOwn.openTab('guide', { revealIfOpened: false })
     expect(Object.values(layout().tabs).map(tab => tab.title)).toContain('b.txt')
@@ -505,8 +602,8 @@ describe('SidebarRightController — a tab\'s own actions', () => {
   it('adoption syncs the Tab domain on each commit of that store: the seeded guide is pinned, a closed tab aborted', () => {
     const { controller, adopt, instance, pin } = harness()
     const first = adopt(SESSION, instance)
-    // Nothing is synced at adoption, and a commit that materializes another
-    // session leaves this session's occurrences alone.
+    // An empty adopted surface has no resources to pin; another Session's
+    // commits do not populate it.
     instance.actions.open(OTHER)
     expect(pin).not.toHaveBeenCalled()
     instance.actions.setExpanded(SESSION, true)
@@ -589,4 +686,90 @@ describe('SidebarRightController — binding lifetime', () => {
     stale()
     expect(() => { controller.toggleExpanded() }).not.toThrow()
   })
+})
+
+describe('explicit tab resource cleanup', () => {
+  it.each(['close', 'replace'] as const)('immediately removes the tab after a synchronous cleanup handler during %s', (operation) => {
+    const h = harness()
+    const release = h.adopt(SESSION, h.instance)
+    const unbind = h.publish()
+    h.controller.openResource('dsh-resource://file/session/s-test/terminal')
+    const tabId = h.tabOf('terminal')
+    const original = h.layout().tabs[tabId]
+    const handler = vi.fn(() => { expect(h.layout().tabs[tabId]).toBe(original) })
+    const unregister = h.controller.registerCloseHandler('text', handler)
+    try {
+      const before = h.entries()
+      if (operation === 'close') h.controller.close(tabId)
+      else h.controller.openTab('guide', { replaceTab: tabId, revealIfOpened: false })
+      expect(handler).toHaveBeenCalledExactlyOnceWith(SESSION, original)
+      expect(h.layout().tabs[tabId]).toBeUndefined()
+      expect(h.entries()).toBe(before + 1)
+      h.controller.closeIn(SESSION, tabId)
+      expect(handler).toHaveBeenCalledOnce()
+    } finally {
+      unregister()
+      unbind()
+      release()
+    }
+  })
+
+  it('does not invoke cleanup on collapse or when revealing the same tab', () => {
+    const h = harness()
+    h.adopt(SESSION, h.instance)
+    h.publish()
+    const address = 'dsh-resource://file/session/s-test/terminal'
+    h.controller.openResource(address)
+    h.publish()
+    const tabId = h.tabOf('terminal')
+    const handler = vi.fn()
+    h.controller.registerCloseHandler('text', handler)
+    h.controller.toggleExpanded()
+    h.controller.openResource(address, { replaceTab: tabId })
+    expect(handler).not.toHaveBeenCalled()
+    expect(h.layout().tabs[tabId]).toBeDefined()
+  })
+
+  it.each(['close', 'replace'] as const)('preserves a tab when its synchronous %s handler throws', (operation) => {
+    const h = harness()
+    h.adopt(SESSION, h.instance)
+    h.publish()
+    h.controller.openResource('dsh-resource://file/session/s-test/terminal')
+    const tabId = h.tabOf('terminal')
+    const release = h.controller.registerCloseHandler('text', () => { throw new Error('cannot retain cleanup') })
+    const perform = () => {
+      if (operation === 'close') h.controller.closeIn(SESSION, tabId)
+      else h.controller.openTab('guide', { replaceTab: tabId, revealIfOpened: false })
+    }
+    expect(perform).toThrow('cannot retain cleanup')
+    expect(h.layout().tabs[tabId]).toBeDefined()
+    release()
+    perform()
+    expect(h.layout().tabs[tabId]).toBeUndefined()
+  })
+})
+
+it('releases close handlers without a stale disposer removing a replacement', () => {
+  const h = harness()
+  h.adopt(SESSION, h.instance)
+  h.publish()
+  const first = vi.fn(() => {})
+  const second = vi.fn(() => {})
+  const release = h.controller.registerCloseHandler('text', first)
+  expect(() => h.controller.registerCloseHandler('text', second)).toThrow('already registered')
+  release()
+  const releaseSecond = h.controller.registerCloseHandler('text', second)
+  release()
+  h.controller.openResource('dsh-resource://file/session/s-test/one')
+  h.publish()
+  h.controller.closeIn(SESSION, h.tabOf('one'))
+  expect(first).not.toHaveBeenCalled()
+  expect(second).toHaveBeenCalledOnce()
+  releaseSecond()
+  h.controller.openResource('dsh-resource://file/session/s-test/two')
+  h.publish()
+  const tabId = h.tabOf('two')
+  h.controller.openTab('guide', { replaceTab: tabId, revealIfOpened: false })
+  expect(h.layout().tabs[tabId]).toBeUndefined()
+  expect(second).toHaveBeenCalledOnce()
 })

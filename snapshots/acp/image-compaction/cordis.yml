@@ -39,4 +39,9 @@
 - id: compaction-basic
   name: '@deepseek-ai/dsh-compaction-basic'
   config:
+    headroomTokens: 0
+    maxTokens: 8192
     retainTokens: 100
+
+- insert:
+    - name: './summary-image-budget.mjs'

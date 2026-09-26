@@ -1,5 +1,5 @@
 ---
-description: "用于 projection state 的不可变追加列表，提供有界追加复制、按插入顺序迭代和 Zod 检查点校验。"
+description: "用于 projection state 的不可变的仅追加列表，提供有界追加复制、按插入顺序迭代和 Zod 检查点校验。"
 kind: "package-library"
 ---
 
@@ -35,7 +35,7 @@ const second = appendChunkedList(first, 'second')
 console.log([...iterateChunkedList(second)])
 ```
 
-示例输出 `['first', 'second']`；`first` 仍只包含原来的值。`chunkedListSchema(valueSchema)` 校验 JSON 检查点并拒绝未知字段、无效值和空块或超大块。当外层字段也允许空列表时，在 schema 上使用 `.optional()`。各操作详见[源码约定](src/index.ts)。
+示例输出 `['first', 'second']`；`first` 仍只包含原来的值。`chunkedListSchema(valueSchema)` 校验 JSON 检查点并拒绝未知字段、无效值和空分片或超大分片。当外层字段也允许空列表时，在 schema 上使用 `.optional()`。各操作详见[源码约定](src/index.ts)。
 
 -----
 
@@ -45,12 +45,12 @@ console.log([...iterateChunkedList(second)])
 <details>
 <summary>实现内部机制——点击展开</summary>
 
-最新的块最多存储 64 个值。追加最多复制该块并共享较旧的节点，工作量为有界 O(1)。容量控制存储布局，不限制列表总长度。迭代以 O(N) 时间访问全部 N 个值，并使用 O(N / 64) 临时空间按从旧到新的顺序访问各块。追加换块与递归 Zod 校验共用一个容量常量。
+最新的分片最多存储 64 个值。追加最多复制该分片并共享较旧的节点，工作量为有界 O(1)。容量控制存储布局，不限制列表总长度。迭代以 O(N) 时间访问全部 N 个值，并使用 O(N / 64) 临时空间按从旧到新的顺序访问各分片。追加换片与递归 Zod 校验共用一个容量常量。
 
 | 文件 | 职责 |
 |---|---|
 | [`src/index.ts`](src/index.ts) | 持久化列表操作与检查点校验 |
-| [`tests/chunked-list.spec.ts`](tests/chunked-list.spec.ts) | 版本隔离、排序、结构共享与检查点接受条件 |
+| [`tests/chunked-list.spec.ts`](tests/chunked-list.spec.ts) | 版本隔离、顺序、结构共享与检查点接受条件 |
 
 此库没有独立变化的观测值，因此不发布运行时不变式伴随模块；其操作返回调用方拥有的不可变值。
 
@@ -62,7 +62,7 @@ console.log([...iterateChunkedList(second)])
 ## 进一步探索
 
 - [工具包映射](../README.zh.md)——共享原语。
-- [Subagent 目录决策](../../../.agents/notes/implemented/architecture/2026-09-01-parent-owned-subagent-catalog.zh.md)——projection state 使用分块的原因。
+- [Subagent 目录决策](../../../.agents/notes/implemented/architecture/2026-09-01-parent-owned-subagent-catalog.zh.md)——projection state 使用分片的原因。
 
 -----
 

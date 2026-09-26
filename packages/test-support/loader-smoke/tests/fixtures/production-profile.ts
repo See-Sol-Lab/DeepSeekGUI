@@ -4,14 +4,17 @@ import { writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { homedir } from 'node:os'
 import type { Context } from '@deepseek-ai/cordis'
 import type { EntryOptions } from '@deepseek-ai/cordis-plugin-loader'
 import type { PatchOptions } from '@deepseek-ai/cordis-plugin-include'
 import {
   boot,
-  healProfilesModuleFallback,
+  createRuntimeResolution,
   loadOverlayPatches,
   loadProfile,
+  PluginPackages,
+  type ProfileContext,
   type ProfileLayer,
 } from '@deepseek-ai/dsh-app-boot'
 
@@ -44,7 +47,7 @@ function overlayModuleLayers(path: string, patches: readonly PatchOptions[]): Pr
   return [...packages].map(([name, packageDir], index) => ({
     packageName: `test-overlay:${index}:${name}`,
     packageDir,
-    patchPath: path,
+    patchPaths: [path],
     patches: [],
   }))
 }
@@ -85,7 +88,7 @@ export async function bootProductionProfile(options: ProductionProfileOptions): 
   const moduleLayers = options.overlayPaths.flatMap((path, index) => (
     overlayModuleLayers(path, overlays[index] ?? [])
   ))
-  await healProfilesModuleFallback({
+  const resolution = await createRuntimeResolution({
     installAnchor,
     profile: { ...profile, layers: [...profile.layers, ...moduleLayers] },
   })
@@ -96,6 +99,17 @@ export async function bootProductionProfile(options: ProductionProfileOptions): 
       ...profile.layers.flatMap(layer => layer.patches),
       ...overlays.flat(),
     ],
-    options.prepare,
+    async (ctx) => {
+      // The launcher's own profile facts, so profile-backed services activate as in production.
+      const profileContext: ProfileContext = {
+        name: options.profile, dir: profile.dir, patchPath: profile.patchPath, installAnchor,
+        cwd: process.cwd(), home: process.env['DSH_HOME'] ?? join(homedir(), '.dsh'),
+        startedBundles: profile.layers.map(layer => layer.packageName),
+        overlays: overlays.flat(), telemetryDisabledEnv: process.env['DSH_TELEMETRY_DISABLED'],
+      }
+      ctx.provide('profileContext', profileContext)
+      await ctx.plugin(PluginPackages, { resolution })
+      await options.prepare?.(ctx)
+    },
   )
 }

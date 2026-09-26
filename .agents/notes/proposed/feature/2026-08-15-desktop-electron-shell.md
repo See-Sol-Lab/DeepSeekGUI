@@ -24,7 +24,7 @@ Out of scope for this stage, per DEEPSEEKGUI milestone scoping: installer, auto-
 
 ## Alternatives considered
 
-**Restore the deleted TUI package.** Rejected: the desktop shell is the milestone's chosen surface, and the [TUI removal note](../../implemented/simplification/2026-08-04-remove-tui-package.md) requires any future terminal frontend to start from its actual host requirements rather than inherit the deleted implementation.
+**Restore the deleted TUI package.** Rejected: the desktop shell is the milestone's chosen surface, and the [TUI removal note](../../archived/simplification/2026-08-04-remove-tui-package.md) requires any future terminal frontend to start from its actual host requirements rather than inherit the deleted implementation.
 
 **Introduce electron-builder for an installer in the same change.** Rejected: this stage is the runnable development shell; packaging is a later milestone and would expand the dependency and verification surface now.
 

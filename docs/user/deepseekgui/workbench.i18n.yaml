@@ -1,6 +1,25 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for workbench.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/user/deepseekgui/workbench.md
-workbench.md: 8fde182be4ae901b6a12be63011d589cea0a92b6
-workbench.zh.md: d60a46d75493b11e79253eb09313095ecede3650
+/workbench-views-and-git-tools:
+  en: 1eae974c43a760e1
+  zh: f468c2cbff593240
+/workbench-views-and-git-tools/changes-view:
+  en: f47a3f71c97f14e2
+  zh: f6532c55e7a6e625
+/workbench-views-and-git-tools/git-view:
+  en: 8644de8269fb4c1d
+  zh: 385fcb77c923899e
+/workbench-views-and-git-tools/worktrees-within-git:
+  en: d18aef65d39f3f8b
+  zh: 3d0067e3974d8c14
+/workbench-views-and-git-tools/git-pr-tools:
+  en: 8c9ea574dbada4e2
+  zh: 18a7ce304d5b7d32
+/workbench-views-and-git-tools/working-with-the-views:
+  en: c57903c2300d7eef
+  zh: 112a92d22ba43a27
+/workbench-views-and-git-tools/related-guides:
+  en: 548a7be37a50aeeb
+  zh: e7e553fdd70e6f5f

@@ -6,7 +6,7 @@ Status: implemented
 
 ## Problem
 
-共享 base 同时选择 `read`/`write`/`edit` 和 `str_replace_editor`，这些工具提供重叠的文件编辑接口。[Issue #3599](https://github.com/deepseek-harness/deepseek-harness/issues/3599) 要求基于 base 的 profile 默认使用一套接口，同时保留专用的极简组合。
+共享 base 同时选择 `read`/`write`/`edit` 和 `str_replace_editor`，这些工具提供重叠的文件编辑接口。Issue #3599 要求基于 base 的 profile 默认使用一套接口，同时保留专用的极简组合。
 
 ## Decision
 

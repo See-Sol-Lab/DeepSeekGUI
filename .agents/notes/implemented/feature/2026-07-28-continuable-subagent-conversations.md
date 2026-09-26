@@ -44,7 +44,7 @@ Cold resume does not dispatch through a subagent provider. The continuation mana
 
 `SubagentProvider.start()` and `SubagentRun` remain exclusively on the unchanged one-shot path. A continuable Activation directly owns its `AgentHandle` and never creates, wraps, or retains a `SubagentRun`; `SubagentRun.steer?()` is therefore absent.
 
-`ctx.subagents.sendMessage(sender, targetId, content, { signal })` is the sole model-authored continuation-message operation. The exact live sender authorizes delivery to its direct parent or direct continuable child; cold resume checks direct-child authority before reconstruction and every path checks again in the final no-await inbox-admission span, so an Agent unregistered or replaced during materialization cannot authorize delivery. The service derives durable `agent-message` provenance from that sender. The model-facing `send_message` tool keeps only `agent_id` and `message` and uses fixed Steer scheduling. Both start and send return the accepted `MessageId`, and neither reports how the manager materialized the Activation.
+`ctx.subagents.sendMessage(sender, targetId, content, { signal })` is the sole model-authored continuation-message operation. The exact live sender authorizes delivery to its direct parent or direct continuable child; cold resume checks direct-child authority before reconstruction and every path checks again in the final no-await inbox-admission span, so an Agent unregistered or replaced during materialization cannot authorize delivery. The service derives a durable `agent-message` source from that sender. The model-facing `send_message` tool keeps only `agent_id` and `message` and uses fixed Steer scheduling. Both start and send return the accepted `MessageId`, and neither reports how the manager materialized the Activation.
 
 For start and follow-up, the caller signal owns lookup, materialization, and admission only until inbox acceptance. After the operation returns its `MessageId`, the manager owns the Activation independently; later caller cancellation does not cancel the accepted turn or dispose the child.
 
@@ -117,7 +117,7 @@ The shared `sendMessage(sender, targetId, content, options)` service operation a
 
 ### Agent and human scheduling
 
-Every accepted Agent message uses `Agent.steer()`. A running target claims it at the nearest step boundary; an idle or cold-resumed target starts a turn. Browser-authored human input separately carries `delivery: 'queue' | 'steer'` through `subagent.prompt`: Queue opens a later FIFO turn, while Steer uses the same best-effort nearest-step scheduling without changing the message's human provenance. The public service exposes no caller-selectable scheduling mode for Agent messages.
+Every accepted Agent message uses `Agent.steer()`. A running target claims it at the nearest step boundary; an idle or cold-resumed target starts a turn. Browser-authored human input separately carries `delivery: 'queue' | 'steer'` through `subagent.prompt`: Queue opens a later FIFO turn, while Steer uses the same best-effort nearest-step scheduling without changing the message's human source. The public service exposes no caller-selectable scheduling mode for Agent messages.
 
 ### Authority and recorded sender identity
 
@@ -143,7 +143,7 @@ Session and descriptor persistence survive restart. Activation state, Agent inbo
 
 This version covers continuable in-process children and leaves one-shot delegation unchanged. Remote providers require a separate Activation handle with equivalent authenticated control and child-first quiescence contracts before they can support the same behavior.
 
-It adds no host-user continuation, subagent steering operation, durable mailbox, cross-process lease, automatic replay of interrupted inbox work, team authority, workflow authority, public residency query, new live-Activation or descendant limit, or runtime cache; the later [current-turn interrupt](2026-08-06-continuable-subagent-interrupt.md) added the one public stop operation on top of this lifecycle. Existing delegation-depth policy remains unchanged. Optional child-to-parent reporting is a later consumer of this lifecycle rather than part of the base continuable capability.
+It adds no host-user continuation, subagent steering operation, durable mailbox, cross-process lease, automatic replay of interrupted inbox work, team authority, workflow authority, public residency query, or runtime cache; the later [current-turn interrupt](2026-08-06-continuable-subagent-interrupt.md) added the one public stop operation on top of this lifecycle. Existing delegation-depth policy remains unchanged. Optional child-to-parent reporting is a later consumer of this lifecycle rather than part of the base continuable capability.
 
 ## Alternatives considered
 
@@ -203,7 +203,7 @@ The implementation pins these behaviors:
 
 Removing Jobs gives up generic background-work inspection, result collection, and exact Task cancellation. If those product features become requirements, they need a request ticket or inbox capability that does not reintroduce a second execution queue.
 
-Retaining an Activation while descendants run consumes Agent resources proportional to the unfinished ownership graph. The existing delegation-depth policy still bounds nesting, but this version adds no live-Activation or total-descendant limit; settled historical Sessions retain no `AgentHandle`.
+Retaining an Activation while descendants run consumes Agent resources proportional to the unfinished ownership graph. The existing delegation-depth policy still bounds nesting, and [shared Activation capacity](2026-09-15-continuable-activation-capacity.md) bounds live continuable descendants; settled historical Sessions retain no `AgentHandle`.
 
 The process-local inbox and ownership graph do not coordinate two harness processes. Deployments allowing concurrent access to one persistence store still require a durable lease and mailbox protocol.
 

@@ -21,40 +21,23 @@ Harness 面板会显示当前 Home、完整路径、Profile 与运行时状态�
 
 ![DeepSeekGUI 设置面板，包含通用、模型、插件与 agent preset 控制](assets/settings-panel.png)
 
-## 理解 Plugin Manager
+## 插件页
 
-Plugin Manager 会分开显示三类事实：
+插件在**设置 → 插件**里管理。这是 Harness 自带的插件页，DeepSeekGUI 直接使用它，按当前 Profile 显示：
 
-- **Profile Bundles** 是 Profile 的组合层。
-- **Installed Dependencies** 是 Profile manifest（元数据清单）中列出的包。
-- **Effective/Loader status** 报告 Harness 实际可以加载的内容。
+- **已安装**：Profile 里已经安装的插件包，可以查看包含的组件、启用或停用、配置和卸载。
+- **官方**：可以直接安装的官方插件。
+- **DeepSeekGUI 内置**：随 DeepSeekGUI 一起安装的插件（工作台、主题、设置、浏览器、Skill 等）。它们带红色的「不可卸载」标记，不能停用或卸载，因为 DeepSeekGUI 要靠它们工作。
 
-依赖已经安装，不代表插件已经生效。安装并重启后，请检查 effective status。
+添加插件时可以选择官方源、镜像或自定义源。DeepSeekGUI 使用自带的 pnpm 安装，电脑上不需要另装 pnpm。大多数改动在下次启动 Harness 后生效，页面会提示。
 
-## 安装、更新或移除插件
+## 版本兼容检查
 
-1. 打开**设置 → 插件管理（本地）**。
-2. 确认目标 Home、完整路径、Profile、操作与包 spec。
-3. 执行操作并检查流式输出。
-4. 等待 DeepSeekGUI 完成事后检查。
-5. 收到提示后重启 Harness；也可以稍后重启，但新组合在重启前不会运行。
+安装和启动插件时，Harness 会检查插件声明支持的 DSH 版本。版本不兼容的插件会被拒绝，页面会写明原因。确实要用某个不兼容的版本时，可以只针对这一个插件版本和这一个 DSH 版本授予例外；这可能让应用出错或损坏数据，只在确认来源可信时这样做。
 
-DeepSeekGUI V1 不提供插件市场。请使用来自可信来源的兼容包名、tarball 或受支持的本地路径。
+## 插件让 Harness 起不来时
 
-## 受保护的插件改动
-
-执行已确认的插件写操作前，DeepSeekGUI 只会为 `package.json`、`pnpm-lock.yaml` 与 `pnpm-workspace.yaml` 创建快照并记录 hash。实际变更仍通过 `dsh plugin` 执行。
-
-只有下一代 Harness 成功启动后，DeepSeekGUI 才认为改动已经验证。启动失败且三个受保护文件没有再次变化时，Managed Home 可以恢复三个快照并自动重启一次。Existing Home 在恢复前始终要求明确确认。检测到外部文件变化后，DeepSeekGUI 会停用自动恢复，避免覆盖更新的编辑。
-
-DeepSeekGUI 的这项保护绝不备份或恢复 `node_modules`。
-
-## V1 插件限制
-
-- 目标必须已经在当前 Home 下被发现。
-- DeepSeekGUI 不通过 Plugin Manager 初始化新 Profile。
-- 本地路径或包 spec 中含空白、控制字符或 Windows 命令元字符时会被拒绝。
-- 官方 Windows CLI 转发路径无法安全保留部分复合 semver 范围，因此这些范围暂不支持。
+Harness 启动失败时，DeepSeekGUI 会弹窗说明卡在哪一步，并给出诊断日志和事件记录文件的路径（事件记录在 `<DSH_HOME>/deepseekgui/events.md`）。如果刚装过插件，先怀疑那次安装：可以在 DSH 终端里用 `dsh plugin --profile <Profile> remove <包名>` 移除它，再重启 Harness。
 
 ## 相关指南
 

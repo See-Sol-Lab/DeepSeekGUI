@@ -1,6 +1,6 @@
 <div align="center">
 
-# <img src="./apps/deepseekgui/src/chrome/icon.png" width="38" alt="" align="absmiddle" /> DeepSeekGUI v1.1.1
+# <img src="./apps/deepseekgui/src/chrome/icon.png" width="38" alt="" align="absmiddle" /> DeepSeekGUI v1.1.2
 
 </div>
 
@@ -47,7 +47,7 @@ DeepSeekGUI 是基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek
 
 **非官方产品：** 基于 DeepSeek Harness 构建，由第三方独立开发，与 DeepSeek 无隶属关系，未获官方背书。
 
-**当前版本：[v1.1.1](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.1.1)。** 内嵌 Harness 升级到 0.1.5-rc.2，新增首次启动引导、就地更新、数据目录迁移和归档会话管理。工作台通过插件扩展官方 Harness 客户端，继续使用 Harness 的会话、工具与权限机制。
+**当前版本：[v1.1.2](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.1.2)。** 内嵌 Harness 升级到 0.1.7-rc.1；界面改为半透明玻璃风格，新增中英双语启动页和官网更新通道；助手要改动 Windows 系统、已安装程序或 DeepSeekGUI 自身代码时先弹出红色确认，项目的 Git 元数据默认只读。工作台通过插件扩展官方 Harness 客户端，继续使用 Harness 的会话、工具与权限机制。
 
 [产品自研workbench路线图](https://see-sol-lab.github.io/research/deepseekgui-single-task-signal.html)
 
@@ -55,7 +55,7 @@ DeepSeekGUI 是基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek
 
 | 平台 | 下载 | 要求 |
 | --- | --- | --- |
-| Windows | [下载安装包](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.1.1/DeepSeekGUI-Setup-1.1.1.exe) | Windows 10/11，x64 |
+| Windows | [下载安装包](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.1.2/DeepSeekGUI-Setup-1.1.2.exe) | Windows 10/11，x64 |
 | Linux | [下载 AppImage](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.1.1-linux.1/DeepSeekGUI-1.1.1-x86_64.AppImage) | x64，AppImage；实验性支持 |
 
 Windows 安装包安装到当前用户目录，自带运行时。Linux 使用独立的 AppImage 发行文件，下载与校验信息见 [v1.1.1-linux.1](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.1.1-linux.1) 发布页。
@@ -68,10 +68,10 @@ Windows 安装包安装到当前用户目录，自带运行时。Linux 使用独
 下载安装包后，在 PowerShell 中计算 SHA256：
 
 ```powershell
-Get-FileHash .\DeepSeekGUI-Setup-1.1.1.exe -Algorithm SHA256
+Get-FileHash .\DeepSeekGUI-Setup-1.1.2.exe -Algorithm SHA256
 ```
 
-与 [`SHA256SUMS.txt`](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.1.1/SHA256SUMS.txt) 核对后再安装。遇到问题看[故障排查指南](docs/user/deepseekgui/data-troubleshooting.zh.md#windows-smartscreen-blocks-the-installer)。
+与 [`SHA256SUMS.txt`](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.1.2/SHA256SUMS.txt) 核对后再安装。遇到问题看[故障排查指南](docs/user/deepseekgui/data-troubleshooting.zh.md#windows-smartscreen-blocks-the-installer)。
 
 </details>
 
@@ -144,15 +144,15 @@ Git、文件栏、模型设置、浏览器及归档页面截图来自 v1.1.1；�
 - **桌面通知** — 接收待审批、待回答及后台任务完成或失败的提示，点击跳转到对应会话。
 - **Profile 与插件** — 切换 Harness Home 和 Profile，管理兼容插件，查看配置与运行状态。
 - **更新与数据迁移** — 自动下载更新并校验 SHA256，由用户确认安装；可关闭自动下载。托管数据目录支持迁移，复制与校验完成后切换，旧副本经确认再清理。
-- **首次使用与诊断** — 首次启动引导完成模型配置和第一条会话；提供中英双语、系统托盘、本地诊断导出和助手辅助的 BUG 排查。
+- **首次使用与诊断** — 首次启动可用 DeepSeek 账号登录或添加 API Key，登录后的官方引导介绍额度与用法；提供中英双语、系统托盘、本地诊断导出和助手辅助的 BUG 排查。
 
-完整版本变更见 [v1.1.1 发布说明](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.1.1)。
+完整版本变更见 [v1.1.2 发布说明](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.1.2)。
 
 ## 文档
 
 | 指南 | |
 | --- | --- |
-| [快速开始](docs/user/deepseekgui/quickstart.zh.md) | 首次启动引导、模型配置、第一次会话 |
+| [快速开始](docs/user/deepseekgui/quickstart.zh.md) | 账号登录或 API Key、模型配置、第一次会话 |
 | [模型与视觉](docs/user/deepseekgui/models.zh.md) | API key、V4.1 Flash、自定义模型、图片输入 |
 | [工作区与会话](docs/user/deepseekgui/workspaces-sessions.zh.md) | 工作区、文件附件、归档、恢复与删除 |
 | [工作台视图与 Git 工具](docs/user/deepseekgui/workbench.zh.md) | 改动、Git 与 worktree、提交与 PR |

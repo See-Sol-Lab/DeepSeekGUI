@@ -1,5 +1,5 @@
 ---
-description: "面向以子进程方式启动 DeepSeek Harness 运行时、并通过 stdio JSON-RPC 驱动 agent 轮次的调用方的 TypeScript SDK 客户端：DeepSeekHarness 运行 API 与低层 HarnessClient。"
+description: "面向以子进程方式启动 DeepSeek Harness 运行时、并通过 stdio JSON-RPC 驱动 agent（智能体）轮次的调用方的 TypeScript SDK 客户端：DeepSeekHarness 运行 API 与低层 HarnessClient。"
 kind: "package-library"
 ---
 
@@ -71,12 +71,12 @@ console.log(result.finalResponse)
 
 | 文件 | 职责 |
 |---|---|
-| [`src/api.ts`](src/api.ts) | `DeepSeekHarness` + `HarnessSession`：自有运行、回收到 idle 的收集、`finalResponse` |
+| [`src/api.ts`](src/api.ts) | `DeepSeekHarness` + `HarnessSession`：自有运行、从回执到 idle 的收集、`finalResponse` |
 | [`src/client.ts`](src/client.ts) | `HarnessClient`：spawn、握手、请求、订阅扇出、类型化错误 |
 | [`src/dispose.ts`](src/dispose.ts) | 私有关闭阶梯：stdin EOF → SIGTERM → SIGKILL 直到真正退出 |
 | [`src/types.ts`](src/types.ts) | 启动与超时选项、通知结构、`RunResult` |
 | [`src/index.ts`](src/index.ts) | 消费方接口：两层客户端与面向调用方的类型 |
-| — | 不发布运行时不变式伴生入口；对端是独立运行时进程。 |
+| — | 不发布运行时不变式伴生入口；本客户端库运行在任何 harness 上下文之外（其对端是独立运行时进程）；运行时自身的包负责维护事件流关系。 |
 
 ### 自有活动流程
 
@@ -95,8 +95,8 @@ console.log(result.finalResponse)
 
 当客户端约定不够用时阅读以下页面。它们从协议格式进入服务插件与使用本客户端的应用。
 
-- [SDK 协议格式](../protocol/README.zh.md) — 本客户端所说的 JSON-RPC 方法与载荷结构。
-- [JSON-RPC 服务插件](../server/README.zh.md) — 服务本客户端的运行时插件。
+- [SDK 协议格式](../protocol/README.zh.md)——本客户端使用的 JSON-RPC 方法与载荷结构。
+- [JSON-RPC 服务插件](../server/README.zh.md)——服务本客户端的运行时插件。
 - [Python SDK](../../../python/README.zh.md) — 共享同一运行时对端与协议的设计孪生。
 - [SDK subagent 后端](../../subagent/subagent-dsh-sdk/README.zh.md) — harness 内部消费本客户端的例子。
 - [SDK 应用组合包](../../bundle/sdk-app/README.zh.md) — 本客户端启动的 `dsh --profile sdk` 运行时应用。
@@ -110,7 +110,7 @@ console.log(result.finalResponse)
 
 #### KV Cache 影响
 
-client 进程中无影响。子进程的 profile、patch、provider、model 与历史决定缓存复用。
+客户端进程中无影响。子进程的 profile、patch、提供方、模型与历史决定缓存复用。
 
 ## 已知限制与延期工作
 
@@ -121,7 +121,7 @@ client 进程中无影响。子进程的 profile、patch、provider、model 与�
 
 - **无捆绑运行时解析**——客户端解析同版本 `@deepseek-ai/dsh` 包（或调用方提供的 `dshBin`）；打包可执行文件的发现留在 Python 侧，直到出现 TypeScript 发行版消费方。
 - **无轮次中取消**——协议层没有提示词取消方法；放弃轮次意味着关闭运行时（见[协议限制](../protocol/README.zh.md#known-limitations-and-deferred-work)）。
-- **没有逐提示词结果**——低层 `prompt()` 只返回入队回执；高层 `run()` 负责从回收到 idle 的收集，放弃该过程意味着关闭运行时。
+- **没有逐提示词结果**——低层 `prompt()` 只返回入队回执；高层 `run()` 负责从回执到 idle 的收集，放弃该过程意味着关闭运行时。
 - **客户端→服务端通知与服务端→客户端请求**在协议两端都未实现；传输层为未来审批流程保留了承载能力。
 
 <a id="dev-note"></a>

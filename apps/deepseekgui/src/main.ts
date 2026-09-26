@@ -11,9 +11,9 @@
  * @module @see-sol-lab/deepseekgui/main
  */
 
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync, type FSWatcher, unlinkSync, watch, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, statSync, type FSWatcher, unlinkSync, watch, writeFileSync } from 'node:fs'
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
-import { generateKeyPairSync, randomUUID, sign } from 'node:crypto'
+import { generateKeyPairSync, sign } from 'node:crypto'
 import { once } from 'node:events'
 import { basename, delimiter, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -28,7 +28,7 @@ import {
   type DesktopControlCommand,
   type DesktopControlModel,
   type DiagnosticsView,
-  type PluginOperationView,
+  type SkillPickView,
 } from './control-model.ts'
 import { createControlDispatcher, type ControlDispatchDeps, type ControlStateHolder } from './control-dispatch.ts'
 import {
@@ -38,11 +38,10 @@ import {
   type LauncherStateStore,
   type LauncherStateV1,
 } from './launcher-state.ts'
-import { discoverProfiles, type DiscoveredProfile, type ProfileDiscoveryV1 } from './profile-discovery.ts'
+import { discoverProfiles, type ProfileDiscoveryV1 } from './profile-discovery.ts'
 import { atomicWriteFile } from './atomic-write.ts'
 import { seedManagedHome, seedProjectAgents } from './memory-seed.ts'
 import { appendDesktopEvent } from './desktop-events.ts'
-import { sameHarnessSelection } from './launcher-state.ts'
 import { describeLegacyCredentialsLayout, describeRuntimeVersionSkew, detectRuntimeVersionSkew, hasLegacyCredentialsLayout } from './runtime-skew.ts'
 import { exportHeadlessDiagnostics } from './diagnostics-export.ts'
 import { createMigrationControl } from './migration-control.ts'
@@ -52,36 +51,14 @@ import { configureBrowserPaneProxy, releaseCrashedPane } from './browser-pane-ru
 import { readSessionPressure } from './session-pressure.ts'
 import { startDirectoryPickerBridge } from './picker-bridge.ts'
 import { revealTargetOf } from './reveal-target.ts'
-import {
-  isFirstRunPending,
-  markFirstRunCompleted,
-  resolveFirstRunState,
-  type FirstRunState,
-} from './first-run.ts'
 import { offerSessionImport as offerImport } from './session-import-offer.ts'
-import { sessionDirsResult } from './session-import.ts'
 import { maskWindowsLiterals, redactSecrets } from './redact.ts'
 import { aboutDetailText, pnpmVersionFromExecpath } from './about.ts'
 import { computeRecoveryNotice, type RecoveryNotice } from './recovery-notice.ts'
 import { runDesktopCommand, type DesktopOperation } from './desktop-command.ts'
-import {
-  BUILTIN_PLUGIN_NAMES,
-  buildPluginInventory,
-  buildPluginOperationArgs,
-  appendPluginOutput as appendOutput,
-  isRelativeSpec,
-  parseManifestDependencies,
-  pluginConfirmText,
-  shouldShowHandoff,
-  validateLocalSpecTarget,
-  validatePluginRequest,
-  validatePluginTarget,
-  verifyPluginPostCheck,
-  type ManifestDependenciesResult,
-  type PluginAction,
-  type PluginOperationRequest,
-  type PluginSnapshot,
-} from './plugin-service.ts'
+import { parseManifestDependencies, type ManifestDependenciesResult } from './plugin-inventory.ts'
+import { createDesktopAccount, parseAccountFrame, type DesktopAccount } from './desktop-account.ts'
+import { DesktopPlatformView, PLATFORM_IPC, platformBounds } from './platform-view.ts'
 import {
   assembleDiagnosticsBundle,
   buildInfoLines,
@@ -91,14 +68,20 @@ import {
   writeDiagnosticsBundle,
 } from './diagnostics-service.ts'
 import {
+  LEGACY_SETTINGS_FILE,
+  PROFILE_PATCH_FILE,
   parseHarnessLocalePreference,
   parseHarnessThemePreference,
-  readHarnessSettingsText,
+  profileDir,
+  readHarnessPreferenceTexts,
 } from './harness-settings.ts'
 import {
   readInstallStampText,
   readUpdateFeed,
 } from './update-view.ts'
+import { FALLBACK_RELEASE_PAGE_URL, releasePageUrlFor } from './update-service.ts'
+import { createUsageControl, type UsageControl } from './usage-control.ts'
+import { fetchUsage } from './usage-fetch.ts'
 import {
   readVerifiedRecord,
   updateCacheDir,
@@ -135,29 +118,7 @@ import {
   parseActiveRunMarker,
   serializeActiveRunMarker,
 } from './crash-evidence.ts'
-import {
-  applyRestore,
-  bootHealthySettleAction,
-  describePluginFailure,
-  describeWriteFailure,
-  detectDrift,
-  detectRecoveryDrift,
-  hashesOfFacts,
-  isJournalPending,
-  parseRecoveryJournal,
-  planRestore,
-  readWhitelistFacts,
-  RECOVERY_DIRNAME,
-  RECOVERY_JOURNAL_FILENAME,
-  RECOVERY_SNAPSHOTS_DIRNAME,
-  recoveryPlan,
-  serializeRecoveryJournal,
-  writeWhitelistSnapshot,
-  type PluginFailureCause,
-  type RecoveryFacts,
-  type PluginRecoveryJournal,
-} from './plugin-recovery.ts'
-import { trayMenuTemplate, type TrayAction } from './tray.ts'
+import { placeTrayMenu, trayMenuItemAt, trayMenuTemplate, wireTrayMenu, type TrayAction, type TrayMenuItem } from './tray.ts'
 import {
   createUiStateStore,
   effectiveTheme,
@@ -175,7 +136,6 @@ import {
   createServiceLogWriter,
   portInUse,
   repoRoot,
-  resolveDshCommand,
   resolveDshLaunch,
   stopProcess,
   waitForServer,
@@ -219,22 +179,37 @@ const BROWSER_PANE_RATIO = 0.45
  */
 const BROWSER_PANE_MARKER_URL = `data:text/html;charset=utf-8,${encodeURIComponent(`<!doctype html>
 <html><head><meta charset="utf-8"><title>deepseekgui-browser-pane</title><style>
+  /* Glass empty state (2026-09-16): one frosted card, the same material as
+     the chrome panels. The ground must equal THEME_BACKGROUND exactly: the
+     transparent close-button view composites over the pane VIEW's background
+     colour, not this page, so any ground that differs from it shows as a
+     36px square under the ✕ (caught live with a gradient ground). */
+  :root { --ground: #f9f8f8;
+          --card: rgba(255, 255, 255, 0.72); --edge: rgba(38, 49, 72, 0.08); --highlight: rgba(255, 255, 255, 0.9);
+          --shadow: 0 12px 32px rgba(38, 49, 72, 0.08); --text: #1e232c; --dim: #6b7280; --dimmer: #9aa1ac; }
+  html[data-theme='dark'] { --ground: #0a0a0a;
+          --card: rgba(255, 255, 255, 0.05); --edge: rgba(255, 255, 255, 0.08); --highlight: rgba(255, 255, 255, 0.10);
+          --shadow: 0 12px 32px rgba(0, 0, 0, 0.40); --text: #e8e8ea; --dim: #9aa1ac; --dimmer: #7c828d; }
   body { margin: 0; display: flex; align-items: center; justify-content: center; min-height: 100vh;
-         background: #f9f8f8; color: #1e232c; font-family: system-ui, "Segoe UI", sans-serif; }
-  html[data-theme='dark'] body { background: #0a0a0a; color: #e8e8ea; }
-  .box { text-align: center; opacity: 0.75; }
+         background: var(--ground); color: var(--text); font-family: system-ui, "Segoe UI", sans-serif; }
+  .box { text-align: center; padding: 28px 32px; max-width: 360px; border-radius: 16px;
+         background: var(--card); border: 1px solid var(--edge);
+         box-shadow: inset 0 1px 0 var(--highlight), var(--shadow); }
   .globe { font-size: 40px; margin-bottom: 14px; }
   .title { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
-  .hint { font-size: 12.5px; color: #6b7280; line-height: 1.7; }
-  html[data-theme='dark'] .hint { color: #9aa1ac; }
-  .vision { font-size: 12px; color: #9aa1ac; line-height: 1.7; margin-top: 10px; }
-  html[data-theme='dark'] .vision { color: #7c828d; }
+  .hint { font-size: 12.5px; color: var(--dim); line-height: 1.7; }
+  .vision { font-size: 12px; color: var(--dimmer); line-height: 1.7; margin-top: 10px; }
 </style></head><body><div class="box">
   <div class="globe">🌐</div>
   <div class="title">浏览器面板 · Browser Panel</div>
   <div class="hint">让智能体打开网页，内容会显示在这里。<br>Ask the agent to open a page — it renders here.</div>
   <div class="vision">查看网页截图需要支持图片输入的模型。<br>Reading page screenshots requires a model that supports image input.</div>
 </div></body></html>`)}`
+
+/** 当前 URL 是否我们自己的空状态 marker 页（外部网页绝不会是带这个标题的 data URL）。 */
+function isBrowserPaneMarkerUrl(url: string): boolean {
+  return url.startsWith('data:text/html') && url.includes('deepseekgui-browser-pane')
+}
 
 /** pane 开合动画时长（ms）；逐帧 setBounds，Codex 式丝滑而非硬切。 */
 const BROWSER_PANE_ANIMATION_MS = 150
@@ -400,7 +375,7 @@ async function offerReclaimedHome(store: LauncherStateStore, pointerPath: string
  * theme 的教训原样适用（D29 收口）：壳不持有第二份语言偏好，只读官方的
  * `locale.preference` 并跟着它变。官方 web 侧未存偏好时按 navigator 语言
  * 探测（≈系统语言），所以 null 兜底到 app.getLocale() 时两边天然一致；
- * 一旦用户在设置里切了语言，settings.yaml 落盘、watcher 刷进来，壳的
+ * 一旦用户在设置里切了语言，profile 设置文档落盘、watcher 刷进来，壳的
  * 菜单/托盘/对话框全部跟切。
  */
 let harnessLocalePreference: 'zh' | 'en' | null = null
@@ -411,41 +386,44 @@ function desktopLocaleZh(): boolean {
   return app.getLocale().toLowerCase().startsWith('zh')
 }
 
-/** settings 文档监听器（切换 Home 时换目标；退出时释放）。 */
-let harnessThemeWatcher: FSWatcher | undefined
+/** 偏好文档监听器（切换 Home / profile 时换目标；退出时释放）。 */
+let harnessThemeWatchers: FSWatcher[] = []
 let harnessThemeGeneration = 0
 /** 文档写入的落定窗口：一次保存常触发多次事件，合并后再读。 */
 const HARNESS_THEME_SETTLE_MS = 120
 
 /**
- * 监听官方 settings 文档，偏好变了就刷新外观。
- * 用户在 Harness 的「外观」里切换主题、或任何进程改了那份文档，都会走到
+ * 监听官方偏好文档，偏好变了就刷新外观。
+ * 用户在 Harness 的「外观」「语言」里切换、或任何进程改了那份文档，都会走到
  * 这里——我们不持有偏好，只对它的变化做出反应。读失败不抛：外观降级成
  * system，功能不受影响。
+ *
+ * dsh 0.1.7 起偏好写在当前 profile 的 cordis.patch.yml，旧的 settings.yaml
+ * 只在导入之前有效（见 harness-settings.ts），所以两处目录都盯。
  *
  * 首个事件立刻响应，之后的才合并。官方那半边是本地 React 状态、点下去就
  * 变；我们要多走一趟文件事件，任何等待都会被看成"卡了一下"（实机肉眼
  * 可辨：官方面板先变、我们后变）。后沿合并仍然保留，一次保存触发多个
  * 事件时不会重复刷新。
  * @param dshHome - 生效的 DSH_HOME 绝对路径。
+ * @param profile - 当前 profile 名。
  */
-function watchHarnessTheme(dshHome: string): void {
+function watchHarnessTheme(dshHome: string, profile: string): void {
   const generation = ++harnessThemeGeneration
-  harnessThemeWatcher?.close()
-  harnessThemeWatcher = undefined
+  for (const watcher of harnessThemeWatchers) watcher.close()
+  harnessThemeWatchers = []
   let coolDown: NodeJS.Timeout | undefined
   const refresh = (): void => {
     if (generation !== harnessThemeGeneration) return
-    // 同一份文档同一个 watcher 管两个偏好：主题与语言（D29 收口）。
-    // 正文只读一次再解析两次：两次独立 readFileSync 除了多一倍 IO，还开了
-    // 一个窗口——两个偏好可能来自文件的两个版本（buildModel 早就为同一个
-    // 理由避开这种写法）。任一变化都 broadcast——model 带 locale，
-    // chrome 菜单/托盘/胶囊随之重渲染。
-    const text = readHarnessSettingsText(dshHome)
-    const nextLocale = parseHarnessLocalePreference(text)
+    // 同一次读取管两个偏好：主题与语言（D29 收口）。正文只读一次再解析两次：
+    // 两次独立 readFileSync 除了多一倍 IO，还开了一个窗口——两个偏好可能
+    // 来自文件的两个版本（buildModel 早就为同一个理由避开这种写法）。任一
+    // 变化都 broadcast——model 带 locale，chrome 菜单/托盘/胶囊随之重渲染。
+    const texts = readHarnessPreferenceTexts(dshHome, profile)
+    const nextLocale = parseHarnessLocalePreference(texts)
     const localeChanged = nextLocale !== harnessLocalePreference
     if (localeChanged) harnessLocalePreference = nextLocale
-    const next = parseHarnessThemePreference(text)
+    const next = parseHarnessThemePreference(texts)
     if (next !== themePreference) {
       applyTheme(next)
       broadcastModel()
@@ -453,48 +431,50 @@ function watchHarnessTheme(dshHome: string): void {
     }
     if (localeChanged) broadcastModel()
   }
-  try {
-    // 必须 watch **目录**再按文件名过滤，不能直接 watch 那个文件（P8-D16）。
-    //
-    // 官方 settings provider 落盘走的是 writeFileAtomic——写临时文件再 rename
-    // 顶替。而 fs.watch 盯住一个文件时，句柄跟着的是被顶替掉的那一个：第一次
-    // 原子写之后 watcher 就永远聋了。表现出来正好是住户报的那条：走我们菜单
-    // 切主题一切正常（setTheme 成功后本地显式调了 applyTheme），走官方「外观」
-    // 切换则只有官方面板变色，底图、顶栏、右上角原生按钮全留在旧主题。
-    //
-    // 目录事件不受 rename 影响——顶替动作本身就发生在这个目录里。
-    harnessThemeWatcher = watch(dshHome, (_event, filename) => {
-      // filename 在个别平台可能为 null；那种情况宁可多刷一次，也不漏掉。
-      if (filename !== null && basename(filename) !== 'settings.yaml') return
-      if (coolDown !== undefined) return
+  const onEvent = (file: string) => (_event: string, filename: string | null): void => {
+    // filename 在个别平台可能为 null；那种情况宁可多刷一次，也不漏掉。
+    if (filename !== null && basename(filename) !== file) return
+    if (coolDown !== undefined) return
+    refresh()
+    // 冷却窗口内的后续事件丢弃，窗口结束再补一次：既不重复刷新，
+    // 也不会漏掉"写入分两批落地"的情况。
+    coolDown = setTimeout(() => {
+      coolDown = undefined
       refresh()
-      // 冷却窗口内的后续事件丢弃，窗口结束再补一次：既不重复刷新，
-      // 也不会漏掉"写入分两批落地"的情况。
-      coolDown = setTimeout(() => {
-        coolDown = undefined
-        refresh()
-      }, HARNESS_THEME_SETTLE_MS)
-    })
-    harnessThemeWatcher.on('error', (error) => { console.error('[deepseekgui] settings watcher:', error) })
-  } catch {
-    // 连 DSH_HOME 目录本身都还不存在：保持默认，等下一次启动接上。
-    // 与「监听文件」时代的差别值得记一笔：那时 settings.yaml 尚未创建就会落到
-    // 这里，全新 Home 的首次写入要等下次启动才接得上；改成监听目录之后，文件
-    // 被创建的那一刻本身就是一个目录事件，这条降级只剩「目录不存在」一种情形。
+    }, HARNESS_THEME_SETTLE_MS)
+  }
+  // 必须 watch **目录**再按文件名过滤，不能直接 watch 那个文件（P8-D16）。
+  //
+  // 官方落盘走的是 writeFileAtomic——写临时文件再 rename 顶替。而 fs.watch
+  // 盯住一个文件时，句柄跟着的是被顶替掉的那一个：第一次原子写之后 watcher
+  // 就永远聋了。表现出来正好是住户报的那条：走官方「外观」切换只有官方面板
+  // 变色，底图、顶栏、右上角原生按钮全留在旧主题。
+  //
+  // 目录事件不受 rename 影响——顶替动作本身就发生在这个目录里。
+  for (const [dir, file] of [[profileDir(dshHome, profile), PROFILE_PATCH_FILE], [dshHome, LEGACY_SETTINGS_FILE]] as const) {
+    try {
+      const watcher = watch(dir, onEvent(file))
+      watcher.on('error', (error) => { console.error('[deepseekgui] settings watcher:', error) })
+      harnessThemeWatchers.push(watcher)
+    } catch {
+      // 目录还不存在（全新 Home 在 Harness 第一次起来之前）：保持现值，等
+      // followHarnessPreferences 的第二次调用（controller.start 之后）接上。
+    }
   }
 }
 
 /**
- * Read both shell preferences from one active Home and follow its settings file.
+ * Read both shell preferences from one active Home and follow its preference files.
  * The second call after first boot is required for a fresh Managed Home: its
- * directory does not exist when the pre-boot call first tries to watch it.
+ * directories do not exist when the pre-boot call first tries to watch them.
  * @param dshHome - Active DSH_HOME absolute path.
+ * @param profile - Active profile name.
  */
-function followHarnessPreferences(dshHome: string): void {
-  const text = readHarnessSettingsText(dshHome)
-  applyTheme(parseHarnessThemePreference(text))
-  harnessLocalePreference = parseHarnessLocalePreference(text)
-  watchHarnessTheme(dshHome)
+function followHarnessPreferences(dshHome: string, profile: string): void {
+  const texts = readHarnessPreferenceTexts(dshHome, profile)
+  applyTheme(parseHarnessThemePreference(texts))
+  harnessLocalePreference = parseHarnessLocalePreference(texts)
+  watchHarnessTheme(dshHome, profile)
 }
 
 /** 生效主题下的窗口背景页（最底层的海；compat view 透明后由它透上来）。 */
@@ -520,11 +500,15 @@ function loadWindowBackdrop(win: BrowserWindow, theme: 'dark' | 'light'): void {
 function loadWindowBootNotice(win: BrowserWindow, model: DesktopControlModel): void {
   const phase = model.status.phase
   const boot = phase === 'starting' || phase === 'switching' || phase === 'recovering' ? phase : ''
+  // 双语同屏（2026-09-15）：backdrop 不再按 locale 切换，只推相位与首启标志。
   void win.webContents.executeJavaScript(
     `document.documentElement.dataset.boot = ${JSON.stringify(boot)};`
-    + `document.documentElement.dataset.locale = ${JSON.stringify(model.locale)}`,
+    + `document.documentElement.dataset.first = ${JSON.stringify(firstBootLikely ? '1' : '')}`,
   ).catch(() => undefined)
 }
+
+/** 本次启动是否是真正的首启（home 尚未 bootstrap）；决定启动等待页的文案版本。 */
+let firstBootLikely = false
 
 /**
  * 依据官方主题偏好刷新整扇窗的外观。
@@ -560,7 +544,9 @@ function applyBrowserPaneTheme(): void {
   const view = browserPaneView
   if (view === undefined || view.webContents.isDestroyed()) return
   view.setBackgroundColor(THEME_BACKGROUND[effectiveThemeNow])
-  if (view.webContents.getURL() !== BROWSER_PANE_MARKER_URL) return
+  // 认 marker 页看标题串而非整条 data URL 逐字节相等：Chromium 回读的 URL
+  // 经过规范化，与我们拼的原串可能差几个转义，逐字节比较会静默失配。
+  if (!isBrowserPaneMarkerUrl(view.webContents.getURL())) return
   void view.webContents.executeJavaScript(
     `document.documentElement.dataset.theme = ${JSON.stringify(effectiveThemeNow)}`,
   ).catch(() => undefined)
@@ -645,15 +631,13 @@ async function proceedQuit(finish: () => void = () => { app.quit() }): Promise<v
       await terminalOperation.cancel()
       terminalOperation = undefined
     }
-    // 插件操作同样必须被等待（maintenance 槽的 child tree）。
-    if (pluginOperationHandle !== undefined) {
-      await pluginOperationHandle.cancel()
-      pluginOperationHandle = undefined
-    }
+    // 平台页的登录态要在退出前清干净（失败只记日志，不挡退出）。
+    await platformView?.dispose().catch((error: unknown) => { console.error('[deepseekgui] 平台页清理失败', error) })
     terminalWindow?.destroy()
     terminalWindow = undefined
     tray?.destroy()
     tray = undefined
+    usageControl?.dispose()
   } catch (error) {
     quitting = false
     if (!SMOKE) dialog.showErrorBox(desktopLocaleZh() ? '退出尚未完成' : 'Shutdown did not finish', redactSecrets(String(error)))
@@ -758,6 +742,10 @@ app.on('second-instance', () => {
 
 /** 主窗口（second-instance 聚焦目标）。 */
 let mainWindow: BrowserWindow | undefined
+/** 官方账号在主进程的一侧（Host 经控制桥推送；Harness 换代时清空）。 */
+let desktopAccount: DesktopAccount | undefined
+/** 内嵌平台页（充值、用量）：令牌只活在这个视图里。 */
+let platformView: DesktopPlatformView | undefined
 
 // ---- B5-P6 通知点击的一次性会话导航（Web 侧官方事件消费端推 notify 命令）----
 // pendingNavigate 由 notify 点击写入、随下一次 buildModel 进入控制模型；
@@ -771,6 +759,17 @@ let compatView: WebContentsView | undefined
 
 /** 系统托盘（常驻入口；菜单全部从唯一模型重建）。 */
 let tray: Tray | undefined
+/** 自绘托盘菜单窗口（仅 Windows；见 whenReady 里的 showTrayMenu）。 */
+let trayMenuWindow: BrowserWindow | undefined
+/** 最近一次由模型派生的托盘菜单：自绘菜单按需推送给窗口；原生菜单不用它。 */
+let trayItems: TrayMenuItem[] = []
+/**
+ * 原生 Tray 菜单不吃 CSS，玻璃化只能自绘：Windows 上用一块无边框透明小窗，
+ * Win11 由 DWM 的 acrylic 真模糊桌面（页面内 backdrop-filter 够不到窗外），
+ * Win10 退回实色面板；其他平台保留原生菜单（2026-09-16，住户定）。
+ */
+const CUSTOM_TRAY_MENU = process.platform === 'win32'
+const TRAY_MENU_WIDTH = 300
 
 /** 正在走真正的退出流程（X 不再隐藏窗口、跳过确认框）。 */
 let quitting = false
@@ -850,6 +849,8 @@ async function stopService(): Promise<void> {
   }
   service.child = undefined
   service.stopped = false
+  // 账号状态与平台会话属于那一代 Harness：停了就作废，等下一代重新推。
+  desktopAccount?.reset()
 }
 
 /** Client Loader settle 的超时（毫秒）：超时 = boot 失败（page-load）。 */
@@ -899,11 +900,11 @@ async function waitForClientSettle(view: WebContentsView, requireProductMarker: 
     if (state !== null) {
       if (state.mounted && (state.settled || !requireProductMarker)) return
       if (state.failed) {
-        throw new Error(`DeepSeekGUI client 插件激活失败：${state.reason ?? '未知原因'}`)
+        throw new Error(`DeepSeekGUI client plugin activation failed: ${state.reason ?? 'unknown reason'}`)
       }
     }
     if (Date.now() >= deadline) {
-      throw new Error(`Client Loader 在 ${CLIENT_SETTLE_TIMEOUT_MS}ms 内未 settle（官方 UI 挂载或 DeepSeekGUI client 插件未就绪）`)
+      throw new Error(`The Client Loader did not settle within ${CLIENT_SETTLE_TIMEOUT_MS}ms (official UI mount or DeepSeekGUI client plugins not ready)`)
     }
     await delay(CLIENT_SETTLE_POLL_MS)
   }
@@ -916,9 +917,9 @@ function createRuntimeAdapter(packaged: boolean, root: string): HarnessRuntimeAd
   return {
     async spawnProcess(selection) {
       if (await portInUse(DEFAULT_HOST, APP_PORT)) {
-        throw new Error(
-          `本机端口 ${APP_PORT} 已被其他程序占用（例如已运行的 pnpm dsh web）。请先关闭占用该端口的程序，再重新启动 DeepSeekGUI。`,
-        )
+        throw new Error(desktopLocaleZh()
+          ? `本机端口 ${APP_PORT} 已被其他程序占用（例如已运行的 pnpm dsh web）。请先关闭占用该端口的程序，再重新启动 DeepSeekGUI。`
+          : `Local port ${APP_PORT} is already in use by another program (for example a running pnpm dsh web). Close the program occupying the port, then start DeepSeekGUI again.`)
       }
       const launch = resolveDshLaunch({
         packaged,
@@ -928,6 +929,7 @@ function createRuntimeAdapter(packaged: boolean, root: string): HarnessRuntimeAd
         // Managed Home 下不把宿主的 DEEPSEEK_API_KEY 透传下去，官方设置里的
         // 密钥输入框才不会被锁成只读（P8-D23）。
         managedHome: selection.managedHome === true,
+        elevated: HOST_ELEVATED,
         // Compatibility View（B3-P2）：不带 Workbench 产品插件的官方界面。
         compatibility: workbenchViewMode === 'compatibility',
         // P9-4：测试实例的显式端口（生产 = DEFAULT_PORT，不传也一样）。
@@ -981,10 +983,32 @@ function createRuntimeAdapter(packaged: boolean, root: string): HarnessRuntimeAd
       spawned.once('exit', (code, signal) => {
         if (service.child !== spawned || service.stopped || !service.bootSettled) return
         const zh = desktopLocaleZh()
+        const exit = `code=${String(code)} signal=${String(signal)}`
+        // 运行中退出也记一条事件，状态里直接给出文件路径：用户不用自己找，
+        // Profile 里的 DS 也读得到（启动失败那条早就有，这里补齐）。
+        const eventFile = appendDesktopEvent(selection.dshHome, {
+          at: formatStampLocal(new Date().toISOString()),
+          title: zh ? 'Harness 运行中意外退出' : 'The harness exited unexpectedly',
+          sections: [
+            [
+              zh ? '发生了什么' : 'What happened',
+              zh
+                ? `DeepSeekGUI 的内部服务在运行中退出了（${exit}）。${diagnosticsHint()}`
+                : `DeepSeekGUI's internal service exited while running (${exit}). ${diagnosticsHint()}`,
+            ],
+            [
+              zh ? '如果用户问起' : 'If the user asks',
+              zh
+                ? '照上面的事实说明就好。服务的完整输出在诊断日志里；在状态区选「重启 Harness」可以重新启动它。'
+                : 'State the facts above. The service\'s full output is in the diagnostics log; choosing "Restart Harness" in the status area starts it again.',
+            ],
+          ],
+        }, zh)
+        const record = eventFile === null ? '' : (zh ? `\n完整记录：${eventFile}` : `\nFull record: ${eventFile}`)
         const message = redactSecrets(
           zh
-            ? `本地 DSH 服务已退出（code=${String(code)} signal=${String(signal)}）。${diagnosticsHint()}`
-            : `Local DSH service exited (code=${String(code)} signal=${String(signal)}). ${diagnosticsHint()}`,
+            ? `本地 DSH 服务已退出（${exit}）。${diagnosticsHint()}${record}`
+            : `Local DSH service exited (${exit}). ${diagnosticsHint()}${record}`,
         )
         void controller?.notifyUnexpectedExit(message)
       })
@@ -1077,33 +1101,6 @@ let uncleanExit: boolean | null = null
 /** 待显示的一次性恢复提示（用户确认或新失败后更新；null = 无提示）。 */
 let recoveryNotice: RecoveryNotice | null = null
 
-// ---- Plugin Manager 状态（main 单处持有；renderer 只读快照） ----
-
-/** Plugin Manager 的运行中操作视图；null = 空闲。 */
-let pluginOperationView: PluginOperationView | null = null
-
-/** 运行中插件操作的 broker 句柄（Cancel 与结算共用）。 */
-let pluginOperationHandle: DesktopOperation | undefined
-
-/** restart handoff 待确认（Restart Now / Later；绝不自动重启）。 */
-let pluginHandoffPending = false
-
-/** 插件写请求在确认/执行途中（同一目标一次只允许一个写操作）。 */
-let pluginRequestInFlight = false
-
-/** 是否有在途插件操作（broker 未结算，或 post-check 进行中）。 */
-const pluginOperationInFlight = (): boolean =>
-  pluginRequestInFlight || pluginOperationHandle !== undefined
-  || (pluginOperationView !== null && (pluginOperationView.step === 'running' || pluginOperationView.step === 'post-check'))
-
-// ---- Plugin Mutation Recovery 状态（journal 只存在 DeepSeekGUI userData） ----
-
-/** 当前 recovery journal 的内存镜像；null = 无未决事务。 */
-let recoveryJournal: PluginRecoveryJournal | null = null
-
-/** journal 读取失败时的一次性诊断（绝不因此挡任何功能）。 */
-let recoveryJournalError: string | null = null
-
 // ---- Update service 状态（main 单处持有；比较对象只能是 DeepSeekGUI app version） ----
 
 /**
@@ -1137,47 +1134,16 @@ function maskUserHome(path: string): string {
 /** 最近一次 diagnostics bundle 导出目录。 */
 let lastDiagnosticsExport: string | null = null
 
-/** 向运行中操作视图追加一段已脱敏输出（限长在 plugin-service，这里只搬状态）。 */
-function appendPluginOutput(text: string): void {
-  if (pluginOperationView === null || text === '') return
-  pluginOperationView = { ...pluginOperationView, output: appendOutput(pluginOperationView.output, text) }
-}
-
 /** 从磁盘事实现场组装一个 profile 的 inventory（绝不缓存、绝不漂移）。 */
 function readManifestDependencies(profileDir: string): ManifestDependenciesResult {
   try {
     return parseManifestDependencies(
       readFileSync(join(profileDir, 'package.json'), 'utf8'),
       profileDir,
+      desktopLocaleZh(),
     )
   } catch (error) {
     return { ok: false, error: redactSecrets(String(error instanceof Error ? error.message : error)) }
-  }
-}
-
-/** 组装 Plugin Manager 面板视图：inventory 全量现场组装 + 操作 + handoff + recovery。 */
-function buildPluginManagerView(): DesktopControlModel['pluginManager'] {
-  const discovery = controlState.discovery
-  return {
-    profiles: discovery === null
-      ? []
-      : discovery.profiles.map(profile => ({
-        name: profile.name,
-        inventory: buildPluginInventory(profile, readManifestDependencies(profile.dir)),
-      })),
-    error: controlState.discoveryError,
-    operation: pluginOperationView,
-    handoffPending: pluginHandoffPending,
-    recovery: recoveryJournal === null
-      ? null
-      : {
-        state: recoveryJournal.state,
-        profile: recoveryJournal.profile,
-        failure: recoveryJournal.failure,
-        autoRecoveredOnce: recoveryJournal.autoRecoveredOnce,
-      },
-    // B3-13：随包内置插件的真实来源（launcher overlay 层），只读投影。
-    builtin: BUILTIN_PLUGIN_NAMES,
   }
 }
 
@@ -1191,6 +1157,17 @@ function buildPluginManagerView(): DesktopControlModel['pluginManager'] {
  * AI 的视野与人类的面板开合完全解耦。
  */
 let browserPaneView: WebContentsView | undefined
+/**
+ * 内置浏览器 pane 的 partition（内存态、不落盘，B2 决策）。「用量与余额」
+ * 的登录态已迁去独立的持久 partition（R7），与这块 pane 无关。
+ */
+const BROWSER_PANE_PARTITION = 'deepseekgui-browser-pane'
+/** 「用量与余额」执行面（B7-P3）；app ready 后建立，orderly quit 时释放。 */
+let usageControl: UsageControl | undefined
+/** 两次用量刷新之间的最短间隔：连点🔄只算一次，打开页面反复切换也不会连发。 */
+const USAGE_REFRESH_COOLDOWN_MS = 5_000
+/** 冷启动刷新的延迟：让位给 Harness 就绪与更新检查，不抢启动时段。 */
+const USAGE_STARTUP_REFRESH_DELAY_MS = 12_000
 let browserPaneSlide = 0
 let browserPaneAnimation: NodeJS.Timeout | undefined
 
@@ -1219,15 +1196,21 @@ let browserPaneReady: Promise<void> | undefined
 /** 关闭钮点击的哨兵 URL：永不真实导航，will-navigate 拦截即收起。 */
 const BROWSER_PANE_CLOSE_SENTINEL = 'https://deepseekgui-browser-pane-close.invalid/'
 
-/** 关闭钮页面：透明底 + 半透明圆钮 ✕，hover 加深。 */
+/**
+ * 关闭钮页面：透明底 + 半透明玻璃圆钮 ✕（顶部高光 + 散影，hover 提亮并
+ * 微放大）。它浮在任意外部网页之上，所以不跟主题：中性深玻璃两种底图都读得出。
+ */
 const BROWSER_PANE_CLOSE_URL = `data:text/html;charset=utf-8,${encodeURIComponent(`<!doctype html>
 <html><head><meta charset="utf-8"><style>
   html, body { margin: 0; background: transparent; overflow: hidden; }
   a { display: flex; align-items: center; justify-content: center;
       width: 28px; height: 28px; margin: 4px; border-radius: 50%;
-      background: rgba(20, 24, 34, 0.35); color: #ffffff;
-      font: 600 13px/1 system-ui, sans-serif; text-decoration: none; }
-  a:hover { background: rgba(20, 24, 34, 0.6); }
+      background: rgba(20, 24, 34, 0.42); color: #ffffff;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 0 0 0.5px rgba(255, 255, 255, 0.18), 0 4px 12px rgba(0, 0, 0, 0.22);
+      font: 600 13px/1 system-ui, sans-serif; text-decoration: none;
+      transition: background-color 150ms ease, transform 150ms ease; }
+  a:hover { background: rgba(20, 24, 34, 0.62); transform: scale(1.06); }
+  a:active { transform: scale(0.96); }
 </style></head><body><a href="${BROWSER_PANE_CLOSE_SENTINEL}" title="Close">✕</a></body></html>`)}`
 
 /** 关闭钮的可点区域（含 4px 内边距的正方形）。 */
@@ -1276,7 +1259,7 @@ function ensureBrowserPane(win: BrowserWindow): WebContentsView {
     webPreferences: {
       // 无 preload、无 node：这块 view 只渲染外部网页，与官方 view 同一
       // 安全姿势;操作全部经 CDP 从插件侧注入。
-      partition: 'deepseekgui-browser-pane',
+      partition: BROWSER_PANE_PARTITION,
       sandbox: true,
     },
   })
@@ -1298,6 +1281,10 @@ function ensureBrowserPane(win: BrowserWindow): WebContentsView {
   // 插件那头按 URL 认领 CDP target 就会扑空。把导航 promise 留给桥去 await。
   browserPaneReady = view.webContents.loadURL(BROWSER_PANE_MARKER_URL).then(() => undefined, () => undefined)
   browserPaneView = view
+  // 空状态页的明暗要在首帧后推一次：applyBrowserPaneTheme 只在主题变化时
+  // 跑，新建的 pane 从没拿到过 data-theme，深色主题下打开就是一页浅色
+  // （住户 2026-09-16 实机抓获）。
+  void browserPaneReady.then(() => { if (browserPaneView === view) applyBrowserPaneTheme() })
   // A crashed renderer can retain a live WebContents. Release its target after
   // event dispatch; the next browser operation creates a fresh pane.
   releaseCrashedPane(view.webContents, () => {
@@ -1339,6 +1326,10 @@ function ensureBrowserPane(win: BrowserWindow): WebContentsView {
   })
   void closeView.webContents.loadURL(BROWSER_PANE_CLOSE_URL)
   win.contentView.addChildView(closeView)
+  // 透明视图叠在 pane 视图上时，透出来的是 pane **视图的底色**（THEME_BACKGROUND）
+  // 而非 pane 页面的内容：空状态页的底必须与之逐字相等，否则叉下露一块方形
+  // （住户 2026-09-16 实机抓获）。外部网页上这块方形一直存在，多数页面是白底看不出。
+  closeView.setBackgroundColor('#00000000')
   browserPaneCloseView = closeView
   layoutViews(win)
   return view
@@ -1684,10 +1675,25 @@ const offerSessionImport = (targetHome: string): Promise<void> => offerImport(ta
 // `notify show` while no toast ever appeared.
 if (process.platform === 'win32') app.setAppUserModelId('io.github.see-sol-lab.deepseekgui')
 
+/**
+ * 桌面是否以管理员身份运行：Windows 上看 `whoami /groups` 里有没有 High
+ * （S-1-16-12288）或 System（S-1-16-16384）完整性级别——UAC 过滤后的普通
+ * 管理员账户是 Medium，只有「以管理员身份运行」才会是 High。
+ * @returns 持有管理员令牌时为 true。
+ */
+function detectElevated(): boolean {
+  if (process.platform !== 'win32') return typeof process.getuid === 'function' && process.getuid() === 0
+  const result = spawnSync('whoami', ['/groups'], { encoding: 'utf8', windowsHide: true, timeout: 5000 })
+  return result.status === 0 && /S-1-16-(12288|16384)\b/u.test(result.stdout)
+}
+
+/** 启动时测一次：令牌在进程生命周期里不会变。 */
+const HOST_ELEVATED = detectElevated()
+
 void app.whenReady().then(async () => {
   // 配置自检要早：网关地址配错时用户仍能本地导出反馈，但得先知道为什么
   // 提交按钮不见了。
-  const gatewayWarning = feedbackGatewayConfigWarning(process.env)
+  const gatewayWarning = feedbackGatewayConfigWarning(process.env, desktopLocaleZh())
   if (gatewayWarning !== null) console.error(`[deepseekgui] ${gatewayWarning}`)
   // headless：--export-diagnostics 分支——绝不启动 Harness/Profile/plugin/
   // window/tray/3080/update，只导本地诊断包后退出。
@@ -1699,6 +1705,32 @@ void app.whenReady().then(async () => {
   if (!isPrimaryInstance) return
   // 旧的英文横铺 application menu 彻底移除；Desktop Chrome 是唯一控制面。
   Menu.setApplicationMenu(null)
+  // 安全加固（2026-09-24，住户定）：以管理员身份运行时 Windows 不再替我们挡住
+  // 对系统文件和已装程序的改动，所以先用红色警告说清楚；继续运行时完全访问
+  // 禁用、越界一律红色审批（判断在 Harness 的 protected zones，见 safetyEnv）。
+  if (HOST_ELEVATED && !SMOKE) {
+    const zh = desktopLocaleZh()
+    const choice = await dialog.showMessageBox({
+      type: 'error',
+      title: zh ? 'DeepSeekGUI 正以管理员身份运行' : 'DeepSeekGUI is running as administrator',
+      message: zh ? 'DeepSeekGUI 正以管理员身份运行' : 'DeepSeekGUI is running as administrator',
+      detail: zh
+        ? '以管理员身份运行时，Windows 不会阻止助手改动系统文件和已安装的程序。\n\n'
+          + '继续运行的话：完全权限会被禁用；助手要改动 Windows 系统文件、已安装程序或 DeepSeekGUI 本身时，会先暂停并弹出红色警告，由你决定。\n\n'
+          + '建议退出，再用普通方式（双击图标）打开 DeepSeekGUI。'
+        : 'While running as administrator, Windows no longer stops the assistant from changing system files and installed programs.\n\n'
+          + 'If you continue: full access is disabled, and before the assistant changes Windows system files, installed programs, or DeepSeekGUI itself it pauses behind a red warning for your decision.\n\n'
+          + 'Quitting and reopening DeepSeekGUI normally (double-click its icon) is recommended.',
+      buttons: [zh ? '退出' : 'Quit', zh ? '我了解风险，继续' : 'I understand, continue'],
+      defaultId: 0,
+      cancelId: 0,
+      noLink: true,
+    })
+    if (choice.response === 0) {
+      app.quit()
+      return
+    }
+  }
   const packaged = app.isPackaged
   // 桥只在打包态起：picker overlay 也只在打包态挂载（理由见
   // resolvePickerPluginDir 的注释），开发态用官方 picker，没有桥要搭。
@@ -1850,7 +1882,11 @@ void app.whenReady().then(async () => {
   // provider 默认 watch 该文档、外部编辑会热发布，两边读的是同一份事实）。
   // 必须放在 launcher 可读之后：DSH_HOME 由 active home 决定。
   const themeHome = resolveHarnessHome(launcher.read().active.home, userDataDir)
-  followHarnessPreferences(themeHome)
+  // R9（2026-09-14 人工验收）：启动等待页的「首次启动要安装依赖」只对真正的
+  // 首启成立——判据是这次启动前 home 里还没有 profiles 目录（bootstrap 尚未
+  // 发生过）。之后的每次启动都走中性的「正在启动 Harness」文案。
+  firstBootLikely = !existsSync(join(themeHome, 'profiles'))
+  followHarnessPreferences(themeHome, launcher.read().active.profile)
 
   const discover = (dshHome: string): Promise<ProfileDiscoveryV1> => discoverProfiles({
     packaged,
@@ -1931,13 +1967,6 @@ void app.whenReady().then(async () => {
     }
   }
 
-  /**
-   * B6-P5：首启引导的持久事实。undefined = 尚未判定；判定一次后缓存，
-   * 用户完成或跳过时更新。判定输入全部来自 main 已有来源（launcher
-   * selection + Managed Home 的会话目录），进度本身不落盘。
-   */
-  let firstRunState: FirstRunState | null | undefined
-
   const migration = createMigrationControl({
     home: () => {
       const state = launcher.read()
@@ -2002,10 +2031,19 @@ void app.whenReady().then(async () => {
       recoveryNotice: recoveryNotice === null
         ? null
         : { profile: recoveryNotice.profile, kind: recoveryNotice.kind },
-      pluginManager: buildPluginManagerView(),
       // M7：channel 在构建视图时现算——绝不把"未点过检查"显示成
       // "未配置"（Build Info 里已显示真实 feed URL，两处必须一致）。
-      update: { ...updates.view(), channel: feedUrl },
+      // B7-P2：发布页入口同样现算——只有内置公开通道有已知的发布页规则。
+      update: {
+        ...updates.view(),
+        channel: feedUrl,
+        // 回落命中时「新功能」指向官网下载页——GitHub 的发布页对该用户多半不可达。
+        releasePageUrl: updates.view().viaFallback
+          ? FALLBACK_RELEASE_PAGE_URL
+          : releasePageUrlFor(feedUrl, updates.view().latestVersion),
+      },
+      usage: usage.view(),
+      skillPick,
       diagnostics: buildDiagnosticsView({ state, feedUrl }),
       // Feedback：模型里给的是快照（renderer 只读）。
       feedback: { ...feedbackView },
@@ -2017,19 +2055,6 @@ void app.whenReady().then(async () => {
       browserPane: {
         present: browserPaneView !== undefined && !browserPaneView.webContents.isDestroyed(),
         open: browserPaneOpen,
-      },
-      // B6-P5：首启引导只在"全新 Managed Home"判定一次；判定结果与完成
-      // 事实都在 first-run.json 里（单一 owner）。当前步骤由客户端推导。
-      firstRun: {
-        pending: isFirstRunPending(firstRunState ??= ((): ReturnType<typeof resolveFirstRunState> => {
-          const sweep = sessionDirsResult(activeHome)
-          return resolveFirstRunState({
-            userDataDir,
-            homeKind: state.active.home.kind,
-            sessionCount: sweep.dirs.length,
-            sessionsReadable: sweep.readable,
-          })
-        })()),
       },
       dataHome: migration.view(),
       // 当前界面形态（B3-P2）：tray 据此显示对向切换入口。
@@ -2062,6 +2087,12 @@ void app.whenReady().then(async () => {
       model,
       locale: model.locale,
     })
+    trayItems = items
+    if (CUSTOM_TRAY_MENU) {
+      // 自绘菜单只在打开时渲染；已打开则就地刷新（状态行/更新提示会变）。
+      pushTrayMenu()
+      return
+    }
     const toElectron = (item: (typeof items)[number]): Electron.MenuItemConstructorOptions => ({
       label: item.label ?? '',
       enabled: item.enabled ?? true,
@@ -2108,13 +2139,96 @@ void app.whenReady().then(async () => {
         chromeView?.webContents.send('deepseekgui:open-update-panel')
         await runCommand({ type: 'check-for-updates' })
         return
-      case 'about':
-        await runCommand({ type: 'show-about' })
-        return
       case 'quit':
         await requestQuit()
         return
     }
+  }
+
+  // ---- 自绘托盘菜单（Windows）----
+  // 流程：右键 → 推行给窗口 → 页面量出高度回传 → main 按光标与工作区定位并
+  // 显示。失焦即收。动作从不跨 IPC：页面只回传位置 id，这里反查模板的 action。
+  const trayMaterial = (): 'acrylic' | 'solid' =>
+    Number(release().split('.')[2] ?? 0) >= 22000 ? 'acrylic' : 'solid'
+  const ensureTrayMenuWindow = (): BrowserWindow => {
+    if (trayMenuWindow !== undefined && !trayMenuWindow.isDestroyed()) return trayMenuWindow
+    const win = new BrowserWindow({
+      width: TRAY_MENU_WIDTH,
+      height: 40,
+      show: false,
+      frame: false,
+      // 刻意不开 transparent：分层窗口拿不到 DWM 圆角，acrylic 也会铺满整个
+      // 矩形（实机：四个直角）。材质窗口自己就是透明底，页面背景透明即可。
+      resizable: false,
+      movable: false,
+      minimizable: false,
+      maximizable: false,
+      fullscreenable: false,
+      skipTaskbar: true,
+      alwaysOnTop: true,
+      roundedCorners: true,
+      ...trayMaterial() === 'acrylic'
+        ? { backgroundMaterial: 'acrylic' as const, backgroundColor: '#00000000' }
+        : { backgroundColor: effectiveThemeNow === 'dark' ? '#191919' : '#ffffff' },
+      webPreferences: {
+        preload: join(MODULE_DIR, 'chrome', 'tray-preload.cjs'),
+        sandbox: true,
+        contextIsolation: true,
+        nodeIntegration: false,
+      },
+    })
+    win.setMenuBarVisibility(false)
+    win.setAlwaysOnTop(true, 'pop-up-menu')
+    win.on('blur', () => {
+      trayMenuOpening = false
+      if (!win.isDestroyed()) win.hide()
+    })
+    win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+    win.on('closed', () => { if (trayMenuWindow === win) trayMenuWindow = undefined })
+    void win.webContents.loadFile(join(MODULE_DIR, '..', 'src', 'chrome', 'tray-menu.html'))
+    trayMenuWindow = win
+    return win
+  }
+  // 只有两种时刻允许推行并显示：用户刚右键（opening）或菜单本来就开着
+  // （就地刷新）。否则任何模型广播（切主题、状态变化）都会把菜单推到主
+  // 界面上——实机抓获（2026-09-16，切换主题时托盘菜单冒到主窗口里）。
+  let trayMenuOpening = false
+  const pushTrayMenu = (): void => {
+    const win = trayMenuWindow
+    if (win === undefined || win.isDestroyed() || win.webContents.isLoading()) return
+    if (!trayMenuOpening && !win.isVisible()) return
+    win.webContents.send('deepseekgui-tray:menu', {
+      items: wireTrayMenu(trayItems),
+      theme: effectiveThemeNow,
+      material: trayMaterial(),
+    })
+  }
+  const showTrayMenu = (): void => {
+    const win = ensureTrayMenuWindow()
+    trayMenuOpening = true
+    if (win.webContents.isLoading()) {
+      win.webContents.once('did-finish-load', () => { pushTrayMenu() })
+      return
+    }
+    pushTrayMenu()
+  }
+  const placeAndShowTrayMenu = (height: number): void => {
+    const win = trayMenuWindow
+    if (win === undefined || win.isDestroyed()) return
+    if (!trayMenuOpening && !win.isVisible()) return
+    trayMenuOpening = false
+    const cursor = screen.getCursorScreenPoint()
+    const area = screen.getDisplayNearestPoint(cursor).workArea
+    const size = { width: TRAY_MENU_WIDTH, height: Math.max(40, Math.min(height, area.height)) }
+    let pos = placeTrayMenu(cursor, area, size)
+    if (win.isVisible()) {
+      // 已打开（子菜单展开/收起）：底边不动，向上生长，别让菜单跟着光标跳。
+      const bounds = win.getBounds()
+      pos = { x: bounds.x, y: Math.max(area.y, bounds.y + bounds.height - size.height) }
+    }
+    win.setBounds({ ...pos, ...size })
+    if (!win.isVisible()) win.show()
+    win.focus()
   }
 
   /**
@@ -2468,7 +2582,7 @@ void app.whenReady().then(async () => {
         if (result.error !== undefined) {
           // 启动后的真实失败：明确报告（terminal UI 显示），绝不 fallback。
           if (!win.isDestroyed()) {
-            win.webContents.send('deepseekgui-terminal:error', redactSecrets(`终端启动失败: ${result.error}`))
+            win.webContents.send('deepseekgui-terminal:error', redactSecrets(desktopLocaleZh() ? `终端启动失败: ${result.error}` : `The terminal failed to start: ${result.error}`))
           }
         } else if (!win.isDestroyed() && !terminalExitReported) {
           win.webContents.send('deepseekgui-terminal:exit', result.exitCode)
@@ -2480,1029 +2594,6 @@ void app.whenReady().then(async () => {
     // The renderer can publish its size through IPC while loadFile is awaited.
     const initialSize = terminalSize as { cols: number; rows: number } | undefined
     if (initialSize !== undefined) operation.write(`${JSON.stringify({ type: 'resize', ...initialSize })}\n`)
-  }
-
-  // ---- Plugin Manager 执行面（只走官方 dsh plugin CLI + broker maintenance 槽） ----
-
-  /** 从 discovery 找 target 条目（含 bundles/staticStatus 的展示事实）。 */
-  const findDiscoveredProfile = (name: string): DiscoveredProfile | null => {
-    const discovery = controlState.discovery
-    if (discovery === null) return null
-    return discovery.profiles.find(item => item.name === name) ?? null
-  }
-
-  /** 读取当前磁盘事实的 target 快照（post-check 的 before/after 同源）。 */
-  const readPluginSnapshot = (profile: DiscoveredProfile): PluginSnapshot => {
-    const manifest = readManifestDependencies(profile.dir)
-    return {
-      dependencies: manifest.ok ? manifest.dependencies : {},
-      bundles: profile.bundles,
-      staticStatus: profile.staticStatus,
-    }
-  }
-
-  // ---- Plugin Mutation Recovery 执行面（P6-F：journal 只在 userData） ----
-
-  const recoveryDir = (): string => join(userDataDir, RECOVERY_DIRNAME)
-  const recoveryJournalPath = (): string => join(userDataDir, RECOVERY_DIRNAME, RECOVERY_JOURNAL_FILENAME)
-  const recoverySnapshotDir = (txId: string): string => join(userDataDir, RECOVERY_DIRNAME, RECOVERY_SNAPSHOTS_DIRNAME, txId)
-
-  /**
-   * 把内存 journal 落盘，并如实报告成没成。
-   *
-   * 两处改动都要紧：一是原子替换（同目录临时文件 → rename），进程死在写
-   * 途中只会留下旧文件或完整新文件，绝不会留半截 JSON——而半截 JSON 会
-   * 在下次启动时被当成"没有待恢复事务"，恰好在最需要恢复的时候把恢复
-   * 能力清零。二是返回写入结果：原先失败只记一行日志就继续，于是"没有
-   * 恢复记录"和"有恢复记录"在调用方眼里长得一模一样。
-   * @returns 是否成功落盘（journal 为空视为成功：没有东西需要写）。
-   */
-  const writeRecoveryJournal = (): boolean => {
-    if (recoveryJournal === null) return true
-    try {
-      mkdirSync(recoveryDir(), { recursive: true })
-      atomicWriteFile(recoveryJournalPath(), serializeRecoveryJournal(recoveryJournal), message => new Error(message))
-      recoveryJournalError = null
-      return true
-    } catch (error) {
-      recoveryJournalError = redactSecrets(String(error instanceof Error ? error.message : error))
-      console.error(`[deepseekgui] recovery journal 写入失败: ${recoveryJournalError}`)
-      return false
-    }
-  }
-
-  /**
-   * 恢复写入：单文件原子替换（同目录临时文件 → rename）。进程若恰好在
-   * 覆盖 package.json 的那一刻死掉，磁盘上要么是旧版本、要么是完整的
-   * 恢复版本，不会留下半截文件——而这几个文件正是 Harness 下次启动要读的。
-   * 只保证单文件原子，不做跨文件事务：三个文件的整体一致性由 journal 与
-   * applyRestore 的"任一快照不可用就一个字节都不写"共同保证。
-   */
-  const atomicRestoreWrite = (path: string, content: Buffer): void => {
-    atomicWriteFile(path, content, message => new Error(message))
-  }
-
-  /** 启动时读取 journal（缺失 = 无未决事务；损坏 = 明确记录，绝不猜测）。 */
-  const loadRecoveryJournal = (): void => {
-    try {
-      recoveryJournal = parseRecoveryJournal(readFileSync(recoveryJournalPath(), 'utf8'))
-      recoveryJournalError = null
-    } catch (error) {
-      const cause = error as NodeJS.ErrnoException
-      if (cause.code === 'ENOENT') {
-        recoveryJournal = null
-        recoveryJournalError = null
-        return
-      }
-      // 损坏的 journal 无法证明归属：按无未决事务处理并明确记录。
-      recoveryJournal = null
-      recoveryJournalError = redactSecrets(String(error instanceof Error ? error.message : error))
-      console.error(`[deepseekgui] recovery journal 损坏，按无未决事务处理: ${recoveryJournalError}`)
-    }
-  }
-
-  /** 删除一个事务的 journal 与快照（事务结算/放弃/verified 的清理路径）。 */
-  const clearRecoveryTransaction = (): void => {
-    const journal = recoveryJournal
-    recoveryJournal = null
-    if (journal === null) return
-    try {
-      unlinkSync(recoveryJournalPath())
-    } catch {
-      // journal 文件不存在：快照清理照常。
-    }
-    try {
-      rmSync(recoverySnapshotDir(journal.txId), { recursive: true, force: true })
-    } catch {
-      // 快照清理失败只记诊断：孤儿快照是 dead data，下次可手动清理。
-    }
-  }
-
-  /**
-   * 失败/取消后保留事务，并如实写下这次失败是谁造成的。
-   *
-   * 原先这三条路径一律清事务，理由是"没通过验证的操作不进入恢复边界"。
-   * 听起来自洽，代价却是：pnpm 取消时可能已经改了一半磁盘，而唯一能修好
-   * 它的快照，恰好在这一刻被我们自己删了——用户重启发现 Harness 起不来，
-   * 界面上连"恢复"按钮都没有，因为记录已经没了。
-   *
-   * failure 这段话有两个读者：出事的用户，和 Profile 里那个要向用户解释
-   * 的 AI。所以它必须说清归因，别让谁背不该背的锅。
-   * @param cause - 失败归因。
-   */
-  const keepRecoveryForManualHandling = (cause: PluginFailureCause): void => {
-    const journal = recoveryJournal
-    if (journal === null) return
-    const zh = desktopLocaleZh()
-    const reason = describePluginFailure(cause, zh)
-    const at = new Date().toISOString()
-    // 事件文件先写：failure 摘要要带上它的路径，用户在设置页看到路径才知道
-    // 去哪查，也才好让 Profile 里的 DS 去读。
-    const eventFile = appendDesktopEvent(journal.homePath, {
-      at: formatStampLocal(at),
-      title: zh ? '插件操作失败' : 'Plugin operation failed',
-      sections: [
-        [
-          zh ? '发生了什么' : 'What happened',
-          zh
-            ? `在 Profile ${journal.profile} 上执行 ${journal.operation}${journal.spec === null ? '' : `（${redactSecrets(journal.spec)}）`} 没有成功。`
-            : `A ${journal.operation}${journal.spec === null ? '' : ` of ${redactSecrets(journal.spec)}`} on profile ${journal.profile} did not succeed.`,
-        ],
-        [zh ? '原因' : 'Cause', reason],
-        [
-          zh ? '如果用户问起' : 'If the user asks',
-          zh
-            ? '照上面的事实说明就好。这类失败不是 DeepSeekGUI 的故障，也不是助手的错，不需要道歉或替谁承担；'
-              + '恢复记录和快照都还在，可以告诉用户在 DeepSeekGUI 的设置页里恢复到这次操作之前的状态。'
-            : 'State the facts above as they are. This is not a DeepSeekGUI fault, and not something the assistant did wrong; there is nothing to apologise for. '
-              + 'The recovery record and snapshot are intact, so the user can restore the pre-operation state from the DeepSeekGUI settings page.',
-        ],
-      ],
-    }, zh)
-    recoveryJournal = {
-      ...journal,
-      state: 'recovery-needed',
-      failure: eventFile === null ? reason : `${reason}${zh ? `完整记录：${eventFile}` : ` Full record: ${eventFile}`}`,
-      updatedAt: at,
-    }
-    writeRecoveryJournal()
-  }
-
-  /**
-   * 恢复记录连续写不进去的次数。前两次一律拦住，第三次才把决定权交给
-   * 用户——正常人看到"磁盘满了"会先去清磁盘，两次之后还坚持要装的，是
-   * 自己知道在做什么。把话说在前头，责任才谈得上是他自己选的。
-   */
-  let recoveryJournalWriteFailures = 0
-
-  /**
-   * 恢复记录写不进去时的处置：说清楚为什么，前两次拒绝，第三次让用户选。
-   * @param rawError - 原始写入错误消息（用于翻译成人话）。
-   * @returns 是否在没有恢复保护的情况下继续安装。
-   */
-  const confirmWithoutRecoveryProtection = async (rawError: string | null): Promise<boolean> => {
-    const zh = desktopLocaleZh()
-    recoveryJournalWriteFailures += 1
-    const cause = describeWriteFailure(rawError ?? '', zh)
-    const reason = cause ?? (zh ? '写入失败' : 'the write failed')
-    const where = zh ? `位置：${recoveryDir()}` : `Location: ${recoveryDir()}`
-    if (recoveryJournalWriteFailures < 3) {
-      await dialog.showMessageBox({
-        type: 'error',
-        noLink: true,
-        buttons: [zh ? '知道了' : 'OK'],
-        message: zh ? '无法建立恢复记录，安装已取消' : 'Could not create the recovery record; the install was cancelled',
-        detail: [
-          zh ? `原因：${reason}。` : `Cause: ${reason}.`,
-          where,
-          '',
-          zh
-            ? '恢复记录是插件装坏时退回上一个状态的唯一依据。它写不进去就先不动 Profile——处理好上面的问题再试一次。'
-            : 'The recovery record is the only way back if a plugin install goes wrong. Until it can be written, the profile is left untouched — fix the problem above and try again.',
-        ].join('\n'),
-      }).catch(() => undefined)
-      return false
-    }
-    const choice = await dialog.showMessageBox({
-      type: 'warning',
-      noLink: true,
-      buttons: [
-        zh ? '仍要安装（没有恢复保护）' : 'Install anyway (no recovery protection)',
-        zh ? '取消' : 'Cancel',
-      ],
-      defaultId: 1,
-      cancelId: 1,
-      message: zh ? '仍然无法建立恢复记录' : 'The recovery record still cannot be written',
-      detail: [
-        zh ? `原因：${reason}。` : `Cause: ${reason}.`,
-        where,
-        '',
-        zh
-          ? '这已经是第三次了。你可以选择继续，但请先知道代价：这次安装如果失败或者被中断，DeepSeekGUI 没有办法帮你退回上一个状态，需要你自己处理 Profile 里的文件。'
-          : 'This is the third attempt. You may continue, but know the cost: if this install fails or is interrupted, DeepSeekGUI cannot roll the profile back for you — you will have to fix the files yourself.',
-      ].join('\n'),
-    }).catch(() => ({ response: 1 }))
-    return choice.response === 0
-  }
-
-  /** 仅删除快照（recovered 后 journal 作为证据保留，快照不再需要）。 */
-  const clearRecoverySnapshots = (): void => {
-    if (recoveryJournal === null) return
-    try {
-      rmSync(recoverySnapshotDir(recoveryJournal.txId), { recursive: true, force: true })
-    } catch {
-      // 同上：孤儿快照无害。
-    }
-  }
-
-  /**
-   * 单事务规则：同一 Home/Profile 已有未验证事务时禁止发起新的写操作。
-   * @param profile - 目标 Profile。
-   * @returns 阻止原因；null = 可继续。
-   */
-  const blockedByPendingTransaction = (profile: string): string | null => {
-    const journal = recoveryJournal
-    if (journal === null || !isJournalPending(journal)) return null
-    const state = launcher.read()
-    const dshHome = resolveHarnessHome(state.active.home, userDataDir)
-    if (journal.homePath === dshHome && journal.profile === profile) {
-      return '该 Home / Profile 已有一项未验证的插件变更；请先重启并验证上一次插件变更（或放弃恢复）'
-    }
-    // 别的 Home/Profile 的未决事务同样要挡：journal 是单份文件，放行会让
-    // 新事务直接覆盖它——上一个事务的恢复承诺静默失效，快照变成谁也找不到
-    // 的孤儿目录。施工单要的"一个窄 journal"就意味着同一时刻只能有一个
-    // 未决事务，跨目标也不例外。
-    return `另一个目标已有未验证的插件变更（${journal.profile} @ ${journal.homePath}）；`
-      + '请先切回该目标重启验证或放弃恢复，再发起新的写操作'
-  }
-
-  /**
-   * 插件事务结算：boot 健康后 verified（删事务）；boot 失败时按 P6 6.9-6.11
-   * 走 drift → fail closed / Managed 自动恢复一次 / Existing 等待确认。
-   */
-  const settlePluginRecovery = async (): Promise<void> => {
-    const zh = desktopLocaleZh()
-    const journal = recoveryJournal
-    if (journal === null) return
-    // `recovered` 是一次性告知（"上次装插件把启动搞坏了，已经替你恢复"），
-    // 不是待办：它不再 pending，所以下面的结算分支永远碰不到它，而面板
-    // 的 recovery 区块直接读 journal——不清就会一直挂着那句话，且没有任何
-    // 用户可达的出口（Abandon 只接受 pending）。生命周期止于下一次启动
-    // 动作：出事的那次会话里看得到，此后消失。
-    if (journal.state === 'recovered') {
-      clearRecoveryTransaction()
-      broadcast()
-      return
-    }
-    if (!isJournalPending(journal)) return
-    const state = launcher.read()
-    const dshHome = resolveHarnessHome(state.active.home, userDataDir)
-    if (journal.homePath !== dshHome || journal.profile !== state.active.profile) return
-    const status = harness.status()
-    const profileDir = join(dshHome, 'profiles', journal.profile)
-    const now = (): string => new Date().toISOString()
-    if (status.phase === 'running') {
-      const action = bootHealthySettleAction(journal.state)
-      if (action === 'verify') {
-        // 下一代 Host + Web readiness + Client Loader settle 全部通过：
-        // 事务 verified，删除 journal 与快照。
-        clearRecoveryTransaction()
-        broadcast()
-      } else if (action === 'resolve-stale') {
-        // state==='running' 且无在途操作 = 崩溃残留（post-check 从未完成）：
-        // 事务不成立，与取消路径同语义清理并解锁单事务规则。在途操作
-        // （broker 未结算）保持不动——boot 结算绝不能把"当前代仍在跑"
-        // 当成"下一代健康"（实测：add 期间 settle 清掉过 running journal）。
-        if (!pluginOperationInFlight()) {
-          clearRecoveryTransaction()
-          broadcast()
-        }
-      }
-      // action==='keep'：recovery-needed / drift 是人工处理状态，boot 成功
-      // 不自动解除（用户可 Abandon）。
-      return
-    }
-    if (status.phase !== 'failed') return
-    if (journal.state === 'recovery-needed' || journal.state === 'drift') return
-    if (journal.autoRecoveredOnce) {
-      recoveryJournal = { ...journal, state: 'recovery-needed', updatedAt: now() }
-      writeRecoveryJournal()
-      broadcast()
-      return
-    }
-    // state==='running' 且 boot 失败：post-check 从未完成（postHashes 必为
-    // null），走下面的 postHashes===null 分支 → recovery-needed 人工入口，
-    // 绝不自动恢复。
-    // boot 失败：先证明文件归属（post hash 无 drift），否则 fail closed。
-    let current: RecoveryFacts
-    try {
-      current = readWhitelistFacts(profileDir)
-    } catch (error) {
-      // 白名单文件存在却读不到（权限/占用/IO）：既证明不了归属，也判不了
-      // drift。绝不在这种状态下自动改写用户的 Profile——转人工恢复入口。
-      recoveryJournal = {
-        ...journal,
-        state: 'recovery-needed',
-        failure: zh
-          ? `无法读取 Profile 的白名单文件：${redactSecrets(String(error instanceof Error ? error.message : error))}；自动恢复已停止，请人工处理。`
-          : `Could not read the whitelisted profile files: ${redactSecrets(String(error instanceof Error ? error.message : error))}. Automatic recovery has stopped; handle this manually.`,
-        updatedAt: now(),
-      }
-      writeRecoveryJournal()
-      broadcast()
-      return
-    }
-    if (journal.postHashes === null) {
-      recoveryJournal = {
-        ...journal,
-        state: 'recovery-needed',
-        failure: zh
-          ? '缺少 post-operation hash，无法证明文件归属；自动恢复已停止，请人工处理。'
-          : 'Post-operation hashes are missing, so file ownership cannot be proven. Automatic recovery has stopped; handle this manually.',
-        updatedAt: now(),
-      }
-      writeRecoveryJournal()
-      broadcast()
-      return
-    }
-    const drift = detectDrift(journal.postHashes, current)
-    if (drift.length > 0) {
-      recoveryJournal = {
-        ...journal,
-        state: 'drift',
-        failure: zh
-          ? `事务后这些文件被外部修改：${drift.join('、')}。自动恢复已停止，绝不覆盖外部修改。`
-          : `These files were modified externally after the transaction: ${drift.join(', ')}. Automatic recovery has stopped and will never overwrite external changes.`,
-        updatedAt: now(),
-      }
-      writeRecoveryJournal()
-      broadcast()
-      return
-    }
-    if (journal.homeKind === 'existing') {
-      // Existing Home 恢复必须用户确认：绝不静默覆盖用户 Profile。
-      recoveryJournal = {
-        ...journal,
-        state: 'recovery-needed',
-        failure: zh
-          ? '插件变更后 Harness 启动失败；恢复需要你的确认。'
-          : 'The plugin change broke the Harness launch; recovery requires your confirmation.',
-        updatedAt: now(),
-      }
-      writeRecoveryJournal()
-      broadcast()
-      return
-    }
-    // Managed Home：hash 无 drift 时允许自动恢复一次 + 最多自动重启一次。
-    try {
-      const plan = planRestore(journal.preFacts, journal.postHashes, current)
-      // 先把"这一次已经用掉了"钉进磁盘，再动 Profile。反过来写的话，进程
-      // 死在"恢复完成"与"标志落盘"之间，下次启动会把同一次自动恢复重跑
-      // 一遍——一次性保证就不再是一次性的了。落不了盘就干脆别恢复。
-      recoveryJournal = {
-        ...journal,
-        autoRecoveredOnce: true,
-        failure: zh
-          ? '已自动恢复三个白名单文件，正在重启验证。'
-          : 'The three whitelisted files were restored automatically; restarting to verify.',
-        updatedAt: now(),
-      }
-      if (!writeRecoveryJournal()) {
-        throw new Error(zh
-          ? `无法写入恢复记录（${describeWriteFailure(recoveryJournalError ?? '', true) ?? '原因未知'}），未改动任何文件`
-          : `Could not persist the recovery record (${describeWriteFailure(recoveryJournalError ?? '', false) ?? 'unknown cause'}); nothing was changed`)
-      }
-      applyRestore(profileDir, recoverySnapshotDir(journal.txId), journal.preFacts, plan, atomicRestoreWrite, unlinkSync)
-      await harness.restart()
-      const after = harness.status()
-      if (after.phase === 'running') {
-        // 只改 state 会把 failure 里那句「正在重启验证」留在屏幕上——验证其实
-        // 几秒前就过了。住户实测因此以为还要自己手动重启一次（2026-08-26）。
-        recoveryJournal = {
-          ...recoveryJournal,
-          state: 'recovered',
-          failure: zh
-            ? '已自动恢复并重启成功，可以继续使用；刚才那个插件没有装上。'
-            : 'Recovered automatically and restarted successfully; the plugin was not installed.',
-          updatedAt: now(),
-        }
-        writeRecoveryJournal()
-        // DeepSeekGUI 自己动了用户 Profile 里的文件——这件事必须留下记录，
-        // 否则用户看到文件内容变了却查不到是谁改的。
-        appendDesktopEvent(journal.homePath, {
-          at: formatStampLocal(now()),
-          title: zh ? 'DeepSeekGUI 自动恢复了插件配置文件' : 'DeepSeekGUI restored the plugin configuration automatically',
-          sections: [
-            [
-              zh ? '发生了什么' : 'What happened',
-              zh
-                ? `上一次插件操作之后 Harness 起不来，DeepSeekGUI 把 Profile ${journal.profile} 的三个配置文件恢复到了操作之前的样子，然后重启验证通过。`
-                : `The harness failed to start after the last plugin operation, so DeepSeekGUI restored the three configuration files of profile ${journal.profile} to their pre-operation state and verified the restart.`,
-            ],
-            [
-              zh ? '用户的文件被改了吗' : 'Were the user files changed',
-              zh
-                ? '是的，但只改了这三个白名单文件（package.json / pnpm-lock.yaml / pnpm-workspace.yaml），而且改回的是操作之前的原样内容，逐字节一致。其他文件一律没碰。'
-                : 'Yes, but only the three whitelisted files (package.json / pnpm-lock.yaml / pnpm-workspace.yaml), and only back to their exact pre-operation bytes. Nothing else was touched.',
-            ],
-            [
-              zh ? '如果用户问起' : 'If the user asks',
-              zh
-                ? '照实说明就好：这是 DeepSeekGUI 的自动恢复，只会发生一次，目的是让 Harness 能重新启动。用户之前装的那个插件没有装上。'
-                : 'State it plainly: this was DeepSeekGUI automatic recovery, it happens at most once, and its purpose was to get the harness starting again. The plugin the user tried to install is not installed.',
-            ],
-          ],
-        }, zh)
-        clearRecoverySnapshots()
-      } else {
-        recoveryJournal = {
-          ...recoveryJournal,
-          state: 'recovery-needed',
-          failure: zh
-            ? '自动恢复后重启仍失败；自动动作已停止，请人工处理。'
-            : 'Harness still fails after automatic recovery and restart; automatic actions have stopped. Handle this manually.',
-          updatedAt: now(),
-        }
-        writeRecoveryJournal()
-      }
-      broadcast()
-    } catch (error) {
-      recoveryJournal = {
-        ...journal,
-        state: 'recovery-needed',
-        failure: redactSecrets(
-          zh
-            ? `自动恢复失败：${String(error instanceof Error ? error.message : error)}`
-            : `Automatic recovery failed: ${String(error instanceof Error ? error.message : error)}`,
-        ),
-        autoRecoveredOnce: recoveryJournal?.autoRecoveredOnce ?? journal.autoRecoveredOnce,
-        updatedAt: now(),
-      }
-      writeRecoveryJournal()
-      broadcast()
-    }
-  }
-
-  /** 用户确认后执行恢复（Existing Home 路径；Managed 失败后的人工入口共用）。 */
-  const runRecoveryRestore = async (): Promise<void> => {
-    const journal = recoveryJournal
-    if (journal === null || journal.state !== 'recovery-needed') return
-    const state = launcher.read()
-    const dshHome = resolveHarnessHome(state.active.home, userDataDir)
-    const zh = desktopLocaleZh()
-    // 恢复目标恒为 journal 记录的那个 Home——恢复区块在切换 Home 后依然
-    // 显示，此时当前 active home 已不是事务发起时的那个。用当前 home 拼
-    // profileDir 会把 A 的快照写进 B 的 Profile（真实的数据破坏路径）。
-    // 目标不一致时一律拒绝执行，只指路，绝不跨 Home 写入。
-    if (journal.homePath !== dshHome) {
-      void dialog.showMessageBox({
-        type: 'warning',
-        noLink: true,
-        buttons: [zh ? '确定' : 'OK'],
-        message: zh ? '恢复目标不是当前 Harness Home' : 'The recovery target is not the current Harness Home',
-        detail: [
-          zh
-            ? '这项待恢复的插件变更属于另一个 Harness Home。DeepSeekGUI 绝不会把它的快照写进当前 Home。'
-            : 'This pending plugin change belongs to a different Harness Home. DeepSeekGUI will never write its snapshot into the current Home.',
-          '',
-          `${zh ? '事务目标' : 'Transaction target'}：${journal.homePath}`,
-          `${zh ? '当前 Home' : 'Current Home'}：${dshHome}`,
-          `Profile：${journal.profile}`,
-          '',
-          zh
-            ? '请先切回该 Home 再执行恢复；或在此放弃恢复（放弃只清除记录，不改动任何文件）。'
-            : 'Switch back to that Home before restoring, or abandon the recovery here (abandoning only clears the record and changes no files).',
-        ].join('\n'),
-      }).catch(() => undefined)
-      return
-    }
-    const profileDir = join(dshHome, 'profiles', journal.profile)
-    // 同 settle：读不到就证明不了归属，宁可不恢复，也不拿猜测覆盖用户文件。
-    // 这条路径要读两次（确认框之后磁盘可能已变），失败的说法只此一份。
-    const readFactsOrReport = (): RecoveryFacts | null => {
-      try {
-        return readWhitelistFacts(profileDir)
-      } catch (error) {
-        void dialog.showMessageBox({
-          type: 'error',
-          noLink: true,
-          buttons: [zh ? '确定' : 'OK'],
-          message: zh ? '无法读取 Profile 文件，恢复未执行' : 'Could not read the profile files; nothing was restored',
-          detail: redactSecrets(String(error instanceof Error ? error.message : error)),
-        }).catch(() => undefined)
-        return null
-      }
-    }
-    const current = readFactsOrReport()
-    if (current === null) return
-    const plan = recoveryPlan(journal.preFacts, journal.postHashes, current)
-    if (plan === null) {
-      // fail closed，与 settlePluginRecovery 对 postHashes===null 的判定一致：
-      // 该组合可达（事务在 post-check 记录 hash 之前崩溃/被杀，boot 失败后
-      // settle 置 recovery-needed 并写明"无法证明归属"）。缺少 post hash 时
-      // 恢复计划的归属证明不成立——`?? {}` 降级虽不会误删（pre-absent 永不进
-      // remove 分支），却会把快照写回覆盖当前文件，等于绕过了"DeepSeekGUI 自己
-      // 发起、hash 能证明归属"的恢复前提。此处只给人工入口，绝不执行恢复。
-      const choice = await dialog.showMessageBox({
-        type: 'warning',
-        noLink: true,
-        buttons: [zh ? '打开 Profile 文件夹' : 'Open Profile Folder', zh ? '取消' : 'Cancel'],
-        defaultId: 1,
-        cancelId: 1,
-        message: zh ? '无法证明文件归属，恢复不可用' : 'Recovery unavailable: file ownership cannot be proven',
-        detail: [
-          `Home：${journal.homeKind === 'managed' ? (zh ? '托管模式' : 'Managed') : (zh ? '已有目录' : 'Existing')}`,
-          `${zh ? '完整路径' : 'Full path'}：${dshHome}`,
-          `Profile：${journal.profile}`,
-          ...journal.failure === null
-            ? [`${zh ? '失败摘要' : 'Failure summary'}：${zh ? '缺少 post-operation hash，无法证明文件归属；请人工处理。' : 'Post-operation hashes are missing; file ownership cannot be proven. Please handle this manually.'}`]
-            : [`${zh ? '失败摘要' : 'Failure summary'}：${journal.failure}`],
-        ].join('\n'),
-      })
-      if (choice.response === 0) void shell.openPath(profileDir)
-      return
-    }
-    const fileList = [...plan.restore.map(name => `${name}（${zh ? '恢复' : 'restore'}）`), ...plan.remove.map(name => `${name}（${zh ? '删除' : 'delete'}）`)]
-    const choice = await dialog.showMessageBox({
-      type: 'warning',
-      noLink: true,
-      buttons: [zh ? '恢复之前的插件配置' : 'Restore previous plugin configuration', zh ? '取消' : 'Cancel'],
-      defaultId: 1,
-      cancelId: 1,
-      message: zh ? '恢复之前的插件配置？' : 'Restore previous plugin configuration?',
-      detail: [
-        `Home：${journal.homeKind === 'managed' ? (zh ? '托管模式' : 'Managed') : (zh ? '已有目录' : 'Existing')}`,
-        `${zh ? '完整路径' : 'Full path'}：${dshHome}`,
-        `Profile：${journal.profile}`,
-        ...journal.failure === null ? [] : [`${zh ? '失败摘要' : 'Failure summary'}：${journal.failure}`],
-        '',
-        `${zh ? '将恢复的具体文件' : 'Files to restore'}：`,
-        ...fileList.length === 0 ? [zh ? '（无需恢复任何文件）' : '(nothing to restore)'] : fileList,
-      ].join('\n'),
-    })
-    if (choice.response !== 0) return
-    if (recoveryJournal?.txId !== journal.txId || recoveryJournal.state !== 'recovery-needed') return
-    if (resolveHarnessHome(launcher.read().active.home, userDataDir) !== dshHome) return
-    // 确认框可能开了很久，而这期间 Profile 是活的：用户可能自己动过手，
-    // 别的程序也可能写过。此刻的计划是弹框之前算的，直接照着写等于拿一份
-    // 过期备份覆盖用户的现场——所以落盘前必须再读一次磁盘对账。
-    // 中断恢复可以留下 pre/post 混合；确认期间的任何变化仍拒绝覆盖。
-    const atWriteTime = readFactsOrReport()
-    if (atWriteTime === null) return
-    const recoveryDrift = detectRecoveryDrift(journal, atWriteTime)
-    if (recoveryDrift === null) return
-    const driftedNow = [...new Set([...recoveryDrift, ...detectDrift(hashesOfFacts(current), atWriteTime)])]
-    if (driftedNow.length > 0) {
-      recoveryJournal = { ...journal, state: 'drift', failure: zh
-        ? `恢复期间这些文件发生了变化：${driftedNow.join('、')}。为避免覆盖新的改动，恢复已取消。`
-        : `These files changed while the dialog was open: ${driftedNow.join(', ')}. Restoring was cancelled so the newer changes are not overwritten.`,
-      updatedAt: new Date().toISOString() }
-      writeRecoveryJournal()
-      appendDesktopEvent(journal.homePath, {
-        at: formatStampLocal(new Date().toISOString()),
-        title: zh ? '恢复已取消（文件被改动过）' : 'Restore cancelled (files had changed)',
-        sections: [
-          [
-            zh ? '发生了什么' : 'What happened',
-            zh
-              ? `用户确认恢复 Profile ${journal.profile} 之后，这些文件已经不是本次插件操作留下的那一版：${driftedNow.join('、')}。`
-              : `After the user confirmed the restore of profile ${journal.profile}, these files were no longer the version this plugin operation left behind: ${driftedNow.join(', ')}.`,
-          ],
-          [
-            zh ? '为什么没有恢复' : 'Why nothing was restored',
-            zh
-              ? '继续恢复会用旧快照覆盖掉这些更新的改动。DeepSeekGUI 选择什么都不做，磁盘保持原样。'
-              : 'Restoring would have overwritten those newer changes with an old snapshot, so DeepSeekGUI did nothing and the disk is untouched.',
-          ],
-          [
-            zh ? '如果用户问起' : 'If the user asks',
-            zh
-              ? '这是保护性行为，不是失败：文件在确认期间被改过（可能是用户自己、也可能是别的程序）。'
-                + '磁盘没有被动过，用户可以自己查看这几个文件后再决定。'
-              : 'This is protective behaviour, not a failure: the files changed while the dialog was open, either by the user or another program. '
-                + 'Nothing on disk was modified; the user can inspect those files and decide.',
-          ],
-        ],
-      }, zh)
-      broadcast()
-      void dialog.showMessageBox({
-        type: 'warning',
-        noLink: true,
-        buttons: [zh ? '打开 Profile 文件夹' : 'Open Profile Folder', zh ? '确定' : 'OK'],
-        defaultId: 1,
-        cancelId: 1,
-        message: zh ? '文件在确认期间被改动，恢复已取消' : 'Files changed while confirming; restore was cancelled',
-        detail: [
-          zh
-            ? '这些文件在你确认之前发生了变化，已经不是本次插件操作留下的那一版：'
-            : 'These files changed before you confirmed and are no longer the version this plugin operation left behind:',
-          ...driftedNow,
-          '',
-          zh
-            ? '继续恢复会覆盖掉这些新的改动，所以恢复没有执行。请人工处理。'
-            : 'Restoring would overwrite those newer changes, so nothing was restored. Please handle this manually.',
-        ].join('\n'),
-      }).then((result) => {
-        if (result.response === 0) void shell.openPath(profileDir)
-      }).catch(() => undefined)
-      return
-    }
-    try {
-      // 写序与自动恢复相反，这是刻意的。自动路径必须先把 autoRecoveredOnce 落
-      // 盘再动磁盘：它由启动流程触发，死在两步之间会让「同一次事务只自动恢复一
-      // 次」的保证失效，所以那里宁可落不了盘就不恢复。手动恢复没有这条约束——
-      // 它由用户每次点击触发，不会自己重跑，因此先恢复磁盘、再记录结果，写
-      // journal 失败也不会留下一条描述着并未发生的恢复的记录。
-      applyRestore(profileDir, recoverySnapshotDir(journal.txId), journal.preFacts, plan, atomicRestoreWrite, unlinkSync)
-      recoveryJournal = { ...journal, autoRecoveredOnce: true, failure: null, updatedAt: new Date().toISOString() }
-      writeRecoveryJournal()
-      await harness.restart()
-      const after = harness.status()
-      if (after.phase === 'running') {
-        recoveryJournal = { ...recoveryJournal, state: 'recovered', updatedAt: new Date().toISOString() }
-        writeRecoveryJournal()
-        clearRecoverySnapshots()
-      } else {
-        recoveryJournal = {
-          ...recoveryJournal,
-          state: 'recovery-needed',
-          failure: zh ? '恢复后重启仍失败；请人工处理。' : 'Harness still fails after restoring; handle it manually.',
-          updatedAt: new Date().toISOString(),
-        }
-        writeRecoveryJournal()
-      }
-      broadcast()
-    } catch (error) {
-      recoveryJournal = {
-        ...journal,
-        state: 'recovery-needed',
-        failure: zh
-          ? `恢复执行失败：${redactSecrets(String(error instanceof Error ? error.message : error))}`
-          : `Restore failed: ${redactSecrets(String(error instanceof Error ? error.message : error))}`,
-        updatedAt: new Date().toISOString(),
-      }
-      writeRecoveryJournal()
-      broadcast()
-    }
-  }
-
-  /** 放弃恢复：保留当前磁盘状态，清除事务（journal + 快照）。 */
-  const runRecoveryAbandon = (): void => {
-    if (recoveryJournal === null || !isJournalPending(recoveryJournal)) return
-    clearRecoveryTransaction()
-    broadcast()
-  }
-
-  /**
-   * 打开目标 Profile 文件夹（drift/recovery-needed 的人工处理入口）。
-   * 打开的恒是 journal 记录的那个 Home——用户要人工处理的是出事的那个
-   * Profile，不是碰巧正在用的那个。
-   */
-  const runRecoveryOpenProfile = (): void => {
-    const journal = recoveryJournal
-    if (journal === null) return
-    void shell.openPath(join(journal.homePath, 'profiles', journal.profile))
-  }
-
-  /** 插件写操作的目标透明度确认：Home kind、完整路径、Profile、操作、spec。 */
-  const confirmPluginOperation = async (request: PluginOperationRequest): Promise<boolean> => {
-    if (SMOKE) return true
-    const state = launcher.read()
-    const zh = desktopLocaleZh()
-    const text = pluginConfirmText({
-      homeKind: state.active.home.kind,
-      dshHome: resolveHarnessHome(state.active.home, userDataDir),
-      profile: request.profile,
-      action: request.action,
-      spec: request.spec,
-      locale: zh ? 'zh' : 'en',
-    })
-    const choice = await dialog.showMessageBox({
-      type: 'warning',
-      noLink: true,
-      buttons: [zh ? '执行' : 'Run', zh ? '取消' : 'Cancel'],
-      defaultId: 1,
-      cancelId: 1,
-      message: text.message,
-      detail: text.detail,
-    })
-    return choice.response === 0
-  }
-
-  /**
-   * 请求一次插件写操作：校验 → 本地路径锚定 → 目标透明度确认 → broker
-   * （maintenance 槽）跑官方 CLI → 流式输出 → exit 0 才 post-check →
-   * 完成后刷新 discovery/inventory 并给出 restart handoff。绝不自动重启、
-   * 绝不改变 active Profile 或 launcher selection。
-   * @param raw - renderer 请求（action/profile/spec；锚定目录由 main 补）。
-   */
-  const requestPluginOperation = async (raw: { action: PluginAction; profile: string; spec: string | null }): Promise<void> => {
-    // 施工单要求"同一目标一次只允许一个写操作"：确认框等待期（in-flight）
-    // 与运行/验证中的操作都挡住新请求；终态（done/failed/cancelled）允许
-    // 开始下一次操作（先清掉旧视图）。
-    if (pluginOperationInFlight()) {
-      reportFailure(new Error(dictText(stringsFor(localeOf()), 'error.plugin-busy')))
-      return
-    }
-    pluginRequestInFlight = true
-    try {
-      await beginPluginOperation(raw)
-    } catch (error) {
-      // 没有这个 catch 时，beginPluginOperation 的任何未预期抛出都只会变成一次
-      // 未处理的 rejection——调用方是 `void requestPluginOperation(request)`，
-      // 于是用户点了按钮界面毫无反应，日志里也没有归因。与 P11 修掉的
-      // startSession 静默失败是同一形态。busy 分支早就走 reportFailure，这里
-      // 补齐后失败路径只此一个出口。
-      reportFailure(error)
-    } finally {
-      pluginRequestInFlight = false
-    }
-  }
-
-  /** 一次插件写操作的主体（requestPluginOperation 持有 in-flight 守卫）。 */
-  const beginPluginOperation = async (raw: { action: PluginAction; profile: string; spec: string | null }): Promise<void> => {
-    const requestedSelection = launcher.read().active
-    // boot 进行中（start/switch/recover）会读 profile manifest：此刻写插件
-    // 会让 boot 读到 pnpm 的半写状态。running 时允许（新组合本来就要求
-    // restart 才生效，写操作不干扰已运行的 runtime）。
-    const booting = harness.status().phase
-    if (booting === 'starting' || booting === 'switching' || booting === 'recovering') {
-      reportFailure(new Error(dictText(stringsFor(localeOf()), 'error.harness-booting')))
-      return
-    }
-    // 相对路径 spec：锚定目录必须是用户明确选择的结果，绝不默认 Electron 目录。
-    let anchorDir: string | null = null
-    if (raw.action === 'add' && raw.spec !== null && isRelativeSpec(raw.spec)) {
-      const anchorTitle = desktopLocaleZh()
-        ? '选择本地插件的锚定目录'
-        : 'Choose the anchor directory for the local plugin'
-      const picked = await (new Promise<string | null>((resolve) => {
-        void dialog.showOpenDialog({ properties: ['openDirectory'], title: anchorTitle }).then(
-          (result) => {
-            resolve(result.canceled ? null : result.filePaths[0] ?? null)
-          },
-          () => {
-            resolve(null)
-          },
-        )
-      }))
-      if (picked === null) return
-      anchorDir = picked
-    }
-    const request: PluginOperationRequest = { action: raw.action, profile: raw.profile, spec: raw.spec, anchorDir }
-    const invalid = validatePluginRequest(request)
-    if (invalid !== null) {
-      reportFailure(new Error(invalid))
-      return
-    }
-    // 本地路径 spec 的 pre-check：pnpm 对不存在的目录只 WARN 并写 link
-    // 依赖（exit 0），"目录真实存在且是目录"必须由 desktop 在操作前证明。
-    const localError = validateLocalSpecTarget(request, {
-      exists: path => existsSync(path),
-      isDirectory: (path) => {
-        try {
-          return statSync(path).isDirectory()
-        } catch {
-          return false
-        }
-      },
-    })
-    if (localError !== null) {
-      reportFailure(new Error(localError))
-      return
-    }
-    const targetError = validatePluginTarget(request.profile, controlState.discovery)
-    if (targetError !== null) {
-      reportFailure(new Error(targetError))
-      return
-    }
-    // 单事务规则（P6 6.7）：同 Home/Profile 已有 pending unverified 事务时
-    // 禁止新的写操作；用户可先重启验证、或放弃恢复。
-    const blocked = blockedByPendingTransaction(request.profile)
-    if (blocked !== null) {
-      reportFailure(new Error(blocked))
-      return
-    }
-    if (!await confirmPluginOperation(request)) return
-    if (quitting || !sameHarnessSelection(launcher.read().active, requestedSelection) || migration.isRunning()) {
-      throw new Error(desktopLocaleZh() ? '操作目标已改变，插件操作已取消，请重新选择。' : 'The target changed. The plugin operation was cancelled; select it again.')
-    }
-
-    // P6-F 快照：确认之后、broker 之前，只对三个白名单文件做
-    // byte-identical 快照 + hash；文件不存在记录 absent，不伪造空文件。
-    // 快照失败 = 没有恢复承诺：fail loud 拒绝执行（绝不无保护地写）。
-    const dshHome = resolveHarnessHome(launcher.read().active.home, userDataDir)
-    const txId = randomUUID()
-    try {
-      const profileDir = join(dshHome, 'profiles', request.profile)
-      const facts = readWhitelistFacts(profileDir)
-      mkdirSync(recoverySnapshotDir(txId), { recursive: true })
-      writeWhitelistSnapshot(profileDir, facts, recoverySnapshotDir(txId))
-      recoveryJournal = {
-        schemaVersion: 1,
-        txId,
-        homeKind: launcher.read().active.home.kind,
-        homePath: dshHome,
-        profile: request.profile,
-        operation: request.action,
-        spec: request.spec,
-        startedAt: new Date().toISOString(),
-        preFacts: facts,
-        postHashes: null,
-        state: 'running',
-        failure: null,
-        updatedAt: new Date().toISOString(),
-        autoRecoveredOnce: false,
-      }
-      // 落盘前的最后一次核对，位置刻意贴着启动 pnpm 那一刻：读事实与复制
-      // 快照之间、复制与真正开始改动之间，都存在别的程序动这些文件的窗口。
-      // 尤其是"本来不存在"的那一条——中间冒出来的文件如果被记成本次事务的
-      // 产物，将来恢复会把它删掉，而它根本不是我们造的。
-      const beforeMutation = readWhitelistFacts(profileDir)
-      const driftedBeforeStart = detectDrift(hashesOfFacts(facts), beforeMutation)
-      if (driftedBeforeStart.length > 0) {
-        throw new Error(
-          `准备期间这些文件发生了变化：${driftedBeforeStart.join('、')}；操作未执行`,
-        )
-      }
-      if (writeRecoveryJournal()) {
-        recoveryJournalWriteFailures = 0
-      } else {
-        // 恢复记录没落盘 = 这次操作没有退路。默认不许开始；用户在两次拦截
-        // 之后仍坚持的话，明确告知代价后按无保护模式继续。
-        const proceedUnprotected = await confirmWithoutRecoveryProtection(recoveryJournalError)
-        recoveryJournal = null
-        try {
-          rmSync(recoverySnapshotDir(txId), { recursive: true, force: true })
-        } catch {
-          // 孤儿快照无害。
-        }
-        if (!proceedUnprotected) return
-      }
-    } catch (error) {
-      // 快照/journal 写失败：清理半成品并拒绝操作（没有恢复承诺就不动磁盘）。
-      recoveryJournal = null
-      try {
-        rmSync(recoverySnapshotDir(txId), { recursive: true, force: true })
-      } catch {
-        // 半成品快照清理失败无害。
-      }
-      reportFailure(new Error(`插件操作前的恢复快照失败（操作未执行）：${redactSecrets(String(error instanceof Error ? error.message : error))}`))
-      return
-    }
-
-    const beforeProfile = findDiscoveredProfile(request.profile)
-    const before: PluginSnapshot = beforeProfile === null
-      ? { dependencies: {}, bundles: [], staticStatus: 'candidate' }
-      : readPluginSnapshot(beforeProfile)
-
-    pluginOperationView = {
-      action: request.action,
-      profile: request.profile,
-      spec: request.spec,
-      step: 'running',
-      output: [],
-      exitCode: null,
-      postCheck: null,
-      message: null,
-    }
-    broadcast()
-    // plugin 子命令自带 --profile requiredOption，官方 grammar 拒绝父级
-    // --profile/--host/--port——必须用 resolveDshCommand（只注入 DSH_HOME、
-    // args 原样追加），绝不能用 resolveDshLaunch 的启动参数形态。
-    const launch = resolveDshCommand({
-      packaged,
-      root,
-      dshHome,
-      args: buildPluginOperationArgs(request),
-      ...packaged ? {
-        resourcesPath: process.resourcesPath,
-        packagedCwd: app.getPath('home'),
-      } : {},
-    })
-    // 官方 plugin.ts 内部 spawn pnpm 走 PATH：prepend 应用私有 shim 目录
-    // （pnpm.cmd 转发私有 Runtime），绝不依赖系统 pnpm、绝不改系统 PATH。
-    // dsh.cmd wrapper 的默认 Profile 必须始终是 launcher active——用 target
-    // profile 会把开着终端里的 bare dsh 默认悄悄改掉。
-    const shimDir = ensureTerminalShims(launcher.read().active.profile)
-    const shimPath = `${shimDir}${delimiter}${process.env.PATH ?? ''}`
-    const op = runDesktopCommand({
-      slot: 'maintenance',
-      zh: desktopLocaleZh(),
-      command: launch.command,
-      args: launch.args,
-      cwd: launch.cwd,
-      env: withPath(launch.env, shimPath),
-      onOutput: (_stream, text) => {
-        appendPluginOutput(text)
-        broadcast()
-      },
-      onExit: (result) => {
-        void settlePluginOperation(request, before, result.exitCode).catch(reportFailure)
-      },
-    })
-    pluginOperationHandle = op
-    if (!op.running()) {
-      // spawn 同步失败（error 事件已结算）：onExit 已处理收尾。
-      pluginOperationHandle = undefined
-    }
-  }
-
-  /** 结算一次插件操作：exit 0 → post-check → handoff；其余明确失败/取消。 */
-  const settlePluginOperation = async (
-    request: PluginOperationRequest,
-    before: PluginSnapshot,
-    exitCode: number | null,
-  ): Promise<void> => {
-    pluginOperationHandle = undefined
-    if (pluginOperationView === null) return
-    const cancelled = pluginOperationView.step === 'cancelled'
-    if (cancelled) {
-      // 取消时 pnpm 可能已改了一半磁盘（node_modules 写了、manifest 未
-      // reconcile）：刷新事实让 inventory 反映真实磁盘状态，绝不展示旧快照。
-      // 事务与快照保留：这一刻磁盘可能正处在半改状态，快照是唯一的退路。
-      keepRecoveryForManualHandling({ kind: 'cancelled' })
-      await refreshPluginFacts()
-      broadcast()
-      return
-    }
-    if (exitCode !== 0) {
-      pluginOperationView = {
-        ...pluginOperationView,
-        step: 'failed',
-        exitCode,
-        postCheck: null,
-        message: exitCode === null
-          ? '无法启动 dsh plugin（请查看诊断日志）'
-          : `dsh plugin 以退出码 ${String(exitCode)} 结束；目标 Profile 与 launcher selection 未改变`,
-      }
-      // 同取消：非零退出同样可能留下半改的 manifest / lock，保留退路。
-      keepRecoveryForManualHandling(exitCode === null ? { kind: 'spawn-failed' } : { kind: 'exit-code', code: exitCode })
-      await refreshPluginFacts()
-      broadcast()
-      return
-    }
-    // exit 0 才进入 post-check：重读磁盘事实，绝不信任内存旧快照。
-    pluginOperationView = { ...pluginOperationView, step: 'post-check' }
-    broadcast()
-    await refreshPluginFacts()
-    const afterProfile = findDiscoveredProfile(request.profile)
-    const after: PluginSnapshot = afterProfile === null
-      ? { dependencies: {}, bundles: [], staticStatus: 'malformed' }
-      : readPluginSnapshot(afterProfile)
-    const postCheck = verifyPluginPostCheck(before, after, request)
-    pluginOperationView = {
-      ...pluginOperationView,
-      step: postCheck.ok ? 'done' : 'failed',
-      exitCode,
-      postCheck,
-      message: postCheck.ok ? null : '操作已退出 0，但验证与磁盘事实不符',
-    }
-    if (postCheck.ok && recoveryJournal !== null && recoveryJournal.state === 'running') {
-      // post-check 成功：记录 post-operation hash，journal → pending-verification。
-      // 下一代 Host/Client 健康后才会 verified（见 settlePluginRecovery）。
-      // 读不到就不记：journal 停在 running，下一次 boot 结算会按"缺少
-      // post hash、无法证明归属"走人工恢复——宁可少一条证据，绝不记假的。
-      const postHashes: Record<string, string | null> = {}
-      let postHashesComplete = true
-      try {
-        for (const [name, fact] of Object.entries(readWhitelistFacts(join(recoveryJournal.homePath, 'profiles', recoveryJournal.profile)))) {
-          postHashes[name] = fact.sha256
-        }
-      } catch (error) {
-        postHashesComplete = false
-        console.error(`[deepseekgui] post-operation hash 读取失败，journal 保持 running: ${redactSecrets(String(error instanceof Error ? error.message : error))}`)
-      }
-      // 只有读全了才升 pending-verification。读不到就停在 running——
-      // handoff 提示照常给（操作本身已经成功，用户仍需重启），少的只是
-      // 那条恢复证据。绝不在这里 return：那会连"需要重启 Harness"一起吞掉。
-      if (postHashesComplete) {
-        recoveryJournal = {
-          ...recoveryJournal,
-          postHashes,
-          state: 'pending-verification',
-          updatedAt: new Date().toISOString(),
-        }
-        writeRecoveryJournal()
-      }
-    } else {
-      // post-check 失败：磁盘事实与预期不符——正是最需要留下退路的情形。
-      keepRecoveryForManualHandling({ kind: 'post-check' })
-    }
-    if (shouldShowHandoff(exitCode, postCheck)) pluginHandoffPending = true
-    broadcast()
-  }
-
-  /** 取消当前插件操作：broker cancel 杀完整 child tree，等待结算。 */
-  const cancelPluginOperation = (): void => {
-    if (pluginOperationView === null || pluginOperationView.step !== 'running') return
-    pluginOperationView = {
-      ...pluginOperationView,
-      step: 'cancelled',
-      // 诚实文案：launcher selection 未变，但目标 Profile 可能停在 pnpm 的
-      // 中间状态（node_modules 已写、manifest 未 reconcile），刷新可见真实事实。
-      message: dictText(moduleDict(), 'msg.plugin-op-cancelled'),
-    }
-    broadcast()
-    if (pluginOperationHandle !== undefined) void pluginOperationHandle.cancel().catch((error: unknown) => {
-      if (pluginOperationView !== null) pluginOperationView = {
-        ...pluginOperationView, step: 'failed', message: redactSecrets(String(error)),
-      }
-      reportFailure(error)
-      broadcast()
-    })
-  }
-
-  /** 操作完成后刷新 discovery/inventory（零写入，官方 inspection）。 */
-  const refreshPluginFacts = async (): Promise<void> => {
-    const state = launcher.read()
-    try {
-      controlState.discovery = await discover(resolveHarnessHome(state.active.home, userDataDir))
-      controlState.discoveryError = null
-    } catch (error) {
-      controlState.discovery = null
-      controlState.discoveryError = redactSecrets(error instanceof Error ? error.message : String(error))
-    }
   }
 
   // ---- Permission 执行面（Harness 是唯一权限事实源；实现在 permission-control） ----
@@ -3561,10 +2652,21 @@ void app.whenReady().then(async () => {
 
   // ---- Update service 执行面（接线 update-runner 服务层；main 只做接线） ----
 
-  /** main 侧的 runner deps：工厂 + 真实 https 与真实 installer spawn。 */
+  /** main 侧的 runner deps：工厂 + 真实 https 与真实 installer 启动。 */
   const updateRunnerDeps: UpdateRunnerDeps = createUpdateRunnerDeps(
     https.get.bind(https),
     async (path) => {
+      // ShellExecute（openPath）而不是 spawn：安装包清单要求管理员时，spawn 走 CreateProcess
+      // 会被 740 拒掉，只有 ShellExecute 会弹 UAC。v1.1.2 仍按当前用户安装（2026-09-25 定：
+      // v1.1.1 的旧更新器只会 spawn，第一次升级拉不起要求管理员的安装包），这条路对它同样
+      // 可用；以后改成所有用户安装时，已装 v1.1.2 的用户就能从应用内升级过去。
+      // 用户在 UAC 里点「否」时 openPath 返回错误文本，这里转成一次拒绝，runner 报
+      // spawn-failed，当前安装照常可用。
+      if (process.platform === 'win32') {
+        const failure = await shell.openPath(path)
+        if (failure !== '') throw new Error(failure)
+        return
+      }
       // 同上：spawn 失败只走 error 事件，once() 会把它变成一次拒绝。
       await once(spawn(path, [], { detached: true, stdio: 'ignore' }), 'spawn')
     },
@@ -3586,6 +2688,25 @@ void app.whenReady().then(async () => {
     redact: redactSecrets,
     broadcast: () => { broadcast() },
   })
+
+  // ---- 「用量与余额」执行面（B7-P3）：2026-09-25 起带官方账号的平台令牌直接取数 ----
+  const usage = createUsageControl({
+    execute: (plan, signal) => fetchUsage({
+      session: () => desktopAccount?.session() ?? null,
+      version: versionInfo.embeddedDshVersion,
+      locale: () => desktopLocaleZh() ? 'zh_CN' : 'en_US',
+    }, plan, signal),
+    now: () => Date.now(),
+    // 官方接口按秒偏移对齐日界；用本机时区，"今天"才是用户看到的今天。
+    tzOffsetSeconds: () => -new Date().getTimezoneOffset() * 60,
+    cooldownMs: USAGE_REFRESH_COOLDOWN_MS,
+    broadcast: () => { broadcast() },
+  })
+  usageControl = usage
+
+  // ---- 技能导入的来源选择（B7-P4）：只做系统对话框，路径进模型，落盘全在 Harness 侧 ----
+  let skillPick: SkillPickView | null = null
+  let skillPickNonce = 0
 
   /**
    * installer handoff：确认 → orderly stop → spawn 已验证 installer → 退出。
@@ -3734,10 +2855,6 @@ void app.whenReady().then(async () => {
     }
   }
 
-  // Plugin Mutation Recovery journal：在首次 buildModel 之前加载（面板视图
-  // 消费它）；缺失/损坏都有明确语义，绝不挡启动——恢复链在 boot 结算时消费。
-  loadRecoveryJournal()
-
   // ---- Feedback 执行面（P7-A~E）：诊断收集 → AI 排查 / 降级 → issue 组装 ----
 
   /** 当前 locale 的文案字典（与 buildModel 同一判据）。 */
@@ -3761,12 +2878,12 @@ void app.whenReady().then(async () => {
       || status.phase === 'switching' || status.phase === 'recovering'
       ? `${status.phase} · ${status.selection.profile}`
       : status.phase
-    // 已安装插件（仅名称 + spec，来自唯一 inventory 事实）。
+    // 已安装插件（仅名称 + spec，来自各 profile 清单的 dependencies）。
     const plugins: { name: string; spec: string }[] = []
-    for (const profile of buildPluginManagerView().profiles) {
-      for (const dep of profile.inventory.dependencies) {
-        plugins.push({ name: dep.name, spec: dep.spec })
-      }
+    for (const profile of controlState.discovery?.profiles ?? []) {
+      const manifest = readManifestDependencies(profile.dir)
+      if (!manifest.ok) continue
+      for (const [name, spec] of Object.entries(manifest.dependencies)) plugins.push({ name, spec })
     }
     // 日志尾部：读失败如实为空（日志本身缺失是诊断目标之一）。
     const logTail: string[] = []
@@ -3788,7 +2905,6 @@ void app.whenReady().then(async () => {
       permissionLabel: permission.mode === 'unavailable' ? null : permission.mode,
       plugins,
       lastExitUnclean: uncleanExit,
-      recoveryJournalState: recoveryJournal === null ? null : recoveryJournal.state,
       logTail,
       harnessStatus: harnessStatusText,
       redact: { home: app.getPath('home'), hostname: hostname() },
@@ -3889,16 +3005,18 @@ void app.whenReady().then(async () => {
     if (feedbackView.phase !== 'replied' && feedbackView.phase !== 'degraded') return
     const dict = stringsFor(localeOf())
     const body = currentIssueBody()
-    try {
-      clipboard.writeText(body)
+    // Electron 44 起剪贴板是异步的：写入失败落在 Promise 里，try/catch 接不住，
+    // 所以成功与失败都等它结束再报。
+    clipboard.writeText(body).then(() => {
       // 标题+正文全走 URL 预填（P8-D30 收尾）：用户打开 GitHub 只剩点
       // Create。剪贴板仍然复制完整正文——URL 超长截断时的兜底。
       void shell.openExternal(githubNewIssueUrl(feedbackView.issueTitle, body, desktopLocaleZh()))
       feedbackView.notice = dict['feedback.notice.copied'] ?? 'feedback.notice.copied'
-    } catch (error) {
+      broadcast()
+    }, (error: unknown) => {
       feedbackView.notice = `${dict['feedback.notice.failed'] ?? 'feedback.notice.failed'}${redactSecrets(String(error instanceof Error ? error.message : error))}`
-    }
-    broadcast()
+      broadcast()
+    })
   }
 
   /**
@@ -4125,7 +3243,8 @@ void app.whenReady().then(async () => {
       // Copy Full Path：完整路径只在专家详情里出现，复制经 main 的
       // clipboard（renderer 沙箱无剪贴板权限）；路径不发往网络或日志。
       const state = launcher.read()
-      clipboard.writeText(resolveHarnessHome(state.active.home, userDataDir))
+      // Electron 44 起异步；复制失败没有可展示的位置，只是不让它成为未处理的拒绝。
+      clipboard.writeText(resolveHarnessHome(state.active.home, userDataDir)).catch(() => undefined)
     },
     acknowledgeRecovery: () => {
       if (recoveryNotice === null) return
@@ -4146,26 +3265,6 @@ void app.whenReady().then(async () => {
       // 桌面动作带当前会话 id，菜单/托盘入口不带（Profile/Home 回退）。
       return openDshTerminal(sessionId)
     },
-    requestPluginOperation: (request) => {
-      return requestPluginOperation(request)
-    },
-    cancelPluginOperation,
-    restartForPluginHandoff: () => {
-      // Restart Now：与 restart-harness 同一 controller.restart 唯一路径，
-      // 绝不自动执行、绝不伪造已加载状态。
-      pluginHandoffPending = false
-      void runCommand({ type: 'restart-harness' }).catch(reportFailure)
-    },
-    ackPluginHandoff: () => {
-      // Later：只关闭提示；loader composition 在下次重启才生效。
-      pluginHandoffPending = false
-      broadcast()
-    },
-    pluginRecoveryRestore: () => {
-      return runRecoveryRestore()
-    },
-    pluginRecoveryAbandon: runRecoveryAbandon,
-    pluginRecoveryOpenProfile: runRecoveryOpenProfile,
     checkForUpdates: () => {
       void updates.check(false)
     },
@@ -4254,19 +3353,6 @@ void app.whenReady().then(async () => {
 
 
   // ---- 窄 IPC：只接受 Chrome view 的调用，命令经 parseControlCommand 边界验证 ----
-
-  /**
-   * 触发 Harness boot 的控制命令：只有这些命令完成后才有"新一次 boot
-   * 结算"的事实，settlePluginRecovery 只能挂在这条线上。普通命令（刷新、
-   * 插件写操作等）不重启 Harness，把它们当结算点会把 pending/进行中的
-   * 事务误 verified 或误清（验收实测：add 期间 settle 清掉了 running
-   * journal；Restart Later 后任意命令会把 pending 事务误标 verified）。
-   */
-  const BOOT_COMMANDS: ReadonlySet<DesktopControlCommand['type']> = new Set([
-    'switch-profile',
-    'restart-harness',
-    'use-managed-home',
-  ])
 
   /**
    * B5-P7 记忆文件的本机管理（无状态）：只「打开/保存」两份扁平 memory.md
@@ -4389,14 +3475,9 @@ void app.whenReady().then(async () => {
    * @param command - 已验证的命令。
    */
   const runCommand = async (command: DesktopControlCommand): Promise<void> => {
-    if (pluginOperationInFlight() && [
-      'switch-profile', 'choose-existing-profile', 'use-managed-home', 'restart-harness',
-      'open-compatibility-view', 'open-workbench', 'migrate-managed-home', 'update-install', 'plugin-recovery-restore',
-    ].includes(command.type)) throw new Error(dictText(stringsFor(localeOf()), 'error.plugin-busy'))
     if (migration.isRunning() && [
       'switch-profile', 'choose-existing-home', 'choose-existing-profile', 'use-managed-home',
-      'restart-harness', 'open-compatibility-view', 'open-workbench', 'plugin-op-request',
-      'plugin-handoff-restart', 'plugin-recovery-restore', 'update-install',
+      'restart-harness', 'open-compatibility-view', 'open-workbench', 'update-install',
     ].includes(command.type)) throw new Error(stringsFor(localeOf())['error.migration-busy'])
     // B5-P6：notify 是无状态的通知展示命令——不经过 dispatch（dispatch 只
     // 服务桌面状态命令），不结算恢复通知、不动模型、不广播（点击时的导航
@@ -4412,10 +3493,42 @@ void app.whenReady().then(async () => {
       broadcast()
       return
     }
-    // B6-P5：完成或跳过首启引导。唯一完成事实原子写入 userData/first-run.json；
-    // 失败照常抛回调用方，绝不伪造成功。
-    if (command.type === 'first-run-dismiss') {
-      firstRunState = markFirstRunCompleted(userDataDir, firstRunState ?? null)
+    // B7-P2：更新说明里的链接与「查看完整 Release」交给系统浏览器。URL 已在
+    // parseControlCommand 边界按 https/无凭据/限长过滤；Chrome view 自身的
+    // will-navigate 一律拦截，所以这是链接离开本窗口的唯一出口。无状态、
+    // 不动模型、不广播。
+    if (command.type === 'open-external-link') {
+      await shell.openExternal(command.url)
+      return
+    }
+    // B7-P3：「用量与余额」。刷新是有界的一次异步过程（限频、陈旧丢弃都在
+    // 执行面里），命令本身立即返回；结果经广播回流。登录走官方账号（2026-09-25），
+    // 登录成功时由账号推送触发刷新。
+    if (command.type === 'usage-refresh') {
+      void usage.refresh(command.trigger)
+      return
+    }
+    // B7-P4：技能导入的来源选择。main 只开系统对话框并把选中的绝对路径放进
+    // 模型（nonce 递增，客户端只认自己这次命令响应里的那个）；读取、校验、
+    // 落盘全部在 Harness 侧的 skill-manager 服务里，main 不碰技能文件。
+    if (command.type === 'skill-pick-source') {
+      const zhPick = desktopLocaleZh()
+      const win = mainWindow
+      const options: Electron.OpenDialogOptions = command.kind === 'directory'
+        ? { properties: ['openDirectory'], title: zhPick ? '选择技能目录' : 'Choose a skill directory' }
+        : {
+          properties: ['openFile'],
+          title: zhPick ? '选择技能包（ZIP）或技能文档（Markdown）' : 'Choose a skill package (ZIP) or skill document (Markdown)',
+          filters: [
+            { name: zhPick ? '技能包或文档' : 'Skill package or document', extensions: ['zip', 'md'] },
+            { name: zhPick ? '所有文件' : 'All files', extensions: ['*'] },
+          ],
+        }
+      const result = win === undefined || win.isDestroyed()
+        ? await dialog.showOpenDialog(options)
+        : await dialog.showOpenDialog(win, options)
+      skillPickNonce += 1
+      skillPick = { nonce: skillPickNonce, kind: command.kind, path: result.canceled ? null : result.filePaths[0] ?? null }
       broadcast()
       return
     }
@@ -4461,7 +3574,6 @@ void app.whenReady().then(async () => {
     }
     // B6-P7：数据迁移与旧副本清理（全程代码执行，助手只解释不执行）。
     if (command.type === 'migrate-managed-home') {
-      if (pluginOperationInFlight()) throw new Error(dictText(stringsFor(localeOf()), 'error.plugin-busy'))
       await migration.migrate().catch((error: unknown) => { reportFailure(error); throw error })
       return
     }
@@ -4486,13 +3598,12 @@ void app.whenReady().then(async () => {
       try { broadcast() } catch (refreshError) { console.error(redactSecrets(String(refreshError))) }
       throw error
     }
-    if (command.type === 'choose-existing-profile' || command.type === 'use-managed-home') {
-      followHarnessPreferences(resolveHarnessHome(launcher.read().active.home, userDataDir))
+    // 偏好文档跟着 profile 走（dsh 0.1.7），换 Home 或换 profile 都要重新接上。
+    if (command.type === 'choose-existing-profile' || command.type === 'use-managed-home'
+      || command.type === 'switch-profile') {
+      followHarnessPreferences(resolveHarnessHome(launcher.read().active.home, userDataDir), launcher.read().active.profile)
     }
     settleRecoveryNotice()
-    // 插件事务结算只绑定 boot 型命令（restart/switch/use-managed-home）：
-    // 命令完成时 boot 已结算，pending 事务在此 verified 或进入恢复链。
-    if (BOOT_COMMANDS.has(command.type)) await settlePluginRecovery()
     broadcast()
   }
 
@@ -4500,22 +3611,40 @@ void app.whenReady().then(async () => {
     chromeView !== undefined && sender.id === chromeView.webContents.id
 
   ipcMain.handle('deepseekgui:get-control-model', (event) => {
-    if (!fromChrome(event.sender)) throw new Error('拒绝：非 Desktop Chrome 来源')
+    if (!fromChrome(event.sender)) throw new Error('Refused: not a Desktop Chrome sender')
     return buildModel()
   })
   ipcMain.handle('deepseekgui:run-control-command', async (event, raw: unknown) => {
     const command = parseControlCommand(raw)
-    if (command === null) throw new Error('拒绝：未知或非法的控制命令')
+    if (command === null) throw new Error('Refused: unknown or invalid control command')
     // 浮动反馈层已删（P8-D13 终章）：控制命令重新只认 Desktop Chrome 一个来源。
     if (!fromChrome(event.sender)) {
-      throw new Error('拒绝：该来源无权执行此控制命令')
+      throw new Error('Refused: this sender may not run this control command')
     }
     await runCommand(command).catch((error: unknown) => { reportFailure(error); throw error })
   })
   ipcMain.handle('deepseekgui:set-chrome-expanded', (event, expanded: unknown) => {
-    if (!fromChrome(event.sender)) throw new Error('拒绝：非 Desktop Chrome 来源')
+    if (!fromChrome(event.sender)) throw new Error('Refused: not a Desktop Chrome sender')
     chromeExpanded = expanded === true
     if (mainWindow !== undefined) layoutViews(mainWindow)
+  })
+
+  // 自绘托盘菜单的三条通道：只认托盘菜单窗口这一个发送方，载荷只有高度/位置 id。
+  const fromTrayMenu = (sender: Electron.WebContents): boolean =>
+    trayMenuWindow !== undefined && !trayMenuWindow.isDestroyed() && sender.id === trayMenuWindow.webContents.id
+  ipcMain.on('deepseekgui-tray:size', (event, height: unknown) => {
+    if (!fromTrayMenu(event.sender) || typeof height !== 'number' || !Number.isFinite(height)) return
+    placeAndShowTrayMenu(Math.ceil(height))
+  })
+  ipcMain.on('deepseekgui-tray:activate', (event, id: unknown) => {
+    if (!fromTrayMenu(event.sender) || typeof id !== 'string') return
+    trayMenuWindow?.hide()
+    const item = trayMenuItemAt(trayItems, id)
+    if (item?.action === undefined || item.enabled === false) return
+    void handleTrayAction(item.action).catch(reportFailure)
+  })
+  ipcMain.on('deepseekgui-tray:close', (event) => {
+    if (fromTrayMenu(event.sender)) trayMenuWindow?.hide()
   })
 
   // ---- D39 控制桥：官方设置页里的 DeepSeekGUI 分区（settings-plugin）→ main ----
@@ -4525,6 +3654,46 @@ void app.whenReady().then(async () => {
   // 127.0.0.1、凭证随进程一次性生成、经我们自己加载的页面 URL 下发。
   // 命令进的是与 Chrome 菜单**同一个** parseControlCommand + runCommand
   // 出口：没有第二事实源，也没有第二套权限判断。
+  // ---- 官方账号（2026-09-25）：Host 推账号状态，页面请求内嵌平台页 ----
+  const platform = new DesktopPlatformView(join(MODULE_DIR, 'platform-preload.cjs'),
+    () => desktopLocaleZh() ? 'zh_CN' : 'en_US', versionInfo.embeddedDshVersion)
+  platformView = platform
+  desktopAccount = createDesktopAccount({
+    openExternal: (url) => { void shell.openExternal(url).catch((error: unknown) => { reportFailure(error) }) },
+    focusWindow: () => {
+      const win = mainWindow
+      if (win === undefined || win.isDestroyed()) return
+      if (win.isMinimized()) win.restore()
+      win.show()
+      win.focus()
+    },
+    dark: () => effectiveThemeNow === 'dark',
+    onSessionChange: (next) => {
+      platform.setSession(next)
+      if (next !== null) void usage.refresh('sign-in')
+    },
+    onViewChange: () => { broadcastModel() },
+  })
+  ipcMain.on(PLATFORM_IPC.bootstrap, (event) => {
+    try { event.returnValue = platform.bootstrap(event) } catch { event.returnValue = null }
+  })
+  /**
+   * 页面坐标（CSS 像素，相对官方页面视口）→ 窗口内容坐标：官方页面在自己的
+   * WebContentsView 里（顶栏之下、给浏览器面板让出宽度），还要乘页面缩放。
+   * @param raw - 页面给的矩形。
+   * @returns 窗口内容坐标下的矩形。
+   */
+  const platformRect = (raw: unknown): ReturnType<typeof platformBounds> => {
+    const rect = platformBounds(raw)
+    const view = compatView
+    if (view === undefined) throw new Error('official page view missing')
+    const origin = view.getBounds()
+    const zoom = view.webContents.getZoomFactor()
+    return {
+      x: Math.round(origin.x + rect.x * zoom), y: Math.round(origin.y + rect.y * zoom),
+      width: Math.round(rect.width * zoom), height: Math.round(rect.height * zoom),
+    }
+  }
   {
     const bridge = await startControlBridge({
       appOrigin: `http://${DEFAULT_HOST}:${APP_PORT}`,
@@ -4585,6 +3754,34 @@ void app.whenReady().then(async () => {
         }
         return { status: 400, body: { error: 'unknown action' } }
       },
+      handleAccountFrame: (body) => {
+        const frame = parseAccountFrame(body)
+        if (frame === null) return { status: 400, body: { error: 'invalid account frame' } }
+        desktopAccount?.accept(frame)
+        return { status: 200, body: { ok: true } }
+      },
+      handlePlatformRequest: async (body) => {
+        const win = mainWindow
+        const page = compatView?.webContents
+        if (win === undefined || win.isDestroyed() || page === undefined) return { status: 409, body: { error: 'no window' } }
+        try {
+          if (body.type === 'open' && (body.page === 'usage' || body.page === 'top-up')) {
+            await platform.open(win, page, body.page, platformRect(body.bounds))
+            return { status: 200, body: { ok: true } }
+          }
+          if (body.type === 'bounds') {
+            platform.setBounds(platformRect(body.bounds))
+            return { status: 200, body: { ok: true } }
+          }
+          if (body.type === 'close') {
+            platform.close()
+            return { status: 200, body: { ok: true } }
+          }
+        } catch (error) {
+          return { status: 500, body: { error: redactSecrets(String(error instanceof Error ? error.message : error)) } }
+        }
+        return { status: 400, body: { error: 'unknown platform request' } }
+      },
       env: process.env,
     })
     controlBridgeParam = `${String(bridge.port)}.${bridge.controlToken}`
@@ -4597,8 +3794,8 @@ void app.whenReady().then(async () => {
 
 
   ipcMain.handle('deepseekgui-terminal:send', (event, data: unknown) => {
-    if (!fromTerminal(event.sender)) throw new Error('拒绝：非 DSH Terminal 来源')
-    if (typeof data !== 'string') throw new Error('拒绝：非法终端输入')
+    if (!fromTerminal(event.sender)) throw new Error('Refused: not a DSH Terminal sender')
+    if (typeof data !== 'string') throw new Error('Refused: invalid terminal input')
     // 曾经的静默吞键点：host 不在时 optional chaining 把键入无声扔掉——
     // 正是「敲什么都没反应且无任何报错」的形状。现在丢弃必留痕。
     if (terminalOperation === undefined) {
@@ -4624,7 +3821,7 @@ void app.whenReady().then(async () => {
   // 得重启一次才发现东西进来了。
   await offerSessionImport(resolveHarnessHome(launcher.read().active.home, userDataDir))
   await controller.start()
-  followHarnessPreferences(resolveHarnessHome(launcher.read().active.home, userDataDir))
+  followHarnessPreferences(resolveHarnessHome(launcher.read().active.home, userDataDir), launcher.read().active.profile)
   // B6-P7：上次迁移若停在"等重启核对"，这次启动就是那次重启——按清单逐项
   // 核对新位置。放在 controller.start() 之后：这时应用已经真的从零把新位置
   // 用起来了，核对才代表"从零启动能用"。通过之后删除旧副本的入口才出现。
@@ -4637,20 +3834,14 @@ void app.whenReady().then(async () => {
   void permissions.refresh().then(() => permissions.ensureManagedDefault())
   // D20：Managed Home 出厂文件（AGENTS.md 模板 + 空 memory.md），只补缺失。
   ensureManagedMemorySeed()
-  // 插件事务结算：pending journal + 本次 boot 的结果 → verified（健康）或
-  // 恢复链（Managed 自动恢复一次 / Existing 等待确认 / drift fail closed）。
-  await settlePluginRecovery()
   const status = controller.status()
   if (status.phase === 'failed') {
-    // 需要人工恢复（Existing 等待确认 / drift / 自动恢复后仍失败）时，
-    // 绝不直接退出：窗口与托盘保持存活，Plugin Manager 面板显示恢复
-    // 区块（Restore / Open Profile Folder / Open DSH Terminal / 放弃）。
-    // 其余失败仍走 fail loud 退出。
+    // 起不来就 fail loud 退出：弹窗说明卡在哪一步，并指出记录文件。
     const zhFail = desktopLocaleZh()
     const failedStage = status.failure.stage
     // 起不来这件事必须留下记录：这条路径有一半是直接退出的，用户下次开
     // DeepSeekGUI 时想问"上次怎么回事"，DS 手里得有东西可看。
-    appendDesktopEvent(resolveHarnessHome(launcher.read().active.home, userDataDir), {
+    const eventFile = appendDesktopEvent(resolveHarnessHome(launcher.read().active.home, userDataDir), {
       at: formatStampLocal(new Date().toISOString()),
       title: zhFail ? 'Harness 没能启动' : 'The harness failed to start',
       sections: [
@@ -4678,25 +3869,25 @@ void app.whenReady().then(async () => {
           zhFail ? '如果用户问起' : 'If the user asks',
           zhFail
             ? '照上面的事实说明就好，这是 DeepSeekGUI 侧的启动问题，不是用户操作错误。'
-              + '如果刚装过插件，优先怀疑那次安装；DeepSeekGUI 的设置页里有恢复入口。'
+              + '如果刚装过插件，优先怀疑那次安装。'
             : 'State the facts above. This is a DeepSeekGUI startup problem, not something the user did wrong. '
-              + 'If a plugin was installed recently, suspect that first; the DeepSeekGUI settings page offers a restore entry.',
+              + 'If a plugin was installed recently, suspect that first.',
         ],
       ],
     }, zhFail)
-    const needsManualRecovery = recoveryJournal !== null
-      && (recoveryJournal.state === 'recovery-needed' || recoveryJournal.state === 'drift')
-    if (!needsManualRecovery) {
-      failLocalized(
-        moduleDict(),
-        'fail.dsh-failed.title',
-        'fail.dsh-failed.message',
-        { stage: status.failure.stage, message: sentence(status.failure.message), hint: diagnosticsHint() },
-        1,
-      )
-      return
-    }
-    console.error(`[deepseekgui] Harness 启动失败，插件恢复需要人工处理（保持窗口存活）: ${status.failure.stage}: ${status.failure.message}`)
+    failLocalized(
+      moduleDict(),
+      'fail.dsh-failed.title',
+      'fail.dsh-failed.message',
+      {
+        stage: status.failure.stage,
+        message: sentence(status.failure.message),
+        // 弹窗直接指出记录文件（照官方桌面壳的崩溃报告弹窗）。
+        hint: `${diagnosticsHint()}${eventFile === null ? '' : (zhFail ? `\n完整记录：${eventFile}` : `\nFull record: ${eventFile}`)}`,
+      },
+      1,
+    )
+    return
   }
   // 启动尾部只构建一份模型：先广播（此时托盘还没建），托盘建好后用
   // 同一份重建菜单。中间的 refresh-profiles 是异步的，其结果要到自己
@@ -4733,13 +3924,15 @@ void app.whenReady().then(async () => {
       ? join(process.resourcesPath, trayAsset)
       : join(MODULE_DIR, '..', 'src', 'chrome', trayAsset)
     const trayIcon = nativeImage.createFromPath(trayIconPath)
-    if (trayIcon.isEmpty()) throw new Error(`托盘图标资产解码为空：${trayIconPath}`)
+    if (trayIcon.isEmpty()) throw new Error(`The tray icon asset decoded to empty: ${trayIconPath}`)
     tray = new Tray(trayIcon)
     tray.setToolTip('DeepSeekGUI')
     tray.on('click', () => {
       mainWindow?.show()
       mainWindow?.focus()
     })
+    // Windows：不挂原生 context menu（否则右键会同时弹出两份），右键走自绘窗口。
+    if (CUSTOM_TRAY_MENU) tray.on('right-click', () => { showTrayMenu() })
     rebuildTrayMenu(bootModel)
   } catch (error) {
     console.error(`[deepseekgui] 系统托盘创建失败（常驻入口缺失，关窗后需重开快捷方式唤醒）: ${String(error instanceof Error ? error.message : error)}`)
@@ -4759,6 +3952,11 @@ void app.whenReady().then(async () => {
     setTimeout(() => {
       void updates.check(true)
     }, 8000)
+    // B7-P3 冷启动刷新（R7 起 partition 持久）：登录过一次的用户在这里
+    // 直接拿到数据；从没登录过时零网络、直接记为未登录。
+    setTimeout(() => {
+      void usage.refresh('startup')
+    }, USAGE_STARTUP_REFRESH_DELAY_MS)
   }
 
   if (SMOKE) {

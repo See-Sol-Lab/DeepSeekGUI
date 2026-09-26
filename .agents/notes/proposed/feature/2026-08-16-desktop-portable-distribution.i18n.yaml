@@ -1,6 +1,22 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-08-16-desktop-portable-distribution.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/proposed/feature/2026-08-16-desktop-portable-distribution.md
-2026-08-16-desktop-portable-distribution.md: b19ac8f053ce8bde041561c4045abac1e98435b6
-2026-08-16-desktop-portable-distribution.zh.md: d0e4e560f54ae8d31af225c4487cf0ae63a24e78
+/agent-note-portable-windows-distribution-directory:
+  en: bcb72959e76ab5c8
+  zh: 6ba62c9b43ba5abd
+/agent-note-portable-windows-distribution-directory/problem:
+  en: 94d3b91cdd7b4a6e
+  zh: b6c29dc748dd261f
+/agent-note-portable-windows-distribution-directory/proposal:
+  en: 4a4caeee57bd7b99
+  zh: 7c21aaa8336a0e55
+/agent-note-portable-windows-distribution-directory/alternatives-considered:
+  en: 1c1d0b8824723794
+  zh: 4d5c11d91ef248d1
+/agent-note-portable-windows-distribution-directory/acceptance-criteria:
+  en: 123678b5c70ed85a
+  zh: b4fd7e3edba37917
+/agent-note-portable-windows-distribution-directory/risks:
+  en: 728ad991d178fb95
+  zh: 127713b40e93a75e

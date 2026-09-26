@@ -56,4 +56,25 @@ describe('DSH package license gate', () => {
       'packages/core/agent/package.json: @deepseek-ai/dsh-agent must declare "license": "MIT"; found undefined.',
     ])
   })
+
+  it('holds the DeepSeekGUI product Host packages to the product license, exactly', () => {
+    const root = createWorkspace()
+    writeManifest(root, 'packages/api/skill-manager/package.json', {
+      name: '@deepseek-ai/dsh-skill-manager',
+      license: 'SEE LICENSE IN LICENSE',
+    })
+    writeManifest(root, 'packages/api/workbench-memory/package.json', {
+      name: '@deepseek-ai/dsh-workbench-memory',
+      license: 'MIT',
+    })
+    writeManifest(root, 'packages/api/other/package.json', {
+      name: '@deepseek-ai/dsh-other',
+      license: 'SEE LICENSE IN LICENSE',
+    })
+
+    expect(inspectDshPackageLicenses(root).failures).toEqual([
+      'packages/api/other/package.json: @deepseek-ai/dsh-other must declare "license": "MIT"; found "SEE LICENSE IN LICENSE".',
+      'packages/api/workbench-memory/package.json: @deepseek-ai/dsh-workbench-memory must declare "license": "SEE LICENSE IN LICENSE"; found "MIT".',
+    ])
+  })
 })

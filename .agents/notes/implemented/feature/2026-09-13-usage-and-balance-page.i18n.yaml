@@ -1,0 +1,19 @@
+# Bilingual-pair consistency record for 2026-09-13-usage-and-balance-page.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-13-usage-and-balance-page.md
+/agent-note-usage-and-balance-page-from-the-open-platform-login-session:
+  en: d64a5529f151c4ab
+  zh: 63271c1292ad1359
+/agent-note-usage-and-balance-page-from-the-open-platform-login-session/problem:
+  en: 7c5f1f8aba3c1b92
+  zh: 71489a5684d990be
+/agent-note-usage-and-balance-page-from-the-open-platform-login-session/decision:
+  en: 332a974abce6efee
+  zh: d35c6bdcb2aed52a
+/agent-note-usage-and-balance-page-from-the-open-platform-login-session/alternatives-considered:
+  en: 10ff2e204aeb0c48
+  zh: f40474bc6385ec93
+/agent-note-usage-and-balance-page-from-the-open-platform-login-session/consequences:
+  en: f153c5fb86f9127d
+  zh: f3ff9ecbda5daeef

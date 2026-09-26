@@ -16,16 +16,17 @@
  *   actions that are gestures on the layout itself; this seat is for actions that
  *   mean something about the tab's content.
  *
- * TYPE HOME RATIONALE: this package declares all four at runtime, and anything
+ * TYPE HOME RATIONALE: this package declares these slots at runtime, and anything
  * registering into one already depends on it for the declaration. The types
  * therefore live with their declarer.
  */
+import type { ShortcutCatalogEntry } from '@deepseek-ai/dsh-client-shortcuts/client'
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
 import type { RightbarOwnerProps } from '@deepseek-ai/dsh-client-ui-layout/client'
 // The locale plugin's own merge carries the shared `common` vocabulary that the
 // lookup chain consults after this namespace misses.
 import type {} from '@deepseek-ai/dsh-client-locale/client'
-import type { PaneId, TabRecord } from '@deepseek-ai/dsh-client-ui-dockkit'
+import type { PaneId, TabId, TabRecord } from '@deepseek-ai/dsh-client-ui-dockkit'
 import type { SlotHookFactory } from '@deepseek-ai/dsh-client-ui-slots'
 import type { TabHookContext } from '../tab-info.ts'
 import type { SidebarRightKey } from '../locales.ts'
@@ -39,7 +40,15 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 
   interface SlotMap {
     /** Session content selected by the root-scoped right Sidebar controller. */
-    'rightbar.session': { kind: 'single'; scope: 'session'; owner: RightbarOwnerProps }
+    'rightbar.session': {
+      kind: 'single'
+      scope: 'session'
+      owner: RightbarOwnerProps & {
+        readonly active: boolean
+        /** @param tabId - retained body. @param signal - tab occurrence lifetime. @returns releases the View-owned hold. */
+        readonly retainTab: (tabId: TabId, signal: AbortSignal) => () => void
+      }
+    }
     /**
      * One tab's body, dispatched with the `id` of the type in force for
      * `tab.kind`. A tab type registers here under its definition's `id` and
@@ -78,6 +87,14 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
       hookContext: UseSidebarRightTabInfo
       inject: { hooks: { tabInfo: SlotHookFactory<'sidebar.right.tab.guide', UseSidebarRightTabInfo> } }
     }
+    /** One provider's guide card, with the standard card as the owner's fallback. */
+    'sidebar.right.tab.guide.entry': {
+      kind: 'keyed'
+      scope: 'session'
+      owner: SidebarRightGuideEntryOwnerProps
+      hookContext: UseSidebarRightTabInfo
+      inject: { hooks: { tabInfo: SlotHookFactory<'sidebar.right.tab.guide.entry', UseSidebarRightTabInfo> } }
+    }
     /**
      * Extra items at the end of one tab's actions menu, in registration order.
      * Entries decide their own visibility from the tab they are given. Without a
@@ -105,14 +122,28 @@ export interface SidebarRightTabNavigation {
 export interface SidebarRightTabPlacement {
   /** Land a new tab in this pane instead. */
   readonly paneId?: PaneId
+  /** Prefer a new pane for new content; use the target pane when splitting is unavailable. */
+  readonly preferNewPane?: boolean
   /** Resource tabs reveal existing content by default; `false` permits duplicates. Pages always deduplicate within the target pane. */
   readonly revealIfOpened?: boolean
   /** `true` opens in this tab's place — its pane and strip slot — and closes this tab in the same step. */
   readonly replaceTab?: boolean
 }
 
+/** Page-owned operations registered for a mounted tab body. */
+export interface SidebarRightTabCommands {
+  /** Refresh this page through its existing resource owner. */
+  readonly refresh?: () => void
+}
+
 /** The actions one tab may take on itself; each acts on the session the tab is in. */
 export interface SidebarRightTabActions {
+  /**
+   * Bind page operations until the body unmounts or the tab lifetime ends.
+   * @param commands - operations supported by this page; omitted operations are unavailable.
+   * @returns disposer that cannot remove a newer body's registration.
+   */
+  bindCommands(commands: SidebarRightTabCommands): () => void
   /**
    * Open a resource from this tab; see `ISidebarRight.openResource`.
    * @param address - a `dsh-resource://` address.
@@ -138,7 +169,12 @@ export interface SidebarRightTabInfo {
   }
   readonly panel: { readonly id: PaneId }
   readonly tab: TabRecord & {
-    /** Docked bodies need an expanded sidebar and an active tab; expanded titles include inactive tabs. Floats stay visible. */
+    /** Effective refresh binding for this page's controls. */
+    readonly refreshShortcut?: ShortcutCatalogEntry | undefined
+    /**
+     * Only the foreground Session is visible. Docked bodies require expansion and selection;
+     * expanded titles include inactive tabs. Floats survive collapse.
+     */
     readonly visible: boolean
     readonly navigation: SidebarRightTabNavigation
     /** Aborted only when the record disappears or this plugin unloads, not on hide or session switch. */
@@ -170,4 +206,12 @@ export interface SidebarRightTabMenuOwnerProps {
    * over content the action may have just replaced.
    */
   dismiss: () => void
+}
+
+/** Resolved guide copy and entry identity supplied to a provider's card renderer. */
+export interface SidebarRightGuideEntryOwnerProps {
+  readonly entryId: string
+  readonly kind: string
+  readonly title: string
+  readonly description?: string
 }

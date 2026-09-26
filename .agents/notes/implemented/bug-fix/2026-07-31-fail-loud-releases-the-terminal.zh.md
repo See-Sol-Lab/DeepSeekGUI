@@ -17,7 +17,7 @@ zsh: command not found: 4cecho
 
 Loader 并发挂载各个条目，因此条目失败的顺序并不等于启动顺序。`ui-tui` 会先激活并调用 pi-tui 的 `ProcessTerminal.start()`，它把 stdin 置为 raw 模式、启用 bracketed paste，并写出 Kitty 键盘协议探测序列——该序列以一个 Device Attributes 查询（`ESC [ c`）结尾。随后某个同级条目（这里是 `llm-pi-ai`）因自身配置而 rejection。
 
-在当时，该 rejection 以未处理 rejection 的形式浮现，而 `installFailLoud` 只写一行 stderr 就立即调用 `process.exit(1)`。（事务化 Loader 现在让配置树失败经 `boot()` 结算，由它自行 dispose（资源释放）部分构建的上下文；release 钩子仍然守护 `boot()` 看不到的 rejection——插件游离的异步工作在挂载期间或挂载之后失败。）没有任何环节 dispose 这棵树，因此 `ProcessTerminal.stop()` 从未执行：raw 模式、bracketed paste 和键盘协议都残留在比进程活得更久的 shell 上。终端对 Device Attributes 查询的回应（`1;2;4c`）在进程退出之后才到达，被 shell 当作用户输入读入——也就是上面那段字面文本。
+在当时，该 rejection 以未处理 rejection 的形式浮现，而 `installFailLoud` 只写一行 stderr 就立即调用 `process.exit(1)`。（[Loader 激活检查](../simplification/2026-09-09-nontransactional-loader.zh.md) 让配置树失败经 `boot()` 报告，由它自行 dispose（资源释放）部分构建的上下文；release 钩子仍然守护 `boot()` 看不到的 rejection——插件游离的异步工作在挂载期间或挂载之后失败。）没有任何环节 dispose 这棵树，因此 `ProcessTerminal.stop()` 从未执行：raw 模式、bracketed paste 和键盘协议都残留在比进程活得更久的 shell 上。终端对 Device Attributes 查询的回应（`1;2;4c`）在进程退出之后才到达，被 shell 当作用户输入读入——也就是上面那段字面文本。
 
 `/exit` 路径从不受影响，因为它会 dispose 整棵树，从而进入 TUI 自身的 `shutdown()`：先 `drainInput()`（吸收尚未返回的响应），再 `ui.stop()`。缺陷在于**启动失败**没有通往这同一套拆卸流程的路径。
 
@@ -29,6 +29,7 @@ Loader 并发挂载各个条目，因此条目失败的顺序并不等于启动�
 - 使用闩锁（latch）而非卸载监听器，来保证被报告的始终是第一个 rejection。若在拆卸期间移除监听器，第二个并发 rejection 就会变成未捕获错误，Node 会在拆卸中途杀死进程——恰好残留下本次要恢复的终端状态。后续 rejection（包括 release 自身的）都会落入已挂起的退出流程。
 - release 以 `FAIL_LOUD_RELEASE_TIMEOUT_MS`（2 秒）为上限，且其 rejection 被吞掉。卡住或失败的 disposer 只会延迟致命退出，绝不会取消它。该定时器保持 **referenced**：一旦 `unref()`，Node 就会在事件循环清空后、恰恰在报告这次失败时以 0 退出，因为 `unhandledRejection` 监听器抑制了默认的致命退出。
 - 不传 `release` 时行为与此前完全一致，因此 ACP（Agent Client Protocol）、JSON-RPC 和各 demo bin 均无变化。
+- 自[致命诊断与崩溃报告](../architecture/2026-09-22-fatal-diagnostics-and-crash-reports.zh.md)决定起，同一 handler、闩锁与 release 也对 `uncaughtException` 生效，诊断同时改为 `util.inspect`。
 
 `dsh` 的 TUI 启动器传入的 release 会释放根上下文，从而执行 TUI 已有的 `shutdown()` 并把终端交还。
 

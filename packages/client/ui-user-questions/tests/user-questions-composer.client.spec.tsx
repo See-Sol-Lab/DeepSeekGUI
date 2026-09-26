@@ -28,11 +28,10 @@ type ConversationState = Parameters<Parameters<QuestionComposerProps['useConvers
 type ChatState = Parameters<Parameters<QuestionComposerProps['useChat']>[0]>[0]
 type TrajectoryState = Parameters<Parameters<QuestionComposerProps['useTrajectory']>[0]>[0]
 type InputState = Parameters<Parameters<QuestionComposerProps['useInput']>[0]>[0]
-type AttentionState = Parameters<Parameters<QuestionComposerProps['useSessionPendingInteraction']>[0]>[0]
+type AttentionState = Parameters<Parameters<QuestionComposerProps['useSessionStatus']>[0]>[0]
 
 const sessionState: SessionState = {
   sessionId: SID,
-  queue: [],
   pendingSubmissions: [],
   running: false,
   subagent: null,
@@ -49,23 +48,21 @@ const sessionState: SessionState = {
 }
 const sessionList = {
   ids: [SID],
-  byId: { [SID]: { id: SID, displayTitle: 'Session', running: false, blank: false, updatedAt: 0 } },
-  current: SID,
+  byId: { [SID]: { id: SID, displayTitle: 'Session', running: false, retainedBy: {}, blank: false, updatedAt: 0 } },
   phase: 'ready' as const,
-  subagentsByParent: {},
-  jobsBySession: {},
-  currentAddress: undefined,
+  projectionsBySession: {},
 }
 const attentionState: AttentionState = new Map()
 const workspaceState = {
   items: [],
   archivedSessionIds: [],
+  pinnedSessionIds: [],
   state: 'idle' as const,
   phase: 'ready' as const,
   error: null,
 }
 const conversationState: ConversationState = {
-  views: { get: () => undefined },
+  views: { get: () => undefined, grouped: () => undefined },
   activeTargets: new Set(),
 }
 const emptyKeys: readonly string[] = []
@@ -75,6 +72,7 @@ const chatState: ChatState = {
   nodes: {
     get: () => undefined,
     source: () => emptyNodeSource,
+    turnDataSource: () => { throw new Error('unused') },
     processSource: () => emptyNodeSource,
     values: () => [],
   },
@@ -110,13 +108,16 @@ const inputState: InputState = {
  *  the composed props type mandates delivery of the rest (framework hooks are
  *  plain stubs per the client testing discipline). */
 const kitBase: Omit<QuestionComposerProps, 'matched' | 'useStore' | 'actions'> = {
+  renderSlot: () => null,
+  SessionProvider: ({ children }) => children,
   session: undefined,
   sessionId: SID,
   pendingInteraction: undefined,
   useSession: selector => selector(sessionState),
   useSessions: selector => selector(sessionList),
   usePanelInfo, useResource,
-  useSessionPendingInteraction: selector => selector(attentionState),
+  useSessionStatus: selector => selector(attentionState),
+  useSessionRetainInfo: () => undefined,
   useWorkspaces: selector => selector(workspaceState),
   useConversation: selector => selector(conversationState),
   useChat: selector => selector(chatState),
@@ -124,6 +125,8 @@ const kitBase: Omit<QuestionComposerProps, 'matched' | 'useStore' | 'actions'> =
   useProjection: (() => undefined),
   useInput: selector => selector(inputState),
   inputActions: {
+    captureInsertion: () => ({ start: 0, end: 0, draftRev: 0 }),
+    insertText: () => false,
     setDraft: () => { throw new Error('unused') },
     addAttachments: () => { throw new Error('unused') },
     removeAttachment: () => { throw new Error('unused') },
@@ -247,9 +250,9 @@ describe('QuestionComposer', () => {
     expect((screen.getByText('下一题').closest('button') as HTMLButtonElement).disabled).toBe(true)
     fireEvent.click(screen.getByRole('radio', { name: '研究潜力型' }))
     expect(screen.getByText('2 / 3')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: '跳过本题' }))
+    fireEvent.click(screen.getByRole('button', { name: '跳过' }))
     expect(screen.getByText('3 / 3')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: '跳过本题' }))
+    fireEvent.click(screen.getByRole('button', { name: '跳过' }))
 
     expect(answer).toHaveBeenCalledWith(answerBatch([
       { id: 'profile', selected: ['研究潜力型'] },
@@ -346,7 +349,7 @@ describe('QuestionComposer', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '放弃整组问题' }))
     expect(await screen.findByText('第一次取消失败')).toBeTruthy()
-    expect(screen.getByRole<HTMLButtonElement>('button', { name: '跳过本题' }).disabled).toBe(false)
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: '跳过' }).disabled).toBe(false)
 
     fireEvent.click(screen.getByRole('button', { name: '放弃整组问题' }))
     expect(await screen.findByText('第二次取消失败')).toBeTruthy()
@@ -387,7 +390,7 @@ describe('QuestionComposer', () => {
     const { carrier } = wait([{ id: 'detail', question: '补充你的要求' }])
     render(<QuestionComposer matched={carrier} {...kit} t={seatOver(en, commonEn)} />)
     expect(screen.getByLabelText('Dismiss all questions')).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Skip this question' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Skip' })).toBeTruthy()
     expect(screen.getByPlaceholderText('Type your answer')).toBeTruthy()
   })
 

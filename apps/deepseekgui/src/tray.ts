@@ -19,7 +19,6 @@ export type TrayAction =
   | { kind: 'open-compatibility-view' }
   | { kind: 'open-workbench' }
   | { kind: 'check-updates' }
-  | { kind: 'about' }
   | { kind: 'quit' }
 
 /** Tray 菜单项（main 转成 Electron MenuItemConstructorOptions）。 */
@@ -45,7 +44,6 @@ const ZH = {
   'tray.view.workbench': '打开 Workbench',
   'tray.updates': '检查更新',
   'tray.updates.available': '检查更新（有新版本 {version}）',
-  'tray.about': '关于 DeepSeekGUI',
   'tray.quit': '退出 DeepSeekGUI',
 } as const
 
@@ -60,7 +58,6 @@ const EN = {
   'tray.view.workbench': 'Open Workbench',
   'tray.updates': 'Check for Updates',
   'tray.updates.available': 'Check for Updates ({version} available)',
-  'tray.about': 'About DeepSeekGUI',
   'tray.quit': 'Quit DeepSeekGUI',
 } as const
 
@@ -129,8 +126,94 @@ export function trayMenuTemplate(input: TrayMenuInput): TrayMenuItem[] {
     // 更新状态：available/verified 时提示新版本；否则普通入口。
     { label: updateLabel, action: { kind: 'check-updates' } },
     { type: 'separator' },
-    { label: dict['tray.about'], action: { kind: 'about' } },
-    { type: 'separator' },
     { label: dict['tray.quit'], action: { kind: 'quit' } },
   ]
+}
+
+/**
+ * Serialisable tray-menu row for the self-drawn menu window (Windows 11
+ * acrylic glass; other platforms keep the native menu). Actions never cross
+ * the IPC boundary: rows carry a positional id, and main resolves the id
+ * back to the template's action so the renderer cannot forge one.
+ */
+export interface TrayMenuWireItem {
+  /** Positional path into the template (`"3"`, `"4.1"`). */
+  id: string
+  label: string
+  enabled: boolean
+  type: 'normal' | 'radio' | 'separator'
+  checked?: boolean
+  /** True when the template row carries an action (rendered as a button). */
+  actionable: boolean
+  submenu?: TrayMenuWireItem[]
+}
+
+/**
+ * Flatten a template into wire rows.
+ * @param items - template rows from {@link trayMenuTemplate}.
+ * @param prefix - id prefix for recursion.
+ * @returns wire rows in template order.
+ */
+export function wireTrayMenu(items: readonly TrayMenuItem[], prefix = ''): TrayMenuWireItem[] {
+  return items.map((item, index) => {
+    const id = prefix === '' ? String(index) : `${prefix}.${String(index)}`
+    return {
+      id,
+      label: item.label ?? '',
+      enabled: item.enabled ?? true,
+      type: item.type === 'radio' ? 'radio' : item.type === 'separator' ? 'separator' : 'normal',
+      ...item.checked === undefined ? {} : { checked: item.checked },
+      actionable: item.action !== undefined,
+      ...item.submenu === undefined ? {} : { submenu: wireTrayMenu(item.submenu, id) },
+    }
+  })
+}
+
+/**
+ * Resolve a wire id back to its template row.
+ * @param items - template rows the ids were generated from.
+ * @param id - positional path.
+ * @returns the row, or undefined for a malformed / out-of-range id.
+ */
+export function trayMenuItemAt(items: readonly TrayMenuItem[], id: string): TrayMenuItem | undefined {
+  let current: readonly TrayMenuItem[] | undefined = items
+  let found: TrayMenuItem | undefined
+  for (const part of id.split('.')) {
+    if (current === undefined || !/^\d+$/.test(part)) return undefined
+    found = current[Number(part)]
+    if (found === undefined) return undefined
+    current = found.submenu
+  }
+  return found
+}
+
+/** A rectangle in screen coordinates (Electron `Rectangle` shape). */
+export interface ScreenRect { x: number; y: number; width: number; height: number }
+
+/**
+ * Place the self-drawn tray menu next to the cursor, inside the display's
+ * work area. The menu opens upward from the cursor (taskbars sit at the
+ * bottom) and is pushed back inside the work area when it would overflow —
+ * the same rules the native menu follows.
+ * @param cursor - cursor position in screen coordinates.
+ * @param workArea - work area of the display under the cursor.
+ * @param size - menu size in DIPs.
+ * @param gap - distance kept from the cursor.
+ * @returns top-left position for the window.
+ */
+export function placeTrayMenu(
+  cursor: { x: number; y: number },
+  workArea: ScreenRect,
+  size: { width: number; height: number },
+  gap = 8,
+): { x: number; y: number } {
+  const right = workArea.x + workArea.width
+  const bottom = workArea.y + workArea.height
+  let x = cursor.x - Math.round(size.width / 2)
+  let y = cursor.y - gap - size.height
+  if (y < workArea.y) y = Math.min(cursor.y + gap, bottom - size.height)
+  if (x + size.width > right) x = right - size.width
+  if (x < workArea.x) x = workArea.x
+  if (y < workArea.y) y = workArea.y
+  return { x, y }
 }

@@ -30,13 +30,20 @@ import {
   statSync, writeFileSync,
 } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
-import { basename, delimiter, dirname, join } from 'node:path'
+import { basename, delimiter, dirname, join, sep } from 'node:path'
 import { releaseFamily, tarballName } from './release/families.ts'
 import { capture } from './release/process.ts'
 import { packedIdentity, tarballFiles } from './release/tarball.ts'
 // 皮肤 overlay 的文件名与运行时读取端共用同一个常量：两侧一旦不一致，
 // --patch 会指向一个不存在的文件，而官方对此是启动即失败。
-import { BROWSER_PATCH_FILENAME, PICKER_PATCH_FILENAME, SETTINGS_PATCH_FILENAME, THEME_PATCH_FILENAME, WORKBENCH_PATCH_FILENAME } from '../apps/deepseekgui/src/dsh-service.ts'
+import {
+  BROWSER_PATCH_FILENAME,
+  PICKER_PATCH_FILENAME,
+  SETTINGS_PATCH_FILENAME,
+  SKILLS_PATCH_FILENAME,
+  THEME_PATCH_FILENAME,
+  WORKBENCH_PATCH_FILENAME,
+} from '../apps/deepseekgui/src/dsh-service.ts'
 import { computeRuntimeClosure, parsePluginNames } from './runtime-closure.ts'
 import { directoryBytes, prunePlatforms } from './platform-prune.ts'
 import { sanitizeAndVerify } from './leak-scan.ts'
@@ -313,6 +320,8 @@ function packFamily(familyId: string, out: string): void {
 const PRODUCT_PACKAGES = [
   join('apps', 'deepseekgui', 'coding-tools-plugin'),
   join('packages', 'api', 'workbench-inspector'),
+  join('packages', 'api', 'skill-manager'),
+  join('packages', 'api', 'workbench-memory'),
 ] as const
 
 /** Pack the product packages into `out` beside the family tarballs. */
@@ -383,10 +392,26 @@ function vendoredPackageNames(directory: string): string[] {
 }
 
 /**
- * The closure roots: every package the shipped Web profile mounts — the base
- * and web-app bundle patches, and every agent preset shipped inside the
- * `@deepseek-ai/dsh-agent-presets` package (the preset picker lets a session
- * mount any of them) — plus
+ * Every patch file a bundle package declares under `dsh.bundle.patch` (one
+ * path or a list), resolved against the package directory.
+ * @param bundleDir - the bundle package directory.
+ * @returns absolute patch paths, in declaration order.
+ */
+function declaredBundlePatches(bundleDir: string): string[] {
+  const manifest = JSON.parse(readFileSync(join(bundleDir, 'package.json'), 'utf8')) as { dsh?: { bundle?: { patch?: unknown } } }
+  const declared = manifest.dsh?.bundle?.patch
+  const patches = typeof declared === 'string' ? [declared] : Array.isArray(declared) ? declared : []
+  if (patches.length === 0 || !patches.every(patch => typeof patch === 'string')) {
+    throw new Error(`build-desktop-dist: ${bundleDir} declares no dsh.bundle.patch`)
+  }
+  return patches.map(patch => join(bundleDir, patch))
+}
+
+/**
+ * The closure roots: every package the shipped Web profile mounts — every
+ * patch the base and web-app bundles declare, which since DSH 0.1.7 includes
+ * the agent presets (`presets/*.patch.yml` beside the web-app bundle; the
+ * preset picker lets a session mount any of them) — plus
  * the launcher entry itself and the frontend package the web-app bundle
  * resolves dynamically (`require.resolve` of the built dist, invisible to
  * static edges).
@@ -394,26 +419,16 @@ function vendoredPackageNames(directory: string): string[] {
  */
 function profileRoots(): string[] {
   const roots = new Set<string>(['@deepseek-ai/dsh', '@deepseek-ai/dsh-web-frontend'])
-  // DSH 0.1.2 moved the shipped presets out of the CLI's config directory into
-  // the dsh-agent-presets package; each preset still owns an agent.cordis.yml.
-  const presetsDir = join(ROOT, 'packages', 'preset', 'agent-presets', 'presets')
-  const presets = readdirSync(presetsDir, { withFileTypes: true })
-    .filter(entry => entry.isDirectory())
-    .map((entry) => {
-      const composition = join(presetsDir, entry.name, 'agent.cordis.yml')
-      // Every shipped preset directory must carry its composition; a missing
-      // file is a broken preset, not an empty seed.
-      if (!existsSync(composition)) {
-        throw new Error(`build-desktop-dist: shipped preset ${entry.name} lacks agent.cordis.yml at ${composition}`)
-      }
-      return composition
-    })
-  if (presets.length === 0) throw new Error(`build-desktop-dist: no agent presets found under ${presetsDir}`)
-  for (const patch of [
-    join(ROOT, 'packages', 'bundle', 'base', 'cordis.patch.yml'),
-    join(ROOT, 'packages', 'bundle', 'web-app', 'cordis.patch.yml'),
-    ...presets,
-  ]) {
+  // Read the bundles' own declarations rather than a directory layout: DSH 0.1.7
+  // replaced the dsh-agent-presets package's preset folders with these patches.
+  const patches = [
+    ...declaredBundlePatches(join(ROOT, 'packages', 'bundle', 'base')),
+    ...declaredBundlePatches(join(ROOT, 'packages', 'bundle', 'web-app')),
+  ]
+  if (!patches.some(patch => patch.includes(`${sep}presets${sep}`))) {
+    throw new Error('build-desktop-dist: the web-app bundle declares no agent preset patches')
+  }
+  for (const patch of patches) {
     if (!existsSync(patch)) throw new Error(`build-desktop-dist: shipped profile file missing: ${patch}`)
     for (const name of parsePluginNames(readFileSync(patch, 'utf8'))) roots.add(name)
   }
@@ -510,6 +525,10 @@ const PLUGIN_SHIPMENTS: readonly PluginShipment[] = [
   // The Workbench product plugin (B3-P1); `assets/` carries the memory
   // behavior contract as content beside the code (B5-P9).
   { dir: 'workbench-plugin', pkg: 'deepseekgui-workbench', entry: 'lib/client.js', overlay: [WORKBENCH_PATCH_FILENAME, WORKBENCH_PATCH_FILENAME], assets: ['assets'] },
+  // The skill manager's settings section (B7-P4); the host-side service
+  // (`@deepseek-ai/dsh-skill-manager`) travels as a product tarball through
+  // PRODUCT_PACKAGES like the workbench inspector.
+  { dir: 'skills-plugin', pkg: 'deepseekgui-skills', entry: 'lib/client.js', overlay: [SKILLS_PATCH_FILENAME, SKILLS_PATCH_FILENAME] },
   // The coding tools (B5-P4) are not listed here: the web-app bundle depends
   // on them by name, so they travel as a product tarball through the runtime
   // closure install (PRODUCT_PACKAGES) and land in node_modules with it.
@@ -538,6 +557,11 @@ function shipPlugin(runtimeDir: string, ship: PluginShipment): void {
   mkdirSync(target, { recursive: true })
   cpSync(join(source, 'lib'), join(target, 'lib'), { recursive: true })
   cpSync(join(source, 'package.json'), join(target, 'package.json'))
+  // The plugin's display name and summary on the settings plugin list (dsh
+  // 0.1.7 locale metadata); package.json exports `./locale/*.json`, so a ship
+  // without the folder would fall back to the bare package name.
+  if (!existsSync(join(source, 'locale', 'en.json'))) throw new Error(`build-desktop-dist: ${ship.pkg} lacks locale/en.json`)
+  cpSync(join(source, 'locale'), join(target, 'locale'), { recursive: true })
   for (const asset of ship.assets ?? []) {
     if (!existsSync(join(source, asset))) throw new Error(`build-desktop-dist: ${ship.pkg} lacks ${asset}`)
     cpSync(join(source, asset), join(target, asset), { recursive: true })
@@ -562,8 +586,11 @@ function assembleRuntime(): void {
     // up to 0.1.2) is a workspace member but ships through its own native
     // release family (native/README.md), published to the npm registry with
     // platform prebuilds as optionalDependencies; the staging install resolves
-    // it from the registry, not from these tarballs.
-    const registryExternal = new Set(['@deepseek-ai/node-addon-system'])
+    // it from the registry, not from these tarballs. LibreOffice Kit (DSH 0.1.7:
+    // the Office skills and the PDF conversion provider depend on it) is
+    // published to the registry on its own, with the platform engines as its
+    // optionalDependencies; the repository never packs it.
+    const registryExternal = new Set(['@deepseek-ai/node-addon-system', '@deepseek-ai/libreoffice-kit'])
     const { included, excluded } = computeRuntimeClosure(manifests, roots, registryExternal)
     console.log(`build-desktop-dist: runtime closure ${included.length} included, ${excluded.length} excluded of ${manifests.size} tarballs`)
     console.log(`build-desktop-dist: closure roots (${roots.length}): ${roots.join(', ')}`)
@@ -848,6 +875,34 @@ function* countTree(directory: string): Generator<number> {
   }
 }
 
+/**
+ * Load the runtime's Electron-fingerprinted native addon under the packaged
+ * executable, exactly as the DSH service will (ELECTRON_RUN_AS_NODE, the
+ * shipped node_modules). node-addon-require-builtin accepts only the exact
+ * Electron builds it was compiled for; v1.1.2's first installer shipped
+ * Electron 43.7.3 and every launch died at host preparation, while the
+ * development run — DSH on the system Node — never touched that path.
+ * @param resourcesDsh - the runtime copied into the unpacked distribution.
+ */
+function smokeRuntimeUnderPackagedElectron(resourcesDsh: string): void {
+  const addon = join(resourcesDsh, 'node_modules', 'node-addon-require-builtin')
+  if (!existsSync(join(addon, 'package.json'))) {
+    throw new Error(`build-desktop-dist: ${addon} is missing — the DSH host cannot prepare without it`)
+  }
+  const probe = `const m = require(${JSON.stringify(addon)}); m.requireBuiltin('internal/modules/esm/loader'); console.log('ok ' + process.versions.electron)`
+  const result = spawnSync(UNPACKED_EXE, ['--expose-internals', '-e', probe], {
+    cwd: resourcesDsh,
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+    encoding: 'utf8',
+    timeout: 60_000,
+  })
+  if (result.error !== undefined) throw result.error
+  if (result.status !== 0 || !result.stdout.startsWith('ok ')) {
+    throw new Error(`build-desktop-dist: the packaged Electron cannot load the DSH native addon (exit ${String(result.status)}):\n${result.stderr.trim()}`)
+  }
+  console.log(`build-desktop-dist: packaged Electron ${result.stdout.trim().slice(3)} loads the DSH native addon`)
+}
+
 /** Chromium locale packs kept in the distribution: the two languages DeepSeekGUI ships. */
 const SHIPPED_LOCALES = new Set(['en-US.pak', 'zh-CN.pak'])
 
@@ -933,6 +988,7 @@ if (import.meta.main) {
   console.log(`build-desktop-dist: DSH runtime copied to ${resourcesDsh}`)
   const trimmed = trimRuntimeDeadWeight(resourcesDsh)
   console.log(`build-desktop-dist: dropped ${String(trimmed.files)} files that never run (${String(Math.round(trimmed.bytes / 1024 / 1024))} MB) from the runtime`)
+  smokeRuntimeUnderPackagedElectron(resourcesDsh)
   // 交付身份：embedded DSH source/commit 标识与 Runtime 一起出厂。
   // About 面板据此展示产物可溯源事实；git 不可用时打包直接失败
   // （打包必须发生在 git checkout 里，产物必须可溯源）。
@@ -967,6 +1023,7 @@ if (import.meta.main) {
     ['deepseekgui-settings', join('lib', 'client.js')],
     ['deepseekgui-browser', join('lib', 'index.js')],
     ['deepseekgui-workbench', join('lib', 'client.js')],
+    ['deepseekgui-skills', join('lib', 'client.js')],
     ['deepseekgui-coding-tools', join('lib', 'index.js')],
   ] as const) {
     const file = join(UNPACKED, 'resources', 'dsh', 'node_modules', '@see-sol-lab', plugin, entry)

@@ -15,7 +15,7 @@ $ 1;2;4cecho hello
 zsh: command not found: 4cecho
 ```
 
-The Loader mounts entries concurrently, so entry failure order is not startup order. `ui-tui` activates and calls pi-tui's `ProcessTerminal.start()`, which puts stdin in raw mode, enables bracketed paste, and writes the Kitty keyboard-protocol probe — a sequence ending in a Device Attributes query (`ESC [ c`). A sibling entry (here `llm-pi-ai`) then rejects on its own config. At the time, that rejection surfaced as an unhandled rejection, and `installFailLoud` wrote one stderr line and called `process.exit(1)` immediately. (The transactional Loader now settles config-tree failures through `boot()`, which disposes the partial context itself; the release hook remains the guard for rejections `boot()` cannot see — a plugin's detached async work rejecting during or after mounting.)
+The Loader mounts entries concurrently, so entry failure order is not startup order. `ui-tui` activates and calls pi-tui's `ProcessTerminal.start()`, which puts stdin in raw mode, enables bracketed paste, and writes the Kitty keyboard-protocol probe — a sequence ending in a Device Attributes query (`ESC [ c`). A sibling entry (here `llm-pi-ai`) then rejects on its own config. At the time, that rejection surfaced as an unhandled rejection, and `installFailLoud` wrote one stderr line and called `process.exit(1)` immediately. (The [Loader activation audit](../simplification/2026-09-09-nontransactional-loader.md) reports config-tree failures through `boot()`, which disposes the partial context itself; the release hook remains the guard for rejections `boot()` cannot see — a plugin's detached async work rejecting during or after mounting.)
 
 Nothing disposed the tree, so `ProcessTerminal.stop()` never ran: raw mode, bracketed paste, and the keyboard protocol stayed set on the shell that outlived the process. The terminal's answer to the Device Attributes query (`1;2;4c`) arrived after exit and was read by the shell as typed input — the literal text above.
 
@@ -29,6 +29,7 @@ The `/exit` path was never affected, because it disposes the tree and reaches th
 - A latch, not an uninstall, keeps the first rejection the reported one. Removing the listener during teardown would let a second concurrent rejection become uncaught, and Node would kill the process mid-teardown — stranding exactly the terminal state this restores. Later rejections, including the release's own, fall through to the pending exit.
 - The release is bounded by `FAIL_LOUD_RELEASE_TIMEOUT_MS` (2s) and its rejection is swallowed. A wedged or failing disposer delays the fatal exit; it never cancels it. That timer stays **referenced**: an `unref()`ed one lets Node reach an empty event loop and exit 0 on the very failure being reported, because an `unhandledRejection` listener suppresses the default fatal exit.
 - Omitting `release` keeps the previous behavior exactly, so the ACP, JSON-RPC, and demo bins are unchanged.
+- The same handler, latch, and release run for `uncaughtException` since the [fatal diagnostics and crash reports](../architecture/2026-09-22-fatal-diagnostics-and-crash-reports.md) decision, which also switched the diagnostic to `util.inspect`.
 
 `dsh`'s TUI launcher passes a release that disposes the root context, which runs the TUI's existing `shutdown()` and hands the terminal back.
 

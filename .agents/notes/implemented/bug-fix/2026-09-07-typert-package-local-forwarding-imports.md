@@ -6,7 +6,7 @@ English | [中文](2026-09-07-typert-package-local-forwarding-imports.zh.md)
 
 ## Problem
 
-`WorkspaceAnalyzer` resolves every type reference to its original declaration before classifying it, then reads only the referencing file's own `import` statement to decide whether the reference crossed a package through a public export. A package that re-exports another package's type from one of its own modules, and imports that module by relative path elsewhere, therefore fails with `crosses a package without an explicit package import` although the package import exists one hop away. The failure is deterministic for every batch size and package order; it surfaces in whichever analysis selects the referencing package as a root, which is why [issue 3525](https://github.com/deepseek-harness/deepseek-harness/issues/3525) observed it as batch-dependent.
+`WorkspaceAnalyzer` resolves every type reference to its original declaration before classifying it, then reads only the referencing file's own `import` statement to decide whether the reference crossed a package through a public export. A package that re-exports another package's type from one of its own modules, and imports that module by relative path elsewhere, therefore fails with `crosses a package without an explicit package import` although the package import exists one hop away. The failure is deterministic for every batch size and package order; it surfaces in whichever analysis selects the referencing package as a root, which is why issue 3525 observed it as batch-dependent.
 
 ## Decision
 

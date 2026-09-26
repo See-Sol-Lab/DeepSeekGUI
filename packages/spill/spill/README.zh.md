@@ -1,5 +1,5 @@
 ---
-description: "spill 存储服务：保存超大工具文本或已捕获的会话引用，并返回可检索的定位信息。"
+description: "spill 存储服务：保存超大工具文本或已捕获的会话引用，并返回可用于取回内容的定位信息。"
 kind: "package-reference"
 ---
 
@@ -25,21 +25,21 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-保存 spill 产物的组合需要挂载一个后端——仅本包本身不存储任何内容。`dsh-spill-policy` 决定工具结果何时 spill；`dsh-session-reference` 直接保存被截断引用的转录，不需要该策略。调用方使用 `ctx.spillStore.saveText()` 并明确指定归属；可选消费方通过 `ctx.get("spillStore")` 获取后端。
+保存 spill 产物的组合需要挂载一个后端——仅本包本身不存储任何内容。`dsh-spill-policy` 决定工具结果何时 spill；`dsh-session-reference` 直接保存截断后的会话引用 transcript（文本记录），不需要该策略。调用方使用 `ctx.spillStore.saveText()` 并明确指定归属；可选消费方通过 `ctx.get("spillStore")` 获取后端。
 
 ### 何时选择
 
-当部署需要在模型看到有界预览后仍能取回全文时，选择 spill 存储，例如抓取的页面正文或已捕获的会话引用转录。前提是后端的定位信息与取回指引在部署环境中可用；该服务不要求本地文件系统访问。
+当部署需要在模型看到有界预览后仍能取回全文时，选择 spill 存储，例如抓取的页面正文或已捕获的会话引用 transcript。前提是后端的定位信息与取回指引在部署环境中可用；该服务不要求本地文件系统访问。
 
 ### 最小可用组合
 
-把后端与策略一起挂载；设置 `maxInlineBytes` 后，任何过大的纯文本工具结果都会自动变成预览加定位信息。
+把后端与策略一起挂载；设置 `maxInlineTokens` 后，过大的图文工具结果都会自动变成预览加定位信息。
 
 ```yaml
 - name: '@deepseek-ai/dsh-spill-local'
 - name: '@deepseek-ai/dsh-spill-policy'
   config:
-    maxInlineBytes: 50000
+    maxInlineTokens: 12500
 ```
 
 ### 保存文本
@@ -55,7 +55,7 @@ const ref = await ctx.spillStore.saveText({
 })
 ```
 
-返回的 `SpillRef` 携带三个字段：`locator`，后端产生的不透明模型面向句柄（对 `dsh-spill-local` 是本地文件路径，对其他后端可能是 URI 或键）；`bytes`，写入的精确 UTF-8 字节数；`retrievalHint`，消费方展示给模型的指引——对本地后端而言是读取或搜索该路径。消费方按指引渲染定位信息，绝不自行解析定位信息。
+返回的 `SpillRef` 携带三个字段：`locator`，后端产生的面向模型的不透明句柄（对 `dsh-spill-local` 是本地文件路径，对其他后端可能是 URI 或键）；`bytes`，写入的精确 UTF-8 字节数；`retrievalHint`，消费方展示给模型的指引——对本地后端而言是读取或搜索该路径。消费方将定位信息与指引一同呈现，绝不自行解析定位信息。
 
 ### 归属与边界
 
@@ -63,7 +63,7 @@ const ref = await ctx.spillStore.saveText({
 
 ### 故障与恢复
 
-`saveText` 只在真实存储故障时拒绝——权限不足、磁盘已满或后端不可用。由调用方决定如何降级：随附策略把拒绝当作尽力而为处理，记录警告并保留原始内联结果，因此 spill 失败绝不会把成功的工具调用变成错误或隐藏内容。如果没有挂载后端，就没有可保存的目标；请在组合中加载 `dsh-spill-local` 或其他后端。
+`saveText` 只在真实存储故障时拒绝——权限不足、磁盘已满或后端不可用。由调用方决定如何降级：已交付的策略把拒绝当作尽力而为处理，记录警告并保留原始内联结果，因此 spill 失败绝不会把成功的工具调用变成错误或隐藏内容。如果没有挂载后端，就没有可保存的目标；请在组合中加载 `dsh-spill-local` 或其他后端。
 
 -----
 
@@ -89,7 +89,7 @@ const ref = await ctx.spillStore.saveText({
 |---|---|
 | [`src/index.ts`](src/index.ts) | 插件入口：抽象 `SpillStore` 服务及其 `saveText` 约定 |
 | [`src/types.ts`](src/types.ts) | 词汇：`SaveTextSpill`、`SpillRef`、带品牌类型 `SpillLocator`、`SpillOwner`、`SpillSource` |
-| — | 不发布运行时不变式伴生入口；约定在 seam 处强制执行。 |
+| — | 不发布运行时不变式伴生入口；除归属 seam 强制执行的约定外，本包不暴露独立的事件序列或可变数据关系。 |
 
 ### 数据模型
 
@@ -97,7 +97,7 @@ const ref = await ctx.spillStore.saveText({
 
 ### 生命周期
 
-后端继承 `SpillStore` 并以插件方式加载，注册为 `ctx.spillStore`；每个上下文只有一个实现，第二次加载会失败。dispose 会释放该服务。抽象类本身不注册任何内容——本包只提供约定与词汇。
+后端继承 `SpillStore` 并以插件方式加载，注册为 `ctx.spillStore`；每个上下文只有一个实现，第二次加载会失败。执行 dispose（资源释放）时会释放该服务。抽象类本身不注册任何内容——本包只提供约定与词汇。
 
 </details>
 
@@ -120,11 +120,11 @@ const ref = await ctx.spillStore.saveText({
 <a id="model-experience"></a>
 ## 模型体验
 
-间接地，通过把后端定位信息与取回指引渲染给模型的 spill 消费方。
+spill 消费方将后端的定位信息与取回指引渲染给模型，从而间接影响模型体验。
 
 #### KV Cache 影响
 
-无直接失效；请求前缀变更由上述消费方负责。
+不会直接导致 KV Cache 失效；请求前缀变更由上述消费方负责。
 
 ## 已知限制与延期工作
 

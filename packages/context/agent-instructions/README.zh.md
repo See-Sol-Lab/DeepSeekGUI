@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-agent-instructions` 从用户全局和项目级、兼容 `AGENTS.md` 的文件向 agent 提供工作区指引。它为第一次请求加载适用的指令链。它不会持续监视外部编辑：成功的文件系统操作会发现新适用的嵌套文件，并让后续变更或移除可见；恢复会话也会对账基线。`dsh-base` 默认启用此行为，profile 可以禁用。字节预算限制注入的上下文：较宽泛的文件先被省略，最具体的文件最后被截断，空指令链不添加任何内容。
+`dsh-agent-instructions` 向 agent（智能体）提供来自用户全局文件和项目级文件的工作区指引；这些文件均与 `AGENTS.md` 兼容。它为第一次请求加载适用的指令链。它不会持续监视外部编辑：成功的文件系统操作会发现新适用的嵌套文件，并让后续变更或移除可见；恢复会话也会对账基线。`dsh-base` 默认启用此行为，profile 可以禁用。字节预算限制注入的上下文：较宽泛的文件先被省略，最具体的文件最后被截断，空指令链不添加任何内容。
 
 ## 目录
 
@@ -25,11 +25,11 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-当 agent（智能体）需要依据工作区自身的指令文件工作时，挂载此插件。`dsh-base` 已包含它并给予 65,536 字节预算，因此基于 base 的 profile 仅在需要其他 `maxBytes` 时替换该配置行；没有文件系统提供方的树加载不到任何内容，直到提供方出现。
+当 agent 需要依据工作区自身的指令文件工作时，挂载此插件。`dsh-base` 已包含它并给予 65,536 字节预算，因此基于 base 的 profile 仅在需要其他 `maxBytes` 时替换该配置行；没有文件系统提供方的树加载不到任何内容，直到提供方出现。
 
 ### agent 获得的内容
 
-第一次请求包含一条持久基线消息：先是用户全局 `$DSH_HOME/AGENTS.md`，再按从宽泛到具体的顺序包含项目指令链——从项目根目录到会话工作目录的每个目录中所有现有候选文件。去除空白后内容一致的同级文件只渲染一次，因此复制了 `AGENTS.md` 的 `CLAUDE.md` 不会被重复加载。当成功的 `read`、`write` 或 `edit` 调用到达更深的目录后，下一次请求会包含新适用的指令文件；已改变的文件会替换其内容，消失或成为较早候选文件重复项的文件会产生移除通知。
+第一次请求包含一条持久基线消息：先是用户全局 `$DSH_HOME/AGENTS.md`，再按从宽泛到具体的顺序包含项目指令链——从项目根目录到会话工作目录的每个目录中所有现有候选文件。去除首尾空白后内容一致的同级文件只渲染一次，因此复制了 `AGENTS.md` 的 `CLAUDE.md` 不会被重复加载。当成功的 `read`、`write` 或 `edit` 调用到达更深的目录后，下一次请求会包含新适用的指令文件；已改变的文件会替换其内容，消失或成为较早候选文件重复项的文件会产生移除通知。
 
 ### 配置
 
@@ -83,7 +83,7 @@ export interface Config {
 
 ### 设计理念
 
-该插件建立在一个原则上：工作区指令是持久的对话内容，按 agent 与会话分别归属。基线消息与刷新消息都是普通的带来源 `user/message` 事件，因此与其他历史一样可回放、可压缩、可恢复，模型可见状态总能从会话日志重建。插件拥有完整的 `<system-reminder>` 框架，每条注入消息都原样到达模型。
+该插件建立在一个原则上：工作区指令是持久的对话内容，按 agent 与会话分别归属。基线消息与刷新消息都是普通的带来源 `user/message` 事件，因此与其他历史一样可回放、可压缩（compaction）、可恢复，模型可见状态总能从会话日志重建。插件拥有完整的 `<system-reminder>` 框架，每条注入消息都原样到达模型。
 
 ### 源码地图
 
@@ -95,7 +95,7 @@ export interface Config {
 | [`src/render.ts`](src/render.ts) | 指令渲染、预算截断、变更记录 |
 | [`src/state.ts`](src/state.ts) | 持久消息来源、版本／digest 缓存、对账 |
 | [`src/digest.ts`](src/digest.ts) | SHA-1 内容标识与每目录重复键 |
-| — | 不发布运行时不变式伴生入口；回放会容忍未知或格式错误的 workspace source，私有 pending/cache 状态转换由聚焦 pipeline 测试覆盖。 |
+| — | 不发布运行时不变式伴生入口；回放会容忍未知或格式错误的 workspace source，私有 pending/cache 状态转换由针对性流水线测试覆盖。 |
 
 ### 主要流程
 
@@ -116,7 +116,7 @@ export interface Config {
 
 - [文档标准](../../../docs/AGENTS.md)——`AGENTS.md` 指令文件包含什么、如何维护。
 - [工作区上下文决策记录](../../../.agents/notes/archived/feature/2026-06-24-workspace-context.md)——按 agent／会话隔离与生命周期理由。
-- [context 组地图](../README.zh.md)——相邻的请求上下文包。
+- [上下文组地图](../README.zh.md)——相邻的请求上下文包。
 - [生成的配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-agent-instructions)——每个受支持配置字段及其源声明。
 
 -----
@@ -178,7 +178,7 @@ These instructions apply to work under `packages/app`. Use them as guidance when
 
 #### KV Cache 影响
 
-仅追加；新可见内容位于可复用请求前缀之后，不会使现有 KV-cache 条目失效。
+仅追加；新可见内容位于可复用请求前缀之后，不会使现有 KV Cache 条目失效。
 
 ### 已改变或移除的指令上下文
 
@@ -202,7 +202,7 @@ The previously loaded instructions from this file no longer apply.
 
 #### KV Cache 影响
 
-仅追加；新可见内容位于可复用请求前缀之后，不会使现有 KV-cache 条目失效。
+仅追加；新可见内容位于可复用请求前缀之后，不会使现有 KV Cache 条目失效。
 
 ## 已知限制与延期工作
 

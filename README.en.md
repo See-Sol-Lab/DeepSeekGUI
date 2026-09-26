@@ -1,6 +1,6 @@
 <div align="center">
 
-# <img src="./apps/deepseekgui/src/chrome/icon.png" width="38" alt="" align="absmiddle" /> DeepSeekGUI v1.1.1
+# <img src="./apps/deepseekgui/src/chrome/icon.png" width="38" alt="" align="absmiddle" /> DeepSeekGUI v1.1.2
 
 </div>
 
@@ -47,15 +47,15 @@ DeepSeekGUI is a local AI workbench built on [DeepSeek Harness](https://github.c
 
 **Not an official DeepSeek product.** Built on DeepSeek Harness and independently developed, with no affiliation with or endorsement by DeepSeek. The upstream runtime and official Web UI are DeepSeek's work.
 
-**Layered licensing:** The original DeepSeekGUI product layer uses the [PolyForm Perimeter License 1.0.1](apps/deepseekgui/LICENSE); upstream DeepSeek Harness remains under the [MIT License](LICENSE-MIT-UPSTREAM).
+**Current release: [v1.1.2](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.1.2).** The embedded Harness moves to 0.1.7-rc.1, with a translucent glass interface, a bilingual start page, and a website update channel; the assistant now stops for a red confirmation before changing Windows, installed programs, or DeepSeekGUI's own code, and a project's Git metadata is read-only by default. The Workbench extends the official Harness client through plugins and uses Harness sessions, tools, and permissions.
 
-**Current release: [v1.1.1](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.1.1).** The embedded Harness moves to 0.1.5-rc.2, with a first-run guide, in-place updates, data-folder migration, and archived-session management. The Workbench extends the official Harness client through plugins and uses Harness sessions, tools, and permissions.
+[Product roadmap for the in-house Workbench](https://see-sol-lab.github.io/research/deepseekgui-single-task-signal.html)
 
 ## Download
 
 | Platform | Download | Requirements |
 | --- | --- | --- |
-| Windows | [Download installer](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.1.1/DeepSeekGUI-Setup-1.1.1.exe) | Windows 10/11, x64 |
+| Windows | [Download installer](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.1.2/DeepSeekGUI-Setup-1.1.2.exe) | Windows 10/11, x64 |
 | Linux | [Download AppImage](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.1.1-linux.1/DeepSeekGUI-1.1.1-x86_64.AppImage) | x64, AppImage; experimental support |
 
 The Windows installer installs to your user account and bundles its runtime. Linux uses a separate AppImage distribution; download and verification details are on the [v1.1.1-linux.1](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.1.1-linux.1) release page.
@@ -68,10 +68,10 @@ The Windows installer installs to your user account and bundles its runtime. Lin
 After downloading the installer, calculate its SHA256 in PowerShell:
 
 ```powershell
-Get-FileHash .\DeepSeekGUI-Setup-1.1.1.exe -Algorithm SHA256
+Get-FileHash .\DeepSeekGUI-Setup-1.1.2.exe -Algorithm SHA256
 ```
 
-Compare it with [`SHA256SUMS.txt`](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.1.1/SHA256SUMS.txt) before installing. See the [troubleshooting guide](docs/user/deepseekgui/data-troubleshooting.md#windows-smartscreen-blocks-the-installer) if needed.
+Compare it with [`SHA256SUMS.txt`](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.1.2/SHA256SUMS.txt) before installing. See the [troubleshooting guide](docs/user/deepseekgui/data-troubleshooting.md#windows-smartscreen-blocks-the-installer) if needed.
 
 </details>
 
@@ -95,11 +95,11 @@ Git, file sidebar, model settings, browser, and archived-session screenshots sho
 
 ![Conversation beside the file sidebar](docs/user/deepseekgui/assets/file-sidebar-1.1.1.png)
 
-*Organize project memory in the conversation while browsing workspace files in the adjacent file tree.*
+*Works with the official right-hand file sidebar, so you can browse workspace files alongside the assistant.*
 
 ![Model configuration and desktop management](docs/user/deepseekgui/assets/settings-1.1.1.png)
 
-*Configure models and access Harness desktop controls, local plugin management, diagnostics and feedback, and global memory from the same settings window.*
+*Configure models in one settings window, with the latest V4.1 supported and vision prompting built in; the settings panel also hosts the in-house plugins and feature debugging.*
 
 ![Git status and session commit history](docs/user/deepseekgui/assets/git-1.1.1.png)
 
@@ -111,11 +111,11 @@ Git, file sidebar, model settings, browser, and archived-session screenshots sho
 
 ![Project memory](docs/user/deepseekgui/assets/project-memory-1.1.0.png)
 
-*Keep project background, confirmed decisions, and collaboration conventions together. Read them as Markdown or ask the assistant to organize them.*
+*Project-level memory you can read as Markdown, edit, or ask the assistant to organize.*
 
 ![Global memory](docs/user/deepseekgui/assets/global-memory-1.1.0.png)
 
-*Users edit and save cross-project preferences for the assistant to read; project facts are managed separately in project memory.*
+*You edit and save cross-project preferences and global memory for the assistant to read; AGENTS.md can be edited alongside.*
 
 ## Workbench features
 
@@ -144,15 +144,15 @@ Git, file sidebar, model settings, browser, and archived-session screenshots sho
 - **Desktop notifications** — Receive pending approval and question notices, plus background-job completion or failure notices; click to open the corresponding conversation.
 - **Profiles and plugins** — Switch Harness Homes and Profiles, manage compatible plugins, and inspect configuration and runtime status.
 - **Updates and data migration** — Downloads and SHA256 checks can run automatically; installation requires confirmation, and automatic download can be disabled. Move managed data after copying and verification, then confirm cleanup of the old copy.
-- **Onboarding and diagnostics** — First-run guidance covers model setup and the first conversation. Includes Chinese and English interfaces, a system tray, local diagnostics export, and assistant-aided bug triage.
+- **Onboarding and diagnostics** — First launch offers DeepSeek account sign-in or an API key, and the official setup after sign-in introduces your credit and options. Includes Chinese and English interfaces, a system tray, local diagnostics export, and assistant-aided bug triage.
 
-See the [v1.1.1 release notes](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.1.1) for the complete version changes.
+See the [v1.1.2 release notes](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.1.2) for the complete version changes.
 
 ## Documentation
 
 | Guide | |
 | --- | --- |
-| [Quick start](docs/user/deepseekgui/quickstart.md) | First-run guide, model setup, first conversation |
+| [Quick start](docs/user/deepseekgui/quickstart.md) | Account sign-in or API key, model setup, first conversation |
 | [Models and vision](docs/user/deepseekgui/models.md) | API keys, V4.1 Flash, custom models, image input |
 | [Workspaces and sessions](docs/user/deepseekgui/workspaces-sessions.md) | Workspaces, attachments, archiving, restoring, deleting |
 | [Workbench views and Git tools](docs/user/deepseekgui/workbench.md) | Changes, Git and worktrees, commits and PRs |
@@ -163,8 +163,6 @@ See the [v1.1.1 release notes](https://github.com/See-Sol-Lab/DeepSeekGUI/releas
 | [Data and troubleshooting](docs/user/deepseekgui/data-troubleshooting.md) | Data migration, retained data, privacy, troubleshooting |
 
 The docs also include upstream Harness tutorials and plugin-authoring reference.
-
-[Product roadmap for the in-house Workbench](https://see-sol-lab.github.io/research/deepseekgui-single-task-signal.html)
 
 ## Data and privacy
 

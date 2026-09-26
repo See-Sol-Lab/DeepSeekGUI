@@ -23,7 +23,7 @@ Subpath exports keep their path: `@cordisjs/plugin-loader/repository` becomes `@
 ## What the rename does not touch
 
 - **Directory names and upstream source versions.** `vendor/hmr/` stays `vendor/hmr/`, and the table records the upstream version of the pinned source snapshot, so the manifest reads as an upstream snapshot; the vendored `package.json`'s own `version` field is the harness's released manifest version, which `pnpm run release:vendor` bumps and a re-sync restores to the upstream version.
-- **Dependency ranges.** A dependency entry changes its key, never its range: `"cordis": "^4.0.0-rc.7"` becomes `"@deepseek-ai/cordis": "^4.0.0-rc.7"`. `linkWorkspacePackages` resolves those preserved ranges to the pinned workspaces.
+- **Dependency ranges.** Renaming changes dependency keys without changing ranges. Workspace manifests use the `workspace:` protocol; [repository rules](../AGENTS.md#conventions) distinguish exact DSH references from vendor/native tilde ranges.
 - **The Loader's `cordis:` builtin prefix.** `cordis:include` and `cordis:group` are a protocol prefix, not a package name.
 - **The `cordis.yml` configuration family**, including `*.cordis.yml`, `*.cordis.snapshot.yml`, and `cordis.patch.yml`.
 - **Harness packages whose own names contain the word**, such as `@deepseek-ai/dsh-tool-cordis`.

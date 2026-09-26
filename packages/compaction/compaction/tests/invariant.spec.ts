@@ -334,7 +334,7 @@ describe('compaction invariants', () => {
     })).toThrow(/compaction checkpoint id .* does not match compaction\/start id/)
   })
 
-  it('requires checkpoint provenance to name an open transaction', async () => {
+  it('requires a checkpoint source to name an open transaction', async () => {
     const ctx = await setup()
     const withoutStart = ctx.sessions.create()
     const original = withoutStart.append('user/message', createUserMessage({

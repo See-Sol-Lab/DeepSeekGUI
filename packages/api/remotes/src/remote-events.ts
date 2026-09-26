@@ -7,6 +7,16 @@
  */
 
 import type {} from '@deepseek-ai/dsh-api-session-controller/remote-events'
+import type {} from '@deepseek-ai/dsh-deepseek-account/types'
+import type {} from '@deepseek-ai/dsh-permission-presets/types'
+import type {} from '@deepseek-ai/dsh-plugin-manager/types'
+// Type-only: the DeepSeekGUI skill library declares `skill-manager/change` in
+// its client-safe types module, so both compiler faces see the entry below.
+import type {} from '@deepseek-ai/dsh-skill-manager/types'
+// Type-only: the DeepSeekGUI engineering memory declares `workbench-memory/change`
+// in its client-safe types module, for the same reason.
+import type {} from '@deepseek-ai/dsh-workbench-memory/types'
+import type {} from '@deepseek-ai/dsh-schedule/client'
 import type { TypertForwardableEventEntry } from '@deepseek-ai/dsh-typert-protocol'
 
 /**
@@ -22,6 +32,9 @@ export const API_REMOTE_FORWARDED_EVENTS = [
   { event: 'api-session/removed', mode: 'emit' },
   { event: 'api-session/status', mode: 'emit' },
   { event: 'commands/change', mode: 'emit' },
+  { event: 'deepseek-account/session-expired', mode: 'emit' },
+  { event: 'deepseek-account/model-sign-in-required', mode: 'emit' },
+  { event: 'credentials/record-updated', mode: 'emit' },
   { event: 'credentials/reference-updated', mode: 'emit' },
   { event: 'goal/activation-changed', mode: 'emit' },
   { event: 'cordis/request-run', mode: 'emit' },
@@ -31,6 +44,17 @@ export const API_REMOTE_FORWARDED_EVENTS = [
   { event: 'cordis/inspect-query', mode: 'emit' },
   { event: 'cordis/inspect-query-resolved', mode: 'emit' },
   { event: 'llm/adapters-updated', mode: 'emit' },
+  { event: 'permission-presets/catalog-changed', mode: 'emit' },
+  { event: 'plugin-manager/changed', mode: 'emit' },
+  { event: 'plugin-manager/install-log', mode: 'emit' },
+  { event: 'plugin-manager/install-state', mode: 'emit' },
   { event: 'settings/document-updated', mode: 'emit' },
+  // DeepSeekGUI (B7-P5): the skill library or a project selection changed;
+  // the `/` picker drops its cached catalogs and the project page re-reads.
+  { event: 'skill-manager/change', mode: 'emit' },
+  { event: 'schedule/changed', mode: 'emit' },
   { event: 'user-questions/request', mode: 'waterfall' },
+  // DeepSeekGUI (B7-P8): a memory entry landed, changed, was forgotten, or
+  // lost its source session in any window; the memory pages re-read on it.
+  { event: 'workbench-memory/change', mode: 'emit' },
 ] as const satisfies readonly TypertForwardableEventEntry[]

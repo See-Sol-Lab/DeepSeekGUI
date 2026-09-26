@@ -1,0 +1,19 @@
+# Bilingual-pair consistency record for 2026-09-13-skill-project-selection.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-13-skill-project-selection.md
+/agent-note-per-folder-skill-selection-served-by-one-filtered-provider:
+  en: 03ec588eb6a483ee
+  zh: 30221b75096458c7
+/agent-note-per-folder-skill-selection-served-by-one-filtered-provider/problem:
+  en: 7bae510467a5c217
+  zh: 52ed84e8f1b62540
+/agent-note-per-folder-skill-selection-served-by-one-filtered-provider/decision:
+  en: e27d1faff8d9238e
+  zh: ab1b249c23bd4b98
+/agent-note-per-folder-skill-selection-served-by-one-filtered-provider/alternatives-considered:
+  en: 734746324fa1a03c
+  zh: 977cd14b06d28564
+/agent-note-per-folder-skill-selection-served-by-one-filtered-provider/consequences:
+  en: 8bbee4193df66864
+  zh: 2a4f673ce6c46b3d

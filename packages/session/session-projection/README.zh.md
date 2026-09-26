@@ -66,7 +66,7 @@ const { asOfSeq, values } = ctx.sessionProjections.snapshot(session)
 
 ### 持久检查点
 
-每个单元的状态都会被检查点化——client-visible 与 host-only 一视同仁——通过 `checkpoint(session)`，同级包 [session-projection-cache](../session-projection-cache/README.zh.md) 持久化这些检查点，使冷读跳过全量日志加载。检查点水位使用 `SessionSeqCursor`（空日志为 `-1`），回放起点使用 `SessionLogOffset`；`restoreFloor` 与 `restore` 在无活动会话的情况下实现读取配方，且不会混淆已有事件与日志间隙。
+系统通过 `checkpoint(session)` 为每个单元的状态创建检查点，client-visible 与 host-only 一视同仁；同级包 [session-projection-cache](../session-projection-cache/README.zh.md) 持久化这些检查点，使冷读跳过全量日志加载。检查点水位使用 `SessionSeqCursor`（空日志为 `-1`），回放起点使用 `SessionLogOffset`；`restoreFloor` 与 `restore` 实现读取流程，且不会混淆已有事件与日志间隙。
 
 -----
 
@@ -88,7 +88,7 @@ const { asOfSeq, values } = ctx.sessionProjections.snapshot(session)
 |---|---|
 | [`src/index.ts`](src/index.ts) | 插件入口：`SessionProjectionRegistry` 服务、`ProjectionDefinition`、快照与检查点机制 |
 | [`src/types.ts`](src/types.ts) | 可合并扩展的 `SessionProjectionMap` 与 `SessionProjectionStateMap` 类型表 |
-| — | 不发布运行时不变式伴生入口；同步纪律由 schema parse 强制。 |
+| — | 不发布运行时不变式伴生入口；注册表自身的约定（拒绝重复键和非法 stateVersion、随 effect 移除、以 `Object.is` 把守变更）由服务同步强制执行并经其规范验证；驱动关系若要检查就必须重新运行驱动，从而重复实现逻辑；所服务值之间的关系由载体协议路径负责。同步单元纪律则尽可能由边界 `schema.parse` 强制执行。 |
 
 ### 驱动与检查点流程
 

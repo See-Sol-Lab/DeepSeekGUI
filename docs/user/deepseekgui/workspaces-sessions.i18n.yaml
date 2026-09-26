@@ -1,6 +1,31 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for workspaces-sessions.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/user/deepseekgui/workspaces-sessions.md
-workspaces-sessions.md: 8a2ddea88d1fff8d3430c658935f65b65cd5dd0e
-workspaces-sessions.zh.md: 3d3cd5d50ccd825de15dad65556d80c67ff3cbe3
+/workspaces-and-sessions:
+  en: f0c9c00be21e97d6
+  zh: bcd6514251a655df
+/workspaces-and-sessions/choose-a-workspace:
+  en: 9471c549e74bcd24
+  zh: 6a8359123b0232d5
+/workspaces-and-sessions/start-a-session:
+  en: 4bb3c57c7e6cb051
+  zh: aee568358c09e029
+/workspaces-and-sessions/resume-a-session:
+  en: 60092267340666c3
+  zh: ab58eb5e95dfc0d8
+/workspaces-and-sessions/archive-and-restore-a-session:
+  en: 4fca1a42a172cecf
+  zh: 769e02c411957248
+/workspaces-and-sessions/attach-files-and-images:
+  en: 62a3b013445de8eb
+  zh: 9de9e61f3c9d56b6
+/workspaces-and-sessions/review-agent-work:
+  en: 849b60428e8e0eef
+  zh: 4bddef1fd8b9fef4
+/workspaces-and-sessions/window-and-tray-behavior:
+  en: 943f02b078cd85ec
+  zh: 671e462e8f8e1410
+/workspaces-and-sessions/related-guides:
+  en: 9b8d7f3796905b5d
+  zh: c2c5d22e8d362f49

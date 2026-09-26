@@ -6,7 +6,12 @@ import type { Translate } from '@deepseek-ai/dsh-client-ui-slots'
 export type ClockTranslate = Translate<'clock.md' | 'clock.ymd'>
 
 /** The elapsed-duration share of the conversation dictionary. */
-export type RunDurationTranslate = Translate<'duration.seconds' | 'duration.minutes'>
+export type RunDurationTranslate =
+  Translate<'duration.seconds' | 'duration.minutes' | 'duration.hours'>
+
+/** Refresh interval for whole-second live run clocks. */
+export const LIVE_RUN_CLOCK_INTERVAL_MS = 1000
+
 function pad2(n: number): string {
   return String(n).padStart(2, '0')
 }
@@ -34,29 +39,42 @@ export function msUntilNextLocalMidnight(ms: number): number {
 }
 
 /**
- * Localized elapsed-time label shared by running and settled turn chrome.
+ * Localized elapsed-time label for the running conversation clock.
  * @param ms - Elapsed duration in milliseconds (negatives clamp to zero).
  * @param t - Translate seat supplying the duration templates.
- * @returns Display string in whole seconds.
+ * @returns Display string in whole seconds; minutes and seconds once the
+ * duration reaches a minute; hours, minutes, and seconds once it reaches an
+ * hour, with the smaller units zero-padded.
  */
 export function formatRunDuration(ms: number, t: RunDurationTranslate): string {
   const total = Math.max(0, Math.floor(ms / 1000))
-  const minutes = Math.floor(total / 60)
+  const hours = Math.floor(total / 3600)
+  const minutes = Math.floor(total / 60) % 60
   const seconds = total % 60
+  if (hours > 0) {
+    return t('duration.hours', { hours, minutes: pad2(minutes), seconds: pad2(seconds) })
+  }
   return minutes > 0
-    ? t('duration.minutes', { minutes, seconds: String(seconds).padStart(2, '0') })
+    ? t('duration.minutes', { minutes, seconds: pad2(seconds) })
     : t('duration.seconds', { seconds })
 }
 
 /**
- * Sub-turn latency figure: one decimal under ten seconds, whole seconds
- * beyond. Unit-less so the locale template owns the second suffix.
- * @param ms - Latency in milliseconds (negatives clamp to zero).
- * @returns Display number in seconds without unit.
+ * Localized live elapsed time without padded seconds or early rollover.
+ * @param ms - Elapsed duration in milliseconds (negatives clamp to zero).
+ * @param t - Translate seat supplying the duration templates.
+ * @returns Whole seconds without a leading zero; minutes start at 60 seconds
+ * and hours start at exactly 60 minutes.
  */
-export function formatLatencySeconds(ms: number): string {
-  const s = Math.max(0, ms) / 1000
-  return s < 10 ? String(Math.round(s * 10) / 10) : String(Math.round(s))
+export function formatLiveRunDuration(ms: number, t: RunDurationTranslate): string {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000))
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor(totalSeconds / 60) % 60
+  const seconds = String(totalSeconds % 60)
+  if (hours > 0) return t('duration.hours', { hours, minutes: pad2(minutes), seconds })
+  return minutes > 0
+    ? t('duration.minutes', { minutes, seconds })
+    : t('duration.seconds', { seconds })
 }
 
 /**

@@ -1,0 +1,57 @@
+<!doctype html>
+<!--
+  Self-drawn tray menu (Windows 11 acrylic glass). The window is the panel:
+  frameless, transparent, sized by main to the content, DWM-rounded and
+  DWM-shadowed. Tokens, .menu-item and .separator come from style.css; the
+  panel material is overridden below because the shell's .panel is solid on
+  purpose (it floats over the official page) while this window floats over
+  the desktop with a real system backdrop behind it.
+-->
+<html lang="zh-CN" data-theme="dark" data-material="solid">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self'">
+  <title>DeepSeekGUI</title>
+  <link rel="stylesheet" href="./style.css">
+  <style>
+    :root {
+      --tray-bg: rgba(22, 22, 24, 0.66);
+      --tray-highlight: rgba(255, 255, 255, 0.10);
+      --tray-radius: 8px; /* DWM rounds a frameless Win11 window at 8px; match it. */
+    }
+    :root[data-theme='light'] {
+      --tray-bg: rgba(252, 252, 253, 0.70);
+      --tray-highlight: rgba(255, 255, 255, 0.85);
+    }
+    /* No system backdrop (Windows 10 and older): fall back to the solid panel. */
+    :root[data-material='solid'] { --tray-bg: var(--surface-raised); }
+
+    html, body { overflow: hidden; background: transparent; }
+    /* The panel takes initial focus so no row looks pre-selected; no ring on it. */
+    #tray-panel:focus { outline: none; }
+    #tray-panel {
+      box-sizing: border-box;
+      width: 100%;
+      padding: 6px;
+      border-radius: var(--tray-radius);
+      border: 1px solid var(--border-subtle);
+      background: var(--tray-bg);
+      box-shadow: inset 0 1px 0 var(--tray-highlight);
+      /* Grayscale text antialiasing is what the material costs; keep glyphs crisp otherwise. */
+      -webkit-font-smoothing: antialiased;
+    }
+    .menu-item[aria-disabled='true'] { color: var(--text-dim); cursor: default; }
+    .menu-item .item-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .menu-item .item-mark { width: 14px; text-align: center; color: var(--brand); font-size: 11px; }
+    .menu-item .item-chevron { color: var(--text-dim); font-size: 11px; transition: transform 150ms ease; }
+    .menu-item[aria-expanded='true'] .item-chevron { transform: rotate(90deg); }
+    .submenu { display: flex; flex-direction: column; padding-left: 12px; }
+    .submenu[hidden] { display: none; }
+    .info { padding: 5px 10px; font-size: 12px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  </style>
+</head>
+<body>
+  <div id="tray-panel" role="menu" aria-label="DeepSeekGUI"></div>
+  <script type="module" src="../../lib/chrome/tray-menu.js"></script>
+</body>
+</html>

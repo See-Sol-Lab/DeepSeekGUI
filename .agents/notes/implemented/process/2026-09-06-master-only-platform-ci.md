@@ -16,7 +16,7 @@ Wine runs once as an independent hosted Ubuntu master job. Its existing image-ke
 
 The [superseded-CI cancellation policy](2026-09-09-cancel-superseded-ci.md) applies to the parent and reusable runtime workflows: newer master pushes or manual runs cancel older validation in the same workflow/ref group, while release-owned builds remain protected. A master push schedules all three selected carriers but does not guarantee every intermediate commit reaches a result.
 
-This decision partially supersedes scheduling in the [installed-wheel validation](../testing/2026-08-23-installed-python-wheel-black-box-ci.md), [native Windows CI](2026-08-08-native-windows-pull-request-ci.md), [serial references](2026-07-21-serial-cross-platform-ci-reference.md), and [failover runbook](2026-07-26-ci-failover-runbook.md). Those notes remain active for artifact provenance, platform fidelity, serial completeness, and trust rules.
+This decision partially supersedes scheduling in the [installed-wheel validation](../testing/2026-08-23-installed-python-wheel-black-box-ci.md), [native Windows CI](2026-08-08-native-windows-pull-request-ci.md), [serial references](2026-07-21-serial-cross-platform-ci-reference.md), and [failover runbook](2026-07-26-ci-failover-runbook.md). Those notes remain active for artifact origin, platform fidelity, serial completeness, and trust rules.
 
 ## Alternatives considered
 

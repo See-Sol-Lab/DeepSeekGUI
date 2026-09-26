@@ -45,6 +45,17 @@ Git 检查禁用可选 index 锁、外部 diff/textconv 程序与 fsmonitor 钩�
 
 </details>
 
+<details>
+<summary>DeepSeekGUI 桌面账号桥</summary>
+
+DeepSeekGUI 启动 Host 时设置 `DEEPSEEKGUI_ACCOUNT_BRIDGE`（回环 `host:port#token`）。只有这时 inspector 才向服务的 index 加一段 head 脚本并推送账号状态；其他方式启动时两者都不启用。
+
+该脚本在官方客户端脚本之前运行，且只在 URL 带有 DeepSeekGUI 控制桥参数的页面里生效。它定义官方账号设置、登录与首次引导所需的 `dshDesktop` 载体，以及把内嵌平台页的打开、移动、关闭请求转给桌面的 `dshPlatform` 桥。外部浏览器标签页或 `dsh web` 仍是普通 Web。
+
+每一帧 `deepseekAccount` 状态都连同仅限 Host 的平台会话推给桌面，与官方桌面 Host 相同。页面永远拿不到令牌；agent 读得到该环境变量，所以桌面逐帧校验。
+
+</details>
+
 <a id="further-exploration"></a>
 ## 进一步阅读
 

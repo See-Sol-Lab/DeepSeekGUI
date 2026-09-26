@@ -7,7 +7,7 @@
 ## 开始之前
 
 - 一台 Windows 10 或 Windows 11 x64 电脑。
-- 一个 DeepSeek API key。
+- 一个 DeepSeek 账号或 DeepSeek API key。
 - 一个你愿意让 agent 检查和编辑的文件夹。
 
 ## 1. 下载 DeepSeekGUI
@@ -29,6 +29,13 @@ Get-FileHash .\DeepSeekGUI-Setup-<version>.exe -Algorithm SHA256
 关闭主窗口只会把 DeepSeekGUI 隐藏到系统托盘，Harness 会继续运行。需要停止 Harness 并完全退出时，请从菜单或托盘选择**退出 DeepSeekGUI**。
 
 ## 3. 连接 DeepSeek
+
+首次启动时 DeepSeekGUI 会显示欢迎页，有两种方式开始：
+
+- 用 DeepSeek 账号**登录**。系统浏览器会打开 DeepSeek 登录页；登录完成后 DeepSeekGUI 回到前台，并用几步简短的设置介绍你的额度、了解你的用途，再选择工作过程显示多少细节。账号会话使用账号额度，不需要 API key。
+- **添加 API Key**，粘贴你的 DeepSeek API key。
+
+**稍后配置**会在本次运行中跳过欢迎页。之后可以从左下角的账号入口登录，或在**设置 → 模型**里添加 key：
 
 1. 从左下角打开**设置**。
 2. 打开**模型**。
@@ -52,8 +59,6 @@ DeepSeekGUI 通过 Harness 凭据服务把 key 保存在应用数据目录中，
 > 阅读这个项目，解释它如何启动，并找出我最应该先理解的三个文件。暂时不要编辑任何内容。
 
 确认结果符合预期后，再要求 agent 完成边界明确的修改。DeepSeekGUI 会流式显示回复，并把会话保存在当前选择的 Harness Home 中，供你稍后恢复。
-
-全新安装会引导选择工作区、配置模型和发送第一条消息，并在等待回复或审批时给出提示。随时可以跳过；已有会话数据的用户不会被当作新用户。
 
 ![DeepSeekGUI 完成创建并运行 JavaScript 文件的 coding 任务](assets/workbench-overview.png)
 

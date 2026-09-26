@@ -1,6 +1,22 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-08-15-desktop-electron-shell.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/proposed/feature/2026-08-15-desktop-electron-shell.md
-2026-08-15-desktop-electron-shell.md: 978f1d384f598a573e1dc6bad5fa3d6018ea351e
-2026-08-15-desktop-electron-shell.zh.md: 2d3000098ac707b2d1b73680851dc0437059898d
+/agent-note-electron-desktop-shell-for-the-web-ui:
+  en: 9a4581949f5aebb7
+  zh: c896eb2ead81ba5f
+/agent-note-electron-desktop-shell-for-the-web-ui/problem:
+  en: 903489a1ca038e5d
+  zh: 4d108140b9cf0b0f
+/agent-note-electron-desktop-shell-for-the-web-ui/proposal:
+  en: f499386351598fdf
+  zh: c57692f19b4d4afb
+/agent-note-electron-desktop-shell-for-the-web-ui/alternatives-considered:
+  en: 2f86563348eb5fac
+  zh: 5b4a8265cb4a07eb
+/agent-note-electron-desktop-shell-for-the-web-ui/acceptance-criteria:
+  en: b3f0b1990c043039
+  zh: 2c8639690be43edf
+/agent-note-electron-desktop-shell-for-the-web-ui/risks:
+  en: 7b67b1a6efbc6981
+  zh: 4969187796b58151

@@ -57,7 +57,7 @@ async function harness(): Promise<Harness> {
   await ctx.plugin(SessionStore)
   const plugin = await ctx.plugin(commandFeedback)
   const { agent, session } = stubAgent(ctx, `command-feedback-${Math.random()}`)
-  ctx.agents.register(agent)
+  await ctx.agents.register(agent)
   return { ctx, agent, session, plugin }
 }
 
@@ -95,8 +95,9 @@ describe('@deepseek-ai/dsh-command-feedback registration', () => {
     expect(loader.unwrapExports(commandFeedback)).toBe(commandFeedback)
 
     expect(test.ctx.commands.list(test.agent)).toContainEqual({
+      definitionId: '@deepseek-ai/dsh-command-feedback',
       name: 'feedback',
-      description: 'record feedback about this session',
+      description: 'Record feedback about this session',
       input: { hint: '<text>' },
     })
     expect(test.ctx.commands.find(test.agent, 'feedback')).toMatchObject({ recordInput: false })

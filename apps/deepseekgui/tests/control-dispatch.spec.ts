@@ -53,13 +53,6 @@ function makeDeps(overrides: Partial<ControlDispatchDeps> = {}) {
     copyFullPath: vi.fn(),
     showAbout: vi.fn(),
     showTerminal: vi.fn(),
-    requestPluginOperation: vi.fn(),
-    cancelPluginOperation: vi.fn(),
-    restartForPluginHandoff: vi.fn(),
-    ackPluginHandoff: vi.fn(),
-    pluginRecoveryRestore: vi.fn(),
-    pluginRecoveryAbandon: vi.fn(),
-    pluginRecoveryOpenProfile: vi.fn(),
     checkForUpdates: vi.fn(),
     updateDismiss: vi.fn(),
     updateDownload: vi.fn(),
@@ -166,20 +159,6 @@ describe('命令 → 唯一路径', () => {
     await dispatch({ type: 'show-terminal' })
     expect(deps.showTerminal).toHaveBeenCalled()
     expect(switchTo).not.toHaveBeenCalled()
-  })
-
-  it('plugin 命令族：只调用对应出口，调度器自身绝不直接 restart', async () => {
-    const { deps, dispatch, restart } = makeDeps()
-    await dispatch({ type: 'plugin-op-request', action: 'remove', profile: 'web', spec: 'p' })
-    expect(deps.requestPluginOperation).toHaveBeenCalledWith({ action: 'remove', profile: 'web', spec: 'p' })
-    await dispatch({ type: 'plugin-op-cancel' })
-    expect(deps.cancelPluginOperation).toHaveBeenCalledOnce()
-    await dispatch({ type: 'plugin-handoff-restart' })
-    expect(deps.restartForPluginHandoff).toHaveBeenCalledOnce()
-    await dispatch({ type: 'plugin-handoff-later' })
-    expect(deps.ackPluginHandoff).toHaveBeenCalledOnce()
-    // restart 只属于 restart-harness 命令；handoff 的 Restart Now 由 main 接线复用。
-    expect(restart).not.toHaveBeenCalled()
   })
 
   it('update/diagnostics 命令族：只调用对应出口，调度器不碰 controller/discovery', async () => {

@@ -1,0 +1,20 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": { "rootDir": "src", "outDir": "lib/types" },
+  "include": ["src"],
+  "references": [
+    { "path": "../../../vendor/cordis" },
+    { "path": "../../../vendor/schemastery" },
+    { "path": "../../core/agent" },
+    { "path": "../../core/scope" },
+    { "path": "../../core/session" },
+    { "path": "../../preset/agent-preset-registry" },
+    { "path": "../../session-query/session-query" },
+    { "path": "../../skill/skill" },
+    { "path": "../../skill/skill-filesystem" },
+    { "path": "../../storage/storage-domain" },
+    { "path": "../../util/home-paths" },
+    { "path": "../../typert/protocol" },
+    { "path": "../../workspace/workspace" }
+  ]
+}

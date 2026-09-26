@@ -33,9 +33,9 @@ A GIF for a specific pull request demonstrates that pull request's tree, so stag
 
 ## Record the flow
 
-Follow the available browser-control workflow's setup, interaction, and cleanup instructions. When it exposes `recordVideo`, enable video on the same controlled context to capture more intermediate frames. Otherwise use [screenshot capture](#screenshot-capture) within that workflow; video availability does not determine which browser-control workflow to use. Existing user browser state remains an explicit provenance exception.
+Follow the available browser-control workflow's setup, interaction, and cleanup instructions. When it exposes `recordVideo`, enable video on the same controlled context to capture more intermediate frames. Otherwise use [screenshot capture](#screenshot-capture) within that workflow; video availability does not determine which browser-control workflow to use. Existing user browser state remains an explicit isolation exception.
 
-Only when browser control is unavailable, use the repository-declared Playwright dependency in an isolated headless browser and state that fallback in the provenance. In this repository it resolves from `apps/web/package.json`; do not install another driver or open the user's browser.
+Only when browser control is unavailable, use the repository-declared Playwright dependency in an isolated headless browser and state that fallback in the capture notes. In this repository it resolves from `apps/web/package.json`; do not install another driver or open the user's browser.
 
 Before recording, identify the origin, built or development server, transport, and any mode overrides. When a production default opens a native surface that automation cannot drive, select an official browser-operable production backend through normal application configuration and disclose the override.
 

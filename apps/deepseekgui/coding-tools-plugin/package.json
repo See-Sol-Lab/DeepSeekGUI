@@ -7,14 +7,16 @@
   "main": "lib/index.js",
   "exports": {
     ".": "./lib/index.js",
+    "./locale/*.json": "./locale/*.json",
     "./package.json": "./package.json"
   },
   "files": [
+    "locale/*.json",
     "lib"
   ],
   "license": "SEE LICENSE IN ../../../DEEPSEEKGUI-LICENSE.md",
   "devDependencies": {
-    "@deepseek-ai/cordis": "workspace:*",
+    "@deepseek-ai/cordis": "workspace:~",
     "@deepseek-ai/dsh-agent": "workspace:*",
     "@deepseek-ai/dsh-git": "workspace:*",
     "@deepseek-ai/dsh-git-local": "workspace:*",

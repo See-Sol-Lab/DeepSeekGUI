@@ -1,11 +1,10 @@
 // @vitest-environment jsdom
 /**
- * Inline projection of sent user text: decoration never breaks a single-line
- * message (bubble regression), and wire session forms fold to their label
- * (queue-row readability).
+ * Inline projection of sent user text: decoration adds no block containers,
+ * preserves whitespace, and folds wire session forms to their label.
  */
-import { describe, expect, it } from 'vitest'
-import { render } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
+import { fireEvent, render } from '@testing-library/react'
 import { projectUserText } from '../src/user-text.tsx'
 
 const project = (
@@ -17,7 +16,7 @@ const project = (
   render(<div data-host>{projectUserText(text, labels, slashNames, slashKind)}</div>).container.querySelector('[data-host]')!
 
 describe('projectUserText', () => {
-  it('keeps a decorated single-line message on one line: every part is inline', () => {
+  it('keeps decorated text inline and preserves whitespace between references', () => {
     const host = project('反反复复 /dsh-acp-test @执行几个命令测试', ['执行几个命令测试'], ['dsh-acp-test'])
     expect(host.querySelectorAll('div').length).toBe(0)
     expect(host.textContent).toBe('反反复复 /dsh-acp-test 执行几个命令测试')
@@ -102,8 +101,43 @@ describe('projectUserText', () => {
 
   it('falls back to the raw quoted label when the path has no basename', () => {
     const host = project('看 @"/" 下面')
-    const chip = host.querySelector('[data-ref-chip="file"]')!
+    const chip = host.querySelector('[data-ref-chip="folder"]')!
     expect(chip.textContent).toBe('"/"')
+  })
+
+  it('opens decoded files and loaded skills without activating session, folder, or command references', () => {
+    const openFile = vi.fn()
+    const openSkill = vi.fn()
+    const view = render(<div>{projectUserText(
+      '@src/a.ts @"notes a.md" /review @history @dir/ @"dir a/"', ['history'], ['review'], 'skill',
+      { openFile, openSkill },
+    )}</div>)
+    fireEvent.click(view.getByRole('button', { name: 'a.ts' }))
+    fireEvent.click(view.getByRole('button', { name: 'notes a.md' }))
+    fireEvent.click(view.getByRole('button', { name: '/review' }))
+    expect(openFile.mock.calls).toEqual([['src/a.ts'], ['notes a.md']])
+    expect(openSkill).toHaveBeenCalledWith('review')
+    expect(view.container.querySelectorAll('button')).toHaveLength(3)
+    const command = render(<div>{projectUserText('/help', [], ['help'], 'command', { openFile, openSkill })}</div>)
+    expect(command.container.querySelector('button')).toBeNull()
+  })
+
+  it('preserves text-selection gestures and keyboard activation', () => {
+    const openFile = vi.fn()
+    const view = render(<div>{projectUserText('@notes.md', [], [], 'skill', { openFile, openSkill: vi.fn() })}</div>)
+    const button = view.getByRole('button', { name: 'notes.md' })
+    const selection = document.getSelection()!
+    const range = document.createRange()
+    range.selectNodeContents(button)
+    selection.addRange(range)
+    fireEvent.click(button, { detail: 1 })
+    expect(openFile).not.toHaveBeenCalled()
+    fireEvent.click(button, { detail: 0 })
+    expect(openFile).toHaveBeenCalledWith('notes.md')
+    selection.removeAllRanges()
+    openFile.mockClear()
+    fireEvent.click(button, { detail: 2 })
+    expect(openFile).not.toHaveBeenCalled()
   })
 
   it('renders undecorated text as one inline run', () => {

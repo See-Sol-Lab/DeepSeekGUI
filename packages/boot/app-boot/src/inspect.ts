@@ -14,12 +14,14 @@
  * @module @deepseek-ai/dsh-app-boot/inspect
  */
 
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import type { EntryOptions } from '@deepseek-ai/cordis-plugin-loader'
 import type { PatchOptions } from '@deepseek-ai/cordis-plugin-include'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import { loadOptionalPatches, loadOverlayPatches } from './index.ts'
+import { evaluatePluginCompatibility, pluginCompatibilityWarning } from './plugin-compatibility.ts'
+import { readProfileVersionExemptions } from './profile-compatibility.ts'
 import {
   composeEntries,
   PROFILE_PATCH_FILENAME,
@@ -29,7 +31,7 @@ import {
   resolveProfileDir,
   type Profile,
   type ProfileLayer,
-  type ProfileManifest, DEFAULT_PROFILE_PATCH_RELOAD } from './profile.ts'
+  type SkippedBundle, bundlePatchPaths } from './profile.ts'
 
 /** Static classification of one existing profile's composed surface. */
 export type StaticProfileStatus = 'web-capable' | 'headless' | 'candidate' | 'malformed'
@@ -189,20 +191,30 @@ export function inspectExistingProfile(
   }
   const manifest = readProfileManifest(binName, dir)
   const bundles = manifest.dsh?.profile?.bundles ?? []
-  const layers: ProfileLayer[] = bundles.map((packageName): ProfileLayer => {
-    const packageDir = resolveBundleDir(binName, packageName, installAnchor, dir)
-    const bundleManifest = JSON.parse(readFileSync(join(packageDir, 'package.json'), 'utf8')) as ProfileManifest
-    const declared = bundleManifest.dsh?.bundle?.patch
-    if (declared === undefined) {
-      throw new Error(`${binName}: profile bundle ${JSON.stringify(packageName)} declares no dsh.bundle in its package.json`)
+  // Mirrors loadProfile's layer resolution (0.1.7: a bundle may carry several patch files, applied in order;
+  // rc.2: an unreadable bundle, or one whose own dsh peers the profile does not exempt, is skipped and listed).
+  const layers: ProfileLayer[] = []
+  const skippedBundles: SkippedBundle[] = []
+  const exemptions = bundles.length === 0 ? {} : readProfileVersionExemptions(dir)
+  for (const packageName of bundles) {
+    try {
+      const packageDir = resolveBundleDir(binName, packageName, installAnchor, dir)
+      const bundleManifest = readProfileManifest(binName, packageDir)
+      const bundle = bundleManifest.dsh?.bundle
+      if (bundle === undefined) {
+        throw new Error(`${binName}: profile bundle ${JSON.stringify(packageName)} declares no dsh.bundle in its package.json`)
+      }
+      const issue = evaluatePluginCompatibility(bundleManifest, exemptions)
+      if (issue !== undefined && !issue.exempted) throw new Error(pluginCompatibilityWarning(issue))
+      const patchPaths = bundlePatchPaths(packageDir, bundle)
+      layers.push({ packageName, packageDir, patchPaths, patches: patchPaths.flatMap(patchPath => loadOverlayPatches(binName, patchPath)) })
+    } catch (error) {
+      skippedBundles.push({ packageName, reason: String(error) })
     }
-    const patchPath = join(packageDir, declared)
-    return { packageName, packageDir, patchPath, patches: loadOverlayPatches(binName, patchPath) }
-  })
+  }
   const patchPath = join(dir, PROFILE_PATCH_FILENAME)
   const patches = existsSync(patchPath) ? loadOverlayPatches(binName, patchPath) : []
-  const patchReload = manifest.dsh?.profile?.patchReload ?? DEFAULT_PROFILE_PATCH_RELOAD
-  const profile: Profile = { name, dir, layers, patchPath, patches, patchReload }
+  const profile: Profile = { name, dir, layers, patchPath, patches, skippedBundles }
   // Home 级用户层与真实启动同一位置：bundle 之后、profile 层之后；缺失是空层，绝不创建。
   const homePatches = loadOptionalPatches(binName, join(home, PROFILE_PATCH_FILENAME)) ?? []
   const rows = new Map<string, EntryOptions>()
@@ -250,12 +262,17 @@ export function inspectExistingProfiles(
     try {
       const { profile, rows } = inspectExistingProfile(binName, entry.name, installAnchor, home, warn)
       const { staticStatus, evidence } = classifySurface(rows)
+      // A real boot skips an unreadable or incompatible bundle and carries on (rc.2); the
+      // profile is classified from what remains, and each skip is kept as evidence.
+      const skipped = profile.skippedBundles.map(({ packageName, reason }) =>
+        `bundle ${packageName} skipped: ${redactSecrets(reason)}`)
+      for (const line of skipped) warn(`${line}\n`)
       result.push({
         name: profile.name,
         dir: profile.dir,
         bundles: profile.layers.map(layer => layer.packageName),
         staticStatus,
-        evidence,
+        evidence: [...evidence, ...skipped],
       })
     } catch (error) {
       // 保留错误类别与文件位置，只移除凭据及可能带凭据的源码片段。

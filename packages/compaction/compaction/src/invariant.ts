@@ -97,10 +97,9 @@ function validateSourceCommandId(
 /** Validate one replacement checkpoint against its open compaction transaction. */
 function validateCheckpoint(
   trace: SessionTrace,
-  event: SessionEvent<'user/message'>,
+  source: CompactionCheckpointSource,
   fail: InvariantFailure,
 ): void {
-  const source = event.data.source as typeof event.data.source & Partial<CompactionCheckpointSource>
   validateId(source.compactionId, 'compaction checkpoint compactionId', fail)
   if (source.sourceCommandId !== undefined) {
     validateId(source.sourceCommandId, 'compaction checkpoint sourceCommandId', fail)
@@ -190,7 +189,7 @@ function validateCompactionEvent(
   if (event.type === 'user/message'
     && isReplacementSurfaceEvent(event)
     && isCompactCheckpointSource(event.data.source)) {
-    validateCheckpoint(trace, event, fail)
+    validateCheckpoint(trace, event.data.source, fail)
     return undefined
   }
   if (event.type !== 'compaction/start' && event.type !== 'compaction/summary' && event.type !== 'compaction/end') {
@@ -295,9 +294,10 @@ const install: InvariantInstaller = Object.assign((ctx: Context, fail: Invariant
       openTurn: null,
       compaction: undefined,
       surfaceEvents,
-      surface: new SurfaceManager(surfaceEvents),
+      surface: new SurfaceManager(surfaceEvents, undefined, ctx.sessions.messageProjections),
     }
     traces.set(session, trace)
+    // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
     const events = session.snapshotEvents()
     const staleOrphanStartSeqs = inheritedOrphanStartSeqs(events)
     for (const event of events) {

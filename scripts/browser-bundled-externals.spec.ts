@@ -1,18 +1,35 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { browserBundledExternals, browserPackageOfFile, browserSourceAliases } from './browser-bundled-externals.ts'
 
+const filesystem = vi.hoisted(() => ({ preservedAlias: undefined as string | undefined }))
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>()
+  return {
+    ...actual,
+    realpathSync: Object.assign((...args: Parameters<typeof actual.realpathSync>) => {
+      // Windows' JavaScript realpath can retain an 8.3 alias that Vite's native resolution expands.
+      if (typeof args[0] === 'string' && args[0] === filesystem.preservedAlias) return args[0]
+      return actual.realpathSync(...args)
+    }, { native: actual.realpathSync.native }),
+  }
+})
+
 const roots: string[] = []
+const dependencyLinks: string[] = []
 const repositoryRoot = resolve(import.meta.dirname, '..')
 
 afterEach(() => {
+  filesystem.preservedAlias = undefined
+  for (const link of dependencyLinks.splice(0)) unlinkSync(link)
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
 })
 
 function fixture(): string {
-  const root = mkdtempSync(join(tmpdir(), 'dsh-browser-notices-'))
+  const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-browser-notices-')))
   roots.push(root)
   write(root, 'package.json', '{"type":"module"}')
   write(root, 'tsconfig.base.json', JSON.stringify({
@@ -78,7 +95,10 @@ describe('browser dependency discovery', () => {
     await expect(browserBundledExternals(root)).rejects.toThrow('has no browser build config')
   })
 
-  it('follows shell workspace aliases, CSS assets and lazy imports without writing output', async () => {
+  it.each([
+    ['Rollup', false, false], ['Rollup', true, false], ['Rollup', true, true],
+    ['Rolldown', false, false], ['Rolldown', true, false], ['Rolldown', true, true],
+  ] as const)('follows shell aliases, CSS and lazy imports without writing output (%s, symlinked root: %s, retained alias: %s)', async (bundler, linked, preserveAlias) => {
     const root = fixture()
     library(root, 'shell-lib')
     library(root, 'lazy-lib')
@@ -96,15 +116,42 @@ describe('browser dependency discovery', () => {
     ].join('\n'))
     const app = join(root, 'apps/web')
     write(root, 'apps/web/package.json', '{"name":"@fixture/web","type":"module","exports":{"./dist/*":"./dist/*"}}')
-    symlinkSync(resolve(repositoryRoot, 'apps/web/node_modules'), join(app, 'node_modules'), 'junction')
+    const owner = bundler === 'Rollup' ? resolve(repositoryRoot, 'apps/web/package.json')
+      : createRequire(resolve(repositoryRoot, 'package.json')).resolve('vitest/package.json')
+    const viteDirectory = dirname(createRequire(owner).resolve('vite/package.json'))
+    const viteLink = join(app, 'node_modules/vite')
+    mkdirSync(dirname(viteLink), { recursive: true })
+    symlinkSync(viteDirectory, viteLink, 'junction')
+    dependencyLinks.push(viteLink)
     write(root, 'apps/web/index.html', '<script type="module" src="./main.ts"></script>')
     write(root, 'apps/web/main.ts', 'import { output, lazy } from "@fixture/static"; console.log(output); void lazy()')
-    write(root, 'apps/web/vite.config.ts', `export default {
-      build: { rollupOptions: { input: { index: ${JSON.stringify(join(app, 'index.html'))}, preview: "missing-preview.ts" } } }
-    }`)
+    write(root, 'apps/web/vite.config.ts', `
+      import { productWebBundleIsolation } from ${JSON.stringify(resolve(repositoryRoot, 'apps/web/product-isolation.ts').replaceAll('\\', '/'))}
+      export default ({ mode }) => {
+        if (mode !== 'production') throw new Error('notice discovery must use the production build mode')
+        return {
+          plugins: [...productWebBundleIsolation(${JSON.stringify(root)}, ${JSON.stringify(app)}), {
+            name: 'fixture-bundler-engine',
+            generateBundle() {
+              const actual = typeof this.meta.rolldownVersion === 'string' ? 'Rolldown' : 'Rollup'
+              if (actual !== ${JSON.stringify(bundler)}) throw new Error('unexpected bundler: ' + actual)
+            },
+          }],
+          build: { rollupOptions: { input: { index: ${JSON.stringify(join(app, 'index.html'))}, preview: "missing-preview.ts" } } }
+        }
+      }
+    `)
     write(root, 'apps/web/dist/sentinel.txt', 'untouched')
 
-    expect(await browserBundledExternals(root)).toEqual(new Set(['shell-lib', 'lazy-lib', 'asset-lib']))
+    const scanRoot = linked ? join(fixture(), 'linked') : root
+    if (linked) symlinkSync(root, scanRoot, 'junction')
+    if (preserveAlias) filesystem.preservedAlias = scanRoot
+    try {
+      expect(await browserBundledExternals(scanRoot)).toEqual(new Set(['shell-lib', 'lazy-lib', 'asset-lib']))
+    } finally {
+      filesystem.preservedAlias = undefined
+      if (linked) unlinkSync(scanRoot)
+    }
     expect(readFileSync(join(app, 'dist/sentinel.txt'), 'utf8')).toBe('untouched')
     expect(existsSync(join(app, 'dist/index.html'))).toBe(false)
     expect(existsSync(join(root, 'packages/client/static/lib'))).toBe(false)

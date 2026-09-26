@@ -1,3 +1,4 @@
+import { MESSAGES_RESPONSE } from './messages-response.ts'
 import { createUserMessage, LlmAdapter, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import type { GenerateOptions, LlmResolvedModelInfo, StreamChunk } from '@deepseek-ai/dsh-llm'
 import { createServer } from 'node:http'
@@ -13,7 +14,7 @@ import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-test
 
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
-import * as LlmDeepSeek from '@deepseek-ai/dsh-llm-deepseek'
+import * as LlmDeepSeek from '@deepseek-ai/dsh-llm-deepseek-api-key'
 import SubagentRuntime, { type SubagentResult, type SubagentRunEndInfo } from '@deepseek-ai/dsh-subagent'
 import type { JsonRpcTransportPeer } from '@deepseek-ai/dsh-sdk-protocol'
 import { HarnessSdkJsonRpcServer } from '../src/index.ts'
@@ -47,11 +48,7 @@ async function mockCompletionServer(): Promise<{ url: string; requests: unknown[
       requests.push(JSON.parse(body))
       headers.push(request.headers)
       response.writeHead(200, { 'content-type': 'text/event-stream' })
-      response.write('data: {"choices":[{"delta":{"role":"assistant","content":null,"reasoning_content":""}}]}\n\n')
-      response.write('data: {"choices":[{"delta":{"content":"done"}}]}\n\n')
-      response.write('data: {"choices":[{"delta":{"content":""},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":1}}\n\n')
-      response.write('data: [DONE]\n\n')
-      response.end()
+      response.end(MESSAGES_RESPONSE)
     })
   })
   servers.push(server)
@@ -141,15 +138,17 @@ describe('HarnessSdkJsonRpcServer', () => {
       const body = llmServer.requests[0] as {
         model: string
         messages: { role: string }[]
-        reasoning_effort?: string
+        system?: string
+        output_config?: { effort: string }
         max_tokens?: number
       }
       expect(body.model).toBe('dsagent-model')
-      expect(body.reasoning_effort).toBe('max')
+      expect(body.output_config).toEqual({ effort: 'max' })
       expect(body.max_tokens).toBe(321)
-      expect(body.messages[0]?.role).toBe('system')
+      expect(body.system).toBeTypeOf('string')
+      expect(body.messages[0]?.role).toBe('user')
       expect(body.messages.at(-1)?.role).toBe('user')
-      expect(llmServer.headers[0]?.authorization).toBe('Bearer test-key')
+      expect(llmServer.headers[0]?.['x-api-key']).toBe('test-key')
       expect(transport.notifications.some(n => n.method === 'session.event')).toBe(true)
       await vi.waitFor(() => {
         expect(transport.notifications.findLast(n => n.method === 'session.status')).toEqual({
@@ -923,7 +922,9 @@ describe('HarnessSdkJsonRpcServer', () => {
       await expect(server.initialize({ cwd: storageDir, provider: 'private', model: 'new-model' }))
         .rejects.toThrow('no adapter registered for provider "private"')
 
-      expect(ctx.get('llm')?.listProviders()).toEqual([{ id: 'deepseek-official', name: 'DeepSeek' }])
+      expect(ctx.get('llm')?.listProviders()).toEqual([
+        { id: 'deepseek-official', name: 'DeepSeek' },
+      ])
       await server.shutdown()
     } finally {
       await ctx.fiber.dispose()

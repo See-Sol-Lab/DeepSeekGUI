@@ -33,7 +33,7 @@ The subagent package family lets an agent delegate a task to a child, continue t
 | [`subagent-claude-code/`](subagent-claude-code/README.md) | Runs a real Claude Code child through the official Agent SDK | registers on `ctx.subagents` |
 | [`subagent-dsh-sdk/`](subagent-dsh-sdk/README.md) | Runs an out-of-process Harness child through the TypeScript SDK | registers on `ctx.subagents` |
 | [`tool-subagent/`](tool-subagent/README.md) | Exposes delegation to the model | registers on `ctx.tools` |
-| [`tool-subagent-control/`](tool-subagent-control/README.md) | Exposes adjacent-Agent messaging, interrupt, and listing to the model | registers on `ctx.tools` |
+| [`tool-subagent-control/`](tool-subagent-control/README.md) | Exposes adjacent-agent messaging, interrupt, and listing to the model | registers on `ctx.tools` |
 
 -----
 

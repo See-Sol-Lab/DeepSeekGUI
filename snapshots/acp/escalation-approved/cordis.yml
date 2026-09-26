@@ -3,7 +3,7 @@
 # stdout remains reserved for ACP JSON-RPC.
 
 - id: llm-deepseek
-  name: '@deepseek-ai/dsh-llm-deepseek'
+  name: '@deepseek-ai/dsh-llm-deepseek-api-key'
   config:
     thinking: enabled
     reasoningEffort: max
@@ -88,3 +88,7 @@
       name: '@deepseek-ai/dsh-hooks-codex'
       config:
         configPath: ./codex-hooks.json
+
+- id: session-log-deepseek
+  config:
+    enabled: false

@@ -6,7 +6,9 @@
 
 import { Context } from '@deepseek-ai/cordis'
 import { constants as bufferConstants } from 'node:buffer'
-import { isAbsolute, relative, resolve, sep } from 'node:path'
+import { once } from 'node:events'
+import { watch } from 'chokidar'
+import { dirname, isAbsolute, relative, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import z from '@deepseek-ai/schemastery'
 import { FileSystem, FsError, FsVersion } from '@deepseek-ai/dsh-fs'
@@ -23,6 +25,7 @@ import type {
 import {
   applyLiteralEdit,
   listDirectory,
+  localDisplayPath,
   normalizeLineEndings,
   probe,
   probeNoFollow,
@@ -63,6 +66,29 @@ const MAX_DIFF_BASIS_BYTES = Math.min(
  * containment with a stricter backend or a `tools/execute` permission plugin.
  */
 export class LocalFileSystem extends FileSystem {
+  override async watch(target: FsTarget, changed: (error?: Error) => void, signal: AbortSignal): Promise<() => Promise<void>> {
+    signal.throwIfAborted()
+    const path = resolve(this.processPath(target))
+    const directory = (await this.stat(target, signal))?.type === 'directory'
+    signal.throwIfAborted()
+    const root = directory ? path : dirname(path)
+    const watcher = watch(root, {
+      ignoreInitial: true, depth: 0,
+      ignored: entry => !directory && resolve(entry) !== root && resolve(entry) !== path,
+    })
+    watcher.on('all', (_event, entry) => {
+      if (directory || resolve(entry) === path) changed()
+    })
+    watcher.on('error', (error) => { changed(error instanceof Error ? error : new Error(String(error))) })
+    try {
+      await once(watcher, 'ready', { signal })
+      return () => watcher.close()
+    } catch (error) {
+      await watcher.close()
+      throw error
+    }
+  }
+
   static Config: z<Config> = z.object({
     cwd: z.string().default(process.cwd()),
     diffBasisMaxBytes: z.number().default(DEFAULT_DIFF_BASIS_MAX_BYTES),
@@ -139,7 +165,8 @@ export class LocalFileSystem extends FileSystem {
   override async lstat(path: string, opts?: { cwd?: string }, signal?: AbortSignal): Promise<FsPathInfo | undefined> {
     if (signal?.aborted) throw new FsError('lstat aborted', 'FS_ABORTED')
     if (path.trim().length === 0) throw new FsError('file_path must be a non-empty string', 'FS_NOT_FOUND')
-    const info = await probeNoFollow(resolve(opts?.cwd ?? this.config.cwd, path))
+    const cwd = opts?.cwd ?? this.config.cwd
+    const info = await probeNoFollow(localDisplayPath(cwd, path))
     if (signal?.aborted) throw new FsError('lstat aborted', 'FS_ABORTED')
     if (!info) return undefined
     return { version: info.version, type: info.type, size: info.size }

@@ -1,0 +1,19 @@
+# Bilingual-pair consistency record for 2026-09-14-memory-pages-and-migration.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-14-memory-pages-and-migration.md
+/agent-note-the-memory-pages-and-the-explicit-migration:
+  en: ee8d576b0827bcae
+  zh: 1d8e1b9523e33162
+/agent-note-the-memory-pages-and-the-explicit-migration/problem:
+  en: 340d49950eeaaa3e
+  zh: 79105f8cb30cd6f0
+/agent-note-the-memory-pages-and-the-explicit-migration/decision:
+  en: 18f82b09f9b6d5b8
+  zh: e87c8cb46f063dc4
+/agent-note-the-memory-pages-and-the-explicit-migration/alternatives-considered:
+  en: ac265620cbfb1afb
+  zh: 3673f9f5d6146dee
+/agent-note-the-memory-pages-and-the-explicit-migration/consequences:
+  en: 1d235a06e47d8241
+  zh: 0a1c51e48ec45c18

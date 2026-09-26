@@ -1,6 +1,31 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write apps/deepseekgui/browser-plugin/README.md
-README.md: e3becf55d50db972b91542828396550eb08cd4d6
-README.zh.md: acebb9ec3892808e5c275da49521aad1451355c4
+/see-sol-lab-deepseekgui-browser:
+  en: 953beeff334a7ceb
+  zh: 443d41d9bca24cde
+/see-sol-lab-deepseekgui-browser/tools:
+  en: 0b27734b46fbf7ef
+  zh: 6f0b77578ed0afa8
+/see-sol-lab-deepseekgui-browser/tools/read-only-l0:
+  en: efe4dbff2e2c2891
+  zh: 802fadcb779f2730
+/see-sol-lab-deepseekgui-browser/tools/interactive-l1:
+  en: 5f842e3f09370563
+  zh: aca6b3194fa3e940
+/see-sol-lab-deepseekgui-browser/tools/sensitive-l2:
+  en: 1ebca61f03189910
+  zh: 0c99cbc2c08341aa
+/see-sol-lab-deepseekgui-browser/installation:
+  en: 02895a18267d3d2e
+  zh: f37f75d24651add2
+/see-sol-lab-deepseekgui-browser/runtime-dependencies:
+  en: 533f214dcc0217b0
+  zh: 1a4324af26bdc0b4
+/see-sol-lab-deepseekgui-browser/security:
+  en: 9c0d625f50725983
+  zh: 3715147a46a8527b
+/see-sol-lab-deepseekgui-browser/development:
+  en: d1ca5ca8a7db10ca
+  zh: 39d002b1ac457fee

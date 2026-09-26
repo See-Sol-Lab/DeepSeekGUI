@@ -99,6 +99,58 @@ describe('runUpdateCheck（本机 mock server 真链路）', () => {
       notFound.close()
     }
   })
+
+  it('回落：主通道拒连（网络失败）→ 官网镜像应答 → available 且标记 viaFallback', async () => {
+    const fallback = await startMock(new Map([['/site-manifest.json', {
+      status: 200,
+      body: Buffer.from(JSON.stringify(manifestFor('0.2.0', {
+        url: 'https://site/x.exe', sha256: 'a'.repeat(64), size: 1, filename: 'x.exe',
+      }))),
+    }]]))
+    try {
+      const outcome = await runUpdateCheck(
+        makeDeps(async () => {}), 'http://127.0.0.1:1/manifest.json', '0.1.0', true, `${fallback.url}/site-manifest.json`)
+      expect(outcome.kind).toBe('available')
+      if (outcome.kind === 'available') {
+        expect(outcome.manifest.latestVersion).toBe('0.2.0')
+        expect(outcome.viaFallback).toBe(true)
+      }
+      expect(fallback.requests).toContain('/site-manifest.json')
+    } finally {
+      fallback.close()
+    }
+  })
+
+  it('不回落：主通道答复了 404（服务器活着）→ 官网镜像一次也不被请求', async () => {
+    const primary = await startMock(new Map([['/manifest.json', { status: 404, body: Buffer.from('nope') }]]))
+    const fallback = await startMock(new Map([['/site-manifest.json', {
+      status: 200,
+      body: Buffer.from(JSON.stringify(manifestFor('0.2.0', {
+        url: 'https://site/x.exe', sha256: 'a'.repeat(64), size: 1, filename: 'x.exe',
+      }))),
+    }]]))
+    try {
+      const outcome = await runUpdateCheck(
+        makeDeps(async () => {}), `${primary.url}/manifest.json`, '0.1.0', true, `${fallback.url}/site-manifest.json`)
+      expect(outcome.kind).toBe('error')
+      expect(fallback.requests).toHaveLength(0)
+    } finally {
+      primary.close()
+      fallback.close()
+    }
+  })
+
+  it('两边都失败：报主通道的错误（那才是用户该修的网络现实）', async () => {
+    const outcome = await runUpdateCheck(
+      makeDeps(async () => {}), 'http://127.0.0.1:1/manifest.json', '0.1.0', true, 'http://127.0.0.1:1/site.json')
+    expect(outcome.kind).toBe('error')
+    if (outcome.kind === 'error') expect(outcome.message).toContain('无法连接更新服务器')
+  })
+
+  it('无回落地址（用户自定义 feed）：网络失败直接报错，不碰任何镜像', async () => {
+    const outcome = await runUpdateCheck(makeDeps(async () => {}), 'http://127.0.0.1:1/manifest.json', '0.1.0')
+    expect(outcome.kind).toBe('error')
+  })
 })
 
 describe('runUpdateDownload（mock 真流：size 比对 / digest / 取消 / partial 清理）', () => {

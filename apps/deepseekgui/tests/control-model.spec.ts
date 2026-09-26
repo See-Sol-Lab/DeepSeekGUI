@@ -17,6 +17,7 @@ import {
 import type { HarnessStatus } from '../src/harness-controller.ts'
 import type { LauncherStateV1 } from '../src/launcher-state.ts'
 import type { ProfileDiscoveryV1 } from '../src/profile-discovery.ts'
+import { usageViewOf } from '../src/usage-service.ts'
 
 const managedState = (): LauncherStateV1 => ({
   schemaVersion: 1,
@@ -53,19 +54,18 @@ function input(overrides: Partial<ControlModelInput> = {}): ControlModelInput {
     effectiveTheme: 'dark',
     highContrast: false,
     recoveryNotice: null,
-    pluginManager: { profiles: [], error: null, operation: null, handoffPending: false, recovery: null, builtin: [] },
     viewMode: 'workbench',
     update: {
-      channel: null, state: 'idle', result: null, latestVersion: null, releaseNotes: null,
-      progressBytes: null, progressTotal: null, message: null, autoDownload: true,
+      channel: null, state: 'idle', result: null, latestVersion: null, releaseNotes: null, releasePageUrl: null,
+      progressBytes: null, progressTotal: null, message: null, autoDownload: true, viaFallback: false,
     },
     diagnostics: { buildInfo: [], homeDisplay: '', logPath: null, lastExport: null, uncleanExit: null },
     feedback: { open: false, diagnostics: '', phase: 'idle', reply: null, issueTitle: '', degradedReason: null, notice: null, gatewayConfigured: false },
     permissions: { mode: 'sandbox', preset: 'workspace-write', detail: null },
     powerShell7Available: true,
     browserPane: { present: false, open: false },
-    firstRun: { pending: false },
     dataHome: { homePath: 'C:/ud/dsh', homeKind: 'managed', awaitingRestart: null, verifyFailed: null, pendingCleanup: null },
+    usage: usageViewOf(),
     ...overrides,
   }
 }
@@ -191,9 +191,6 @@ describe('parseControlCommand 边界验证', () => {
     'show-about',
     'show-terminal',
     'quit',
-    'plugin-op-cancel',
-    'plugin-handoff-restart',
-    'plugin-handoff-later',
     'check-for-updates',
     'update-dismiss',
     'update-download',
@@ -237,21 +234,6 @@ describe('parseControlCommand 边界验证', () => {
     expect(parseControlCommand({ type: 'feedback-send', text: 'ok', diagnostics: '', extra: 1 })).toBeNull()
   })
 
-  it('plugin-op-request：接受合法动作/profile/spec（spec 可为 null），拒绝其余', () => {
-    expect(parseControlCommand({ type: 'plugin-op-request', action: 'add', profile: 'web', spec: 'my-plugin' }))
-      .toEqual({ type: 'plugin-op-request', action: 'add', profile: 'web', spec: 'my-plugin' })
-    expect(parseControlCommand({ type: 'plugin-op-request', action: 'install', profile: 'web', spec: null }))
-      .toEqual({ type: 'plugin-op-request', action: 'install', profile: 'web', spec: null })
-    expect(parseControlCommand({ type: 'plugin-op-request', action: 'install', profile: 'web', spec: null, extra: 1 })).toBeNull()
-    expect(parseControlCommand({ type: 'plugin-op-request', action: 'hack', profile: 'web', spec: null })).toBeNull()
-    expect(parseControlCommand({ type: 'plugin-op-request', action: 'add', profile: 'a/b', spec: 'x' })).toBeNull()
-    expect(parseControlCommand({ type: 'plugin-op-request', action: 'add', profile: 'web', spec: 42 })).toBeNull()
-    expect(parseControlCommand({ type: 'plugin-op-request', action: 'add', profile: 'web' })).toBeNull()
-    // 长度上限：超长 profile/spec 在 IPC 边界拒绝。
-    expect(parseControlCommand({ type: 'plugin-op-request', action: 'add', profile: 'p'.repeat(257), spec: 'x' })).toBeNull()
-    expect(parseControlCommand({ type: 'plugin-op-request', action: 'add', profile: 'web', spec: 'x'.repeat(4097) })).toBeNull()
-  })
-
   it.each([
     [null],
     [42],
@@ -266,6 +248,50 @@ describe('parseControlCommand 边界验证', () => {
     [{ type: 'switch-profile', profile: 'web', extra: true }],
     [{ type: 'choose-existing-profile', profile: 42 }],
   ])('拒绝非法输入 %j', (raw) => {
+    expect(parseControlCommand(raw)).toBeNull()
+  })
+
+  it('open-external-link（B7-P2）：只认不带凭据的 https，归一化后放行', () => {
+    expect(parseControlCommand({ type: 'open-external-link', url: 'https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.2.0' }))
+      .toEqual({ type: 'open-external-link', url: 'https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.2.0' })
+    expect(parseControlCommand({ type: 'open-external-link', url: 'https://例子.example/路径' }))
+      .toEqual({ type: 'open-external-link', url: new URL('https://例子.example/路径').toString() })
+  })
+
+  it('usage-refresh 带触发点（B7-P3）', () => {
+    expect(parseControlCommand({ type: 'usage-refresh', trigger: 'open' })).toEqual({ type: 'usage-refresh', trigger: 'open' })
+    expect(parseControlCommand({ type: 'usage-refresh', trigger: 'manual' })).toEqual({ type: 'usage-refresh', trigger: 'manual' })
+    expect(parseControlCommand({ type: 'usage-refresh' })).toBeNull()
+    expect(parseControlCommand({ type: 'usage-refresh', trigger: 'startup' })).toBeNull()
+    expect(parseControlCommand({ type: 'usage-refresh', trigger: 'manual', extra: 1 })).toBeNull()
+  })
+
+  it('skill-pick-source 只认两种来源种类（B7-P4）', () => {
+    expect(parseControlCommand({ type: 'skill-pick-source', kind: 'directory' })).toEqual({ type: 'skill-pick-source', kind: 'directory' })
+    expect(parseControlCommand({ type: 'skill-pick-source', kind: 'file' })).toEqual({ type: 'skill-pick-source', kind: 'file' })
+    expect(parseControlCommand({ type: 'skill-pick-source' })).toBeNull()
+    expect(parseControlCommand({ type: 'skill-pick-source', kind: 'zip' })).toBeNull()
+    expect(parseControlCommand({ type: 'skill-pick-source', kind: 'file', path: 'x' })).toBeNull()
+  })
+
+  it('skillPick（B7-P4）：缺省为 null，传入时原样透传', () => {
+    expect(buildControlModel(input()).skillPick).toBeNull()
+    expect(buildControlModel(input({ skillPick: { nonce: 2, kind: 'file', path: 'C:/skills/pack.zip' } })).skillPick)
+      .toEqual({ nonce: 2, kind: 'file', path: 'C:/skills/pack.zip' })
+  })
+
+  it.each([
+    [{ type: 'open-external-link' }],
+    [{ type: 'open-external-link', url: 42 }],
+    [{ type: 'open-external-link', url: '' }],
+    [{ type: 'open-external-link', url: 'http://example.com/' }],
+    [{ type: 'open-external-link', url: 'javascript:alert(1)' }],
+    [{ type: 'open-external-link', url: 'file:///C:/Windows/system32/calc.exe' }],
+    [{ type: 'open-external-link', url: 'https://user:pw@example.com/' }],
+    [{ type: 'open-external-link', url: '#中文' }],
+    [{ type: 'open-external-link', url: `https://example.com/${'x'.repeat(2100)}` }],
+    [{ type: 'open-external-link', url: 'https://example.com/', extra: 1 }],
+  ])('open-external-link 拒绝 %j', (raw) => {
     expect(parseControlCommand(raw)).toBeNull()
   })
 })

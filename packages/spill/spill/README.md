@@ -33,13 +33,13 @@ Choose spill storage when a deployment needs to keep full text retrievable after
 
 ### Smallest working composition
 
-Mount a backend and the policy together; with `maxInlineBytes` set, any oversized plain-text tool result becomes a preview plus a locator automatically.
+Mount a backend and the policy together; with `maxInlineTokens` set, an oversized text/image tool result becomes a preview plus a locator automatically.
 
 ```yaml
 - name: '@deepseek-ai/dsh-spill-local'
 - name: '@deepseek-ai/dsh-spill-policy'
   config:
-    maxInlineBytes: 50000
+    maxInlineTokens: 12500
 ```
 
 ### Saving text
@@ -93,7 +93,7 @@ The package is built on one separation and a deliberate minimum:
 
 ### Data model
 
-`SaveTextSpill` separates storage ownership from descriptive provenance. `SpillSource` accepts either the tool source `{ kind: "tool", toolName, callId, label }` or `{ kind: "session-reference", sessionId, label }`, whose id names the captured source session. Session references never fabricate tool call ids. Neither provenance nor the owner namespace grants read access. Consumers treat the returned locator as opaque and present it with its retrieval hint.
+`SaveTextSpill` separates storage ownership from its source description. `SpillSource` accepts either the tool source `{ kind: "tool", toolName, callId, label }` or `{ kind: "session-reference", sessionId, label }`, whose id names the captured source session. Session references never fabricate tool call ids. Neither the source descriptor nor the owner namespace grants read access. Consumers treat the returned locator as opaque and present it with its retrieval hint.
 
 ### Lifecycle
 

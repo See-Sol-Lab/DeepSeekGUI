@@ -26,7 +26,19 @@ declare module '@deepseek-ai/cordis' {
     'loader/config-update'(): void
     'loader/entry-init'(entry: Entry): void
     'loader/partial-dispose'(entry: Entry, legacy: Partial<EntryOptions>, active: boolean): void
-    'loader/patch-context'(entry: Entry, next: () => void | Promise<void>): void | Promise<void>
+    /**
+     * Volatile config values were committed into the running fiber without a remount; dispatched to the owning fiber only.
+     * @param paths - changed config paths as key arrays; every value is committed before dispatch.
+     * @mode emit
+     */
+    'loader/volatile-update'(paths: readonly (readonly string[])[]): void
+    /**
+     * Refresh entry context before applying config.
+     * @param entry - entry containing the new raw config and optional current fiber.
+     * @param next - continue context refresh and Loader's config update.
+     * @mode waterfall
+     */
+    'loader/patch-context'(entry: Entry, next: () => void): void
   }
 
   interface Context {
@@ -100,12 +112,12 @@ export class Loader extends EntryTree {
       return interpolate(this.ctx, config)
     }, { global: true })
 
-    ctx.on('internal/update', async function (config, noSave, next) {
+    ctx.on('internal/update', function (config, noSave, next) {
       if (!this.entry || noSave || this.parent.fiber?.entry === this.entry) return next()
-      await next()
       const unparse = this.runtime?.Config?.['simplify']
-      this.entry.options.config = unparse ? unparse(config) : config
+      this.entry.options.config = unparse ? unparse.call(this.runtime!.Config, config) : config
       this.entry.parent.tree.write()
+      return next()
     }, { global: true, prepend: true })
 
     ctx.on('internal/update', function (config, _, next) {
@@ -143,12 +155,9 @@ export class Loader extends EntryTree {
       const treeOwner = fiber.entry.parent.tree.ctx.fiber
       if (!treeOwner.uid || treeOwner.state === FiberState.UNLOADING) return
 
-      // case 6: Loader is replacing or removing this exact fiber
-      if (fiber.entry._disposing) return
-
       this.showLog(fiber.entry, 'unload')
 
-      // case 7: fiber is disposed by loader behavior
+      // case 6: fiber is disposed by loader behavior
       // such as inject checker, config file update, ancestor group disable
       if (fiber.entry.disabled) return
 

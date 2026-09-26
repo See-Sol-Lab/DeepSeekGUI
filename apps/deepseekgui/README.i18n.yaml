@@ -1,6 +1,43 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write apps/deepseekgui/README.md
-README.md: 827669aedc330328280341e6fd6b5d5993c7ad0e
-README.zh.md: 36cad89b506b00dfafa4046e133d248def8e9cea
+/deepseekgui:
+  en: 9a1cabb20c589b35
+  zh: d11810dfb1377034
+/deepseekgui/first-run-for-non-programmers:
+  en: c21f4c930cfb9379
+  zh: 646da597add9d3fb
+/deepseekgui/run-from-source:
+  en: 37504ec875b8d3cc
+  zh: bb1dc7cd68d21014
+/deepseekgui/build-a-portable-distribution-and-installer-windows:
+  en: 9006e028f246fd38
+  zh: 352139daf7915a97
+/deepseekgui/how-it-works:
+  en: 1f5f47514dad2e0f
+  zh: 4d2a346742dcd20a
+/deepseekgui/smoke-mode:
+  en: ce165bbbc3e7eb51
+  zh: e0795bd12af4f064
+/deepseekgui/upstream-compatibility-suite:
+  en: dd2978dd9e99e2b6
+  zh: ccc4b4ac080cc25a
+/deepseekgui/packaged-acceptance-b1-case-a-f:
+  en: b53f2e6fb3b200a6
+  zh: bcadcb91b94f044b
+/deepseekgui/installing-the-unsigned-build:
+  en: 3b5275adce803c14
+  zh: c692f8eb98990cd7
+/deepseekgui/known-limitations:
+  en: 35329c9927ffbc35
+  zh: 1947a0da2d3675fc
+/deepseekgui/resident-host-tray-and-dsh-terminal:
+  en: 4d0c9de90d580b53
+  zh: 984ae32777b57ada
+/deepseekgui/recovery-safeguards:
+  en: ebd6c1c483dbaa30
+  zh: 7ff7be5c00e57313
+/deepseekgui/license:
+  en: 54297aaf1638c5b3
+  zh: 59d0792bbdcfbbbf

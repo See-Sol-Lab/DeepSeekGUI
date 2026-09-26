@@ -6,12 +6,14 @@ import { PassThrough } from 'node:stream'
 import type { IDisposable, IPty } from 'node-pty'
 import type {
   SubprocessOutcome,
+  SubprocessTerminalActivity,
   SubprocessTerminalForeground,
   SubprocessTerminalHandle,
   SubprocessTerminalSignal,
 } from '@deepseek-ai/dsh-subprocess'
 import type { BoundProcessOwner } from './managed-owner.ts'
 import type { ProcessIdentity, ProcessInspector, ProcessSnapshot } from './process-inspector.ts'
+import type { ShellActivity } from './shell-activity.ts'
 
 function delay(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
@@ -65,7 +67,12 @@ export class LocalTerminalHandle implements SubprocessTerminalHandle {
   private cleanup: Promise<void> | undefined
   private managedOwnerCleaned = false
   private exited = false
+  private outputPaused = false
   private trackedDescendants: ProcessIdentity[] = []
+  private activityRevision = 0
+  private activityKey = ''
+  private quiescent = false
+  private managedRangeEmpty = false
   /** The spawned shell's start identity; scans stop adopting members once the root pid no longer carries it. */
   private readonly rootIdentity: ProcessIdentity | undefined
 
@@ -82,14 +89,35 @@ export class LocalTerminalHandle implements SubprocessTerminalHandle {
     private readonly platform: NodeJS.Platform = process.platform,
     private readonly managedOwner?: BoundProcessOwner,
     private readonly resolveManagedOutcome?: (outcome: SubprocessOutcome) => SubprocessOutcome,
+    private readonly shellActivity?: Pick<ShellActivity, 'inspect' | 'invalidate' | 'dispose'>,
+    private readonly onQuiescence?: () => void,
+    private readonly observeShellExit = false,
   ) {
     this.pid = terminal.pid
-    this.rootIdentity = inspector.snapshot().tree(this.pid).find(member => member.pid === this.pid)
+    try { this.rootIdentity = inspector.snapshot().tree(this.pid).find(member => member.pid === this.pid) }
+    catch (_rootIdentityUnavailable) { this.rootIdentity = undefined }
     this.done = this.outcome.promise
-    this.dataDisposable = terminal.onData((data) => { this.output.write(Buffer.from(data, 'utf8')) })
+    const resume = (): void => {
+      if (!this.outputPaused) return
+      this.outputPaused = false
+      if (!this.exited) terminal.resume()
+    }
+    this.output.on('drain', resume)
+    this.output.once('close', () => { this.output.off('drain', resume) })
+    this.dataDisposable = terminal.onData((data) => {
+      if (!this.output.write(Buffer.from(data, 'utf8')) && this.cleanup === undefined && !this.outputPaused) {
+        this.outputPaused = true
+        terminal.pause()
+      }
+    })
     this.exitDisposable = terminal.onExit(({ exitCode, signal: exitSignal }) => {
       if (this.exited) return
       this.exited = true
+      if (this.managedOwner !== undefined && this.observeShellExit) {
+        void this.managedOwner.waitForExit().then(() => { this.managedRangeEmpty = true }).catch(() => {
+          // Failed range observation cannot authorize idle reclamation.
+        })
+      }
       this.output.end()
       const outcome = {
         exitCode: exitSignal === undefined || exitSignal === 0 ? exitCode : null,
@@ -112,7 +140,14 @@ export class LocalTerminalHandle implements SubprocessTerminalHandle {
   // oxlint-disable-next-line typescript/require-await -- Preserve promise rejection semantics at the async provider contract.
   async write(data: string): Promise<void> {
     if (this.exited) throw new Error('terminal process has exited')
+    this.shellActivity?.invalidate()
     this.terminal.write(data)
+  }
+
+  // oxlint-disable-next-line typescript/require-await -- Provider operations share promise rejection semantics.
+  async resize(cols: number, rows: number): Promise<void> {
+    if (this.exited) throw new Error('terminal process has exited')
+    this.terminal.resize(cols, rows)
   }
 
   // Local inspection is synchronous; the seam returns a promise for remote transports.
@@ -127,7 +162,39 @@ export class LocalTerminalHandle implements SubprocessTerminalHandle {
     }
   }
 
+  // oxlint-disable-next-line typescript/require-await -- Local inspection is synchronous; SSH shares this promise interface.
+  async inspectActivity(): Promise<SubprocessTerminalActivity> {
+    let state: SubprocessTerminalActivity['state'] = this.quiescent ? 'idle' : 'unknown'
+    let revision = 0
+    if (!this.quiescent) {
+      try {
+        const shell = this.shellActivity?.inspect(this.pid) ?? { state: 'unknown' as const, revision: 0 }
+        revision = shell.revision
+        const observed = this.inspector.snapshot()
+        const descendants = this.descendants(observed)
+        const root = observed.tree(this.pid).find(member => member.pid === this.pid)
+        if (this.exited && this.managedRangeEmpty) state = 'idle'
+        else if (descendants.length > 0) state = 'busy'
+        else if (this.exited && this.managedOwner === undefined && this.platform === 'linux' && observed.complete === true && root === undefined) {
+          state = observed.session(this.pid).some(member => observed.alive(member)) ? 'busy' : 'idle'
+        }
+        else if (observed.complete === true && root?.started === this.rootIdentity?.started && root !== undefined) {
+          const foreground = this.inspector.foregroundPgid(this.pid)
+          state = foreground === undefined ? 'unknown' : foreground === this.pid ? shell.state : 'busy'
+          if (state === 'idle' && this.managedOwner !== undefined) {
+            const tasks = this.managedOwner.inspectTaskCount?.()
+            state = tasks === undefined || tasks < 1 ? 'unknown' : tasks === 1 ? 'idle' : 'busy'
+          }
+        }
+      } catch (_incompleteActivityObservation) { state = 'unknown' }
+    }
+    const key = `${revision}:${state}`
+    if (key !== this.activityKey) { this.activityKey = key; this.activityRevision++ }
+    return { state, revision: this.activityRevision }
+  }
+
   async signalForeground(signal: SubprocessTerminalSignal): Promise<number> {
+    this.shellActivity?.invalidate()
     const foreground = await this.inspectForeground()
     if (foreground === undefined) {
       throw new Error(`cannot resolve foreground process group for terminal ${this.pid}`)
@@ -154,7 +221,12 @@ export class LocalTerminalHandle implements SubprocessTerminalHandle {
 
   terminate(): Promise<void> {
     if (this.cleanup !== undefined) return this.cleanup
-    const cleanup = this.closeOnce()
+    if (this.outputPaused) { this.outputPaused = false; this.terminal.resume() }
+    const cleanup = this.closeOnce().then(() => {
+      this.quiescent = true
+      this.shellActivity?.dispose()
+      this.onQuiescence?.()
+    })
     this.cleanup = cleanup
     void cleanup.catch(() => { this.cleanup = undefined })
     return cleanup

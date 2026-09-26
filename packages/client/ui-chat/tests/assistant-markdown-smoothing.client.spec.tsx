@@ -12,6 +12,8 @@ import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts
 import { zh } from '../src/client/locale.ts'
 import { AssistantMarkdown, type AssistantMarkdownProps } from '../src/client/chat/AssistantMarkdown.tsx'
 import type { ChatTextDisplayInput } from '../src/client/contract/slots.ts'
+import { useDisclosure } from '../src/client/chat/use-disclosure.ts'
+import { useDetailedPresentation } from './presentation-fixture.client.ts'
 
 afterEach(() => {
   cleanup()
@@ -37,6 +39,8 @@ describe('AssistantMarkdown streaming display', () => {
     const releaseText = vi.fn()
     const view = render(
       <AssistantMarkdown
+        useDisclosure={useDisclosure}
+        usePresentation={useDetailedPresentation}
         t={t}
         blocks={[{ kind: 'text', text: '你好世界' }]}
         streaming
@@ -57,6 +61,8 @@ describe('AssistantMarkdown streaming display', () => {
     const calls = displayText.mock.calls.length
     view.rerender(
       <AssistantMarkdown
+        useDisclosure={useDisclosure}
+        usePresentation={useDetailedPresentation}
         t={t}
         blocks={[{ kind: 'text', text: '你好世界' }]}
         streaming={false}
@@ -77,6 +83,8 @@ describe('AssistantMarkdown streaming display', () => {
     const raf = vi.spyOn(globalThis, 'requestAnimationFrame')
     const view = render(
       <AssistantMarkdown
+        useDisclosure={useDisclosure}
+        usePresentation={useDetailedPresentation}
         t={t}
         blocks={[{ kind: 'reasoning', text: '思考中' }, { kind: 'text', text: '正文' }]}
         streaming
@@ -100,6 +108,8 @@ describe('AssistantMarkdown streaming display', () => {
     })
     render(
       <AssistantMarkdown
+        useDisclosure={useDisclosure}
+        usePresentation={useDetailedPresentation}
         t={t}
         blocks={[{ kind: 'text', text: 'streaming prose' }]}
         streaming
@@ -123,6 +133,8 @@ describe('AssistantMarkdown streaming display', () => {
     const displayText = vi.fn((input: ChatTextDisplayInput): string => input.text)
     render(
       <AssistantMarkdown
+        useDisclosure={useDisclosure}
+        usePresentation={useDetailedPresentation}
         t={t}
         blocks={[{ kind: 'text', text: 'settled prose' }]}
         streaming
@@ -141,6 +153,8 @@ describe('AssistantMarkdown streaming display', () => {
     const displayText = vi.fn((input: ChatTextDisplayInput): string => input.text)
     const first = render(
       <AssistantMarkdown
+        useDisclosure={useDisclosure}
+        usePresentation={useDetailedPresentation}
         t={t}
         blocks={[{ kind: 'text', text: 'a' }]}
         streaming
@@ -154,6 +168,8 @@ describe('AssistantMarkdown streaming display', () => {
     first.unmount()
     const second = render(
       <AssistantMarkdown
+        useDisclosure={useDisclosure}
+        usePresentation={useDetailedPresentation}
         t={t}
         blocks={[{ kind: 'text', text: 'b' }]}
         streaming

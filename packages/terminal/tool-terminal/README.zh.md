@@ -1,5 +1,5 @@
 ---
-description: "面向需要跨调用终端状态的 agent 的 6 个持久终端工具，带所有者隔离、有界结果与可选后台发送。"
+description: "面向需要跨调用终端状态的 agent（智能体）的 6 个持久终端工具，带所有者隔离、有界结果与可选后台发送。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-当 agent 需要跨调用保留终端状态或提供交互式输入时，使用 `dsh-tool-terminal`。它可以打开、发送、读取、传递信号、关闭和列出终端会话，同时防止一个 agent 操作其他 agent 的会话。发送可以等待有界的前台输出，也可以返回供后续收集或中断的后台 job id。`maxResultBytes` 限制每个结果的大小，而结果会保留在会话历史中直到压缩（compaction）。指引会让模型对有界工作优先使用单次工具。
+当 agent 需要跨调用保留终端状态或提供交互式输入时，使用 `dsh-tool-terminal`。它可以打开、发送、读取、传递信号、关闭和列出终端会话，同时防止一个 agent 操作其他 agent 的会话。发送可以等待有界的前台输出，也可以返回供后续收集或中断的后台任务 job id。`maxResultBytes` 限制每个结果的大小，而结果会保留在会话历史中直到压缩（compaction）。指引会让模型对有界工作优先使用单次工具。
 
 ## 目录
 
@@ -25,7 +25,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-当组合挂载了终端后端、且模型应当能跨调用使用终端状态时启用这些工具——逐步调试 gdb、在 REPL 中探索，或中断前台命令后回到 shell。指引章节会引导模型对确有界操作使用单次 bash、read、write 与 edit 工具。
+当组合挂载了终端后端、且模型应当能跨调用使用终端状态时启用这些工具——使用调试器单步调试、在 REPL 中探索，或中断前台命令后回到 shell。指引章节会引导模型对有界操作使用单次 bash、read、write 与 edit 工具。
 
 ### 六个工具
 
@@ -77,7 +77,7 @@ kind: "package-reference"
 
 ### 设计理念
 
-本包是薄适配层：6 个工具以执行 agent 作为所有者转发到 `ctx.terminals`，呈现层渲染有界结果。后台发送把在途操作注册到 `ctx.jobs`，由通用任务接口面负责等待、增量读取与 `SIGINT` 投递。
+本包是薄适配器：6 个工具以执行 agent 作为所有者转发到 `ctx.terminals`，呈现层渲染有界结果。后台发送把在途操作注册到 `ctx.jobs`，由通用任务接口面负责等待、增量读取与 `SIGINT` 投递。
 
 ### 源码地图
 
@@ -183,4 +183,4 @@ spawn 返回 id 与有界启动输出。发送与读取返回有界终端文本�
 
 </details>
 
-**运行时不变式：** 不发布伴生入口。这个无状态 adapter 只贡献 tool 与 prompt guidance；PTY lifecycle 与 background-job 关系属于其组合的 service。
+**运行时不变式：** 不发布伴生入口。这个无状态适配器只贡献工具与提示词指引；PTY 生命周期与后台任务关系仍由其组合的服务持有。

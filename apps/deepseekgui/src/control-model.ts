@@ -19,10 +19,10 @@ import {
 } from './launcher-state.ts'
 import { redactSecrets } from './redact.ts'
 import type { DiscoveredProfile, ProfileDiscoveryV1 } from './profile-discovery.ts'
-import { isPluginAction, type PluginAction, type PluginInventory } from './plugin-service.ts'
 import type { PermissionsView } from './permission-view.ts'
-import type { RecoveryJournalState } from './plugin-recovery.ts'
+import { safeReleaseLink } from './release-notes.ts'
 import type { SessionPressure } from './session-pressure.ts'
+import type { UsageView } from './usage-service.ts'
 
 /** 把 home 引用渲染成可读文本。 */
 export function homeKindLabel(home: HarnessSelection['home']): string {
@@ -57,52 +57,6 @@ export type DesktopRuntimeStatus =
   | { phase: 'recovering'; profile: string }
   | { phase: 'running'; profile: string; recovered: boolean }
   | { phase: 'failed'; stage: BootStage }
-
-/** Plugin Manager 面板里一次运行中/已结算的操作。 */
-export interface PluginOperationView {
-  action: PluginAction
-  profile: string
-  spec: string | null
-  /** 当前步骤：运行中 / 验证中 / 完成 / 失败 / 已取消。 */
-  step: 'running' | 'post-check' | 'done' | 'failed' | 'cancelled'
-  /** 已脱敏限长的流式输出（stdout/stderr 合并，最新在上层渲染）。 */
-  output: string[]
-  /** 最终 exit code（结算后存在；spawn 失败为 null）。 */
-  exitCode: number | null
-  /** post-check 结果（exit 0 且已执行验证后存在）。 */
-  postCheck: { ok: boolean; evidence: string } | null
-  /** 结算错误/诊断文案（失败与取消时给用户一句话）。 */
-  message: string | null
-}
-
-/** Plugin Manager 面板的完整展示事实（全量 inventory + 运行中操作 + handoff）。 */
-interface PluginManagerView {
-  /** 每个已发现 profile 的 inventory（三分类事实；空数组 = 尚未发现）。 */
-  profiles: { name: string; inventory: PluginInventory }[]
-  /** inventory 无法取得的明确原因（discovery 错误等）。 */
-  error: string | null
-  /** 运行中/已结算的操作；null = 空闲。 */
-  operation: PluginOperationView | null
-  /** restart handoff 待用户确认（Restart Now / Later）。 */
-  handoffPending: boolean
-  /**
-   * Plugin Mutation Recovery 的当前事实；null = 无未决事务。展示层只读：
-   * 恢复动作经封闭命令回 main，绝不在 renderer 直接执行。
-   */
-  recovery: {
-    state: RecoveryJournalState
-    profile: string
-    /** 脱敏失败/漂移摘要。 */
-    failure: string | null
-    /** Managed Home 是否已执行过一次自动恢复（UI 说明用）。 */
-    autoRecoveredOnce: boolean
-  } | null
-  /**
-   * DeepSeekGUI 随包内置插件（B3-13）：launcher overlay 层的真实来源，
-   * 只读投影，绝不提供重复安装入口。
-   */
-  builtin: readonly string[]
-}
 
 /** Desktop Chrome renderer 消费的完整可序列化模型。 */
 export interface DesktopControlModel {
@@ -156,8 +110,6 @@ export interface DesktopControlModel {
    * DeepSeekGUI 不替用户清理——那是他自己的对话；只把数字摆出来。
    */
   sessionPressure: SessionPressure | null
-  /** Plugin Manager 面板事实（inventory 三分类 + 操作 + handoff）。 */
-  pluginManager: PluginManagerView
   /** Update service 面板事实（比较对象只能是 DeepSeekGUI app version）。 */
   update: UpdateView
   /** Diagnostics Center 面板事实。 */
@@ -170,10 +122,19 @@ export interface DesktopControlModel {
   powerShell7Available: boolean
   /** 内置浏览器 pane（B3-11）：present = 曾被插件创建；open = 当前展开。 */
   browserPane: { present: boolean; open: boolean }
-  /** 首启引导是否显示（B6-P5；main 单处持有）。当前步骤由客户端从官方事实推导，进度不落盘。 */
-  firstRun: { pending: boolean }
   /** 数据位置与迁移收尾事实（B6-P7；main 单处持有）。 */
   dataHome: DataHomeView
+  /**
+   * 「用量与余额」页事实（B7-P3；main 单处持有）。只有聚合后的展示值：
+   * token、cookie、api key 名称都留在内置浏览器的登录 session 与 main 里。
+   */
+  usage: UsageView
+  /**
+   * 技能导入的最近一次系统选择结果（B7-P4；main 单处持有）。设置页发
+   * `skill-pick-source` 后从命令响应里读它：nonce 每次递增，客户端只认
+   * 自己这次请求带回的那个；path 为 null 表示用户取消。
+   */
+  skillPick: SkillPickView | null
   /**
    * 当前界面形态（B3-P2）：Workbench（带 DeepSeekGUI 产品插件）或
    * Compatibility View（不带 Workbench 插件的官方界面）。内存态，
@@ -196,6 +157,18 @@ export interface DesktopControlModel {
   globalMemory: string | null
 }
 
+/** 技能导入来源的选择种类：技能目录，或 ZIP / Markdown 文件。 */
+export type SkillPickKind = 'directory' | 'file'
+
+/** 一次系统文件选择的结果（B7-P4）。 */
+export interface SkillPickView {
+  /** 每次选择递增；客户端据此辨认自己那次请求的结果。 */
+  nonce: number
+  kind: SkillPickKind
+  /** 选中的绝对路径；用户取消为 null。 */
+  path: string | null
+}
+
 /** Update service 的运行状态（单一状态机，main 单处持有）。 */
 export interface UpdateView {
   /** 更新通道：未配置显示为 null，UI 明示"当前未配置公开更新通道"。 */
@@ -205,8 +178,17 @@ export interface UpdateView {
   result: 'unconfigured' | 'current' | 'error' | null
   /** provider 声明的 latest DeepSeekGUI app version；available/verified 时存在。 */
   latestVersion: string | null
-  /** release note 摘要（纯文本）；available/verified 时可能存在。 */
+  /**
+   * release notes 原文（发布页正文的 Markdown，manifest 原样、有上限）；
+   * available/downloading/verified 时可能存在。渲染规则归 release-notes 模块：
+   * 按界面语言取段、受限 Markdown、不含原始 HTML。
+   */
   releaseNotes: string | null
+  /**
+   * 「查看完整 Release」的目标页（B7-P2）。只在通道是内置公开通道时由 main 按
+   * 已知的发布页地址规则算出；私有 feed 或未知版本为 null，面板不显示入口。
+   */
+  releasePageUrl: string | null
   /** 下载进度（已下载字节）；downloading 时更新。 */
   progressBytes: number | null
   /** 下载总量（期望字节）；downloading 时存在。 */
@@ -218,6 +200,8 @@ export interface UpdateView {
    * 给面板显示开关当前状态，main 是唯一写者。
    */
   autoDownload: boolean
+  /** 本轮结果是否来自官网镜像回落通道（决定「新功能」指向官网还是 GitHub）。 */
+  viaFallback: boolean
 }
 
 /**
@@ -324,18 +308,21 @@ export type DesktopControlCommand =
     sessionId?: string
   }
   | { type: 'quit' }
-  | { type: 'plugin-op-request'; action: PluginAction; profile: string; spec: string | null }
-  | { type: 'plugin-op-cancel' }
-  | { type: 'plugin-handoff-restart' }
-  | { type: 'plugin-handoff-later' }
-  | { type: 'plugin-recovery-restore' }
-  | { type: 'plugin-recovery-abandon' }
-  | { type: 'plugin-recovery-open-profile' }
   | { type: 'check-for-updates' }
   | { type: 'update-dismiss' }
   | { type: 'update-download' }
   | { type: 'update-cancel-download' }
   | { type: 'update-install' }
+  /**
+   * 用系统浏览器打开一个 https 链接（B7-P2：更新说明里的链接与「查看完整
+   * Release」）。只认 https 且不带凭据；Chrome view 自身永不导航。
+   */
+  | { type: 'open-external-link'; url: string }
+  /** 「用量与余额」页（B7-P3）：打开本页 / 手动🔄触发一次刷新（限频与陈旧丢弃在 main）。 */
+  | { type: 'usage-refresh'; trigger: 'open' | 'manual' }
+  /** 「用量与余额」页未登录降级：在内置浏览器里打开官方登录页。 */
+  /** 技能导入（B7-P4）：弹系统对话框选一个技能目录或 ZIP / Markdown 文件；结果进 `model.skillPick`。 */
+  | { type: 'skill-pick-source'; kind: SkillPickKind }
   | { type: 'open-log-folder' }
   | { type: 'export-diagnostics' }
   | { type: 'set-permission-mode'; mode: 'sandbox' | 'full-access' }
@@ -405,11 +392,6 @@ export type DesktopControlCommand =
    */
   | { type: 'reveal-path'; sessionId: string; path: string }
   /**
-   * B6-P5：用户完成或跳过首启引导。完成事实由 main 单处原子写入
-   * userData/first-run.json——不用埋点或推断代替。
-   */
-  | { type: 'first-run-dismiss' }
-  /**
    * B6-P6：切换"发现更新后自动下载"。偏好写进现有 UI state 文件；
    * 关闭只影响将来的自动启动，不中断已经开始的下载。
    */
@@ -443,12 +425,6 @@ const BARE_COMMANDS = new Set([
   'copy-full-path',
   'show-about',
   'quit',
-  'plugin-op-cancel',
-  'plugin-handoff-restart',
-  'plugin-handoff-later',
-  'plugin-recovery-restore',
-  'plugin-recovery-abandon',
-  'plugin-recovery-open-profile',
   'check-for-updates',
   'update-dismiss',
   'update-download',
@@ -462,7 +438,6 @@ const BARE_COMMANDS = new Set([
   'feedback-submit-gateway',
   'browser-pane-toggle',
   'browser-pane-hide',
-  'first-run-dismiss',
   'update-toggle-auto-download',
   'migrate-managed-home',
   'migration-cleanup',
@@ -542,14 +517,6 @@ export function parseControlCommand(raw: unknown): DesktopControlCommand | null 
     if (keys.length !== 2 || !PERMISSION_MODES.includes(record.mode as string)) return null
     return { type, mode: record.mode as 'sandbox' | 'full-access' }
   }
-  if (type === 'plugin-op-request') {
-    const { action, profile, spec } = record
-    if (keys.length !== 4) return null
-    if (!isPluginAction(action)) return null
-    if (!isValidProfileName(profile) || profile.length > 256) return null
-    if (spec !== null && (typeof spec !== 'string' || spec.length > 4096)) return null
-    return { type, action, profile, spec }
-  }
   if (type === 'feedback-send') {
     const { text, diagnostics } = record
     if (keys.length !== 3) return null
@@ -606,6 +573,23 @@ export function parseControlCommand(raw: unknown): DesktopControlCommand | null 
     // 相对路径、限长、不含控制字符；是否在工作区之内由 main 解析后判定。
     if (typeof path !== 'string' || path === '' || path.length > REVEAL_PATH_MAX || /[\u0000-\u001f]/u.test(path)) return null
     return { type, sessionId, path }
+  }
+  if (type === 'usage-refresh') {
+    if (keys.length !== 2 || (record.trigger !== 'open' && record.trigger !== 'manual')) return null
+    return { type, trigger: record.trigger }
+  }
+  if (type === 'skill-pick-source') {
+    if (keys.length !== 2 || (record.kind !== 'directory' && record.kind !== 'file')) return null
+    return { type, kind: record.kind }
+  }
+  if (type === 'open-external-link') {
+    // 与更新说明里的链接同一把尺（release-notes 的 safeReleaseLink）：只认
+    // https、不带凭据、限长；其余整条拒绝，main 不再二次猜测。
+    const { url } = record
+    if (keys.length !== 2 || typeof url !== 'string') return null
+    const safe = safeReleaseLink(url)
+    if (safe === null) return null
+    return { type, url: safe }
   }
   return null
 }
@@ -674,8 +658,6 @@ export interface ControlModelInput {
   recoveryNotice: { profile: string; kind: 'boot-failure' | 'interrupted-switch' } | null
   /** 会话数量警戒读数；缺省视作未越线（main 单处计算）。 */
   sessionPressure?: SessionPressure | null
-  /** Plugin Manager 面板事实（main 单处持有）。 */
-  pluginManager: PluginManagerView
   /** Update service 面板事实（main 单处持有）。 */
   update: UpdateView
   /** Diagnostics Center 面板事实（main 单处持有）。 */
@@ -688,13 +670,12 @@ export interface ControlModelInput {
   powerShell7Available: boolean
   /** 内置浏览器 pane 事实（B3-11；main 单处持有）。 */
   browserPane: { present: boolean; open: boolean }
-  /**
-   * 首启引导是否显示（B6-P5；main 单处持有）。只给"是否显示"，
-   * 当前步骤由客户端从官方事实推导——引导进度不落盘。
-   */
-  firstRun: { pending: boolean }
   /** 数据位置与迁移收尾事实（B6-P7；main 单处持有）。 */
   dataHome: DataHomeView
+  /** 「用量与余额」页事实（B7-P3；main 单处持有）。 */
+  usage: UsageView
+  /** 技能导入的最近一次选择结果（B7-P4）；缺省为 null。 */
+  skillPick?: SkillPickView | null
   /** 当前界面形态（B3-P2；main 内存持有，不持久化）。 */
   viewMode: 'workbench' | 'compatibility'
   /** 一次性会话导航请求（B4-P8 通知点击）；缺省为 null。 */
@@ -744,15 +725,15 @@ export function buildControlModel(input: ControlModelInput): DesktopControlModel
     highContrast: input.highContrast,
     recoveryNotice: input.recoveryNotice,
     sessionPressure: input.sessionPressure ?? null,
-    pluginManager: input.pluginManager,
     update: input.update,
     diagnostics: input.diagnostics,
     feedback: input.feedback,
     permissions: input.permissions,
     powerShell7Available: input.powerShell7Available,
     browserPane: input.browserPane,
-    firstRun: input.firstRun,
     dataHome: input.dataHome,
+    usage: input.usage,
+    skillPick: input.skillPick ?? null,
     viewMode: input.viewMode,
     navigateRequest: input.navigateRequest ?? null,
     globalMemory: input.globalMemory ?? null,

@@ -1,6 +1,25 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-08-15-desktop-runtime-closure-and-volume.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/proposed/feature/2026-08-15-desktop-runtime-closure-and-volume.md
-2026-08-15-desktop-runtime-closure-and-volume.md: 6d29a60f19313dde364d4902b205f2acc74b7111
-2026-08-15-desktop-runtime-closure-and-volume.zh.md: e5958bf08c1aef08f69fb0c6fdefb0e62a534840
+/agent-note-runtime-closure-and-windows-x64-volume-optimization:
+  en: 9d844a17d2c35f5c
+  zh: 8e92e3637006ad40
+/agent-note-runtime-closure-and-windows-x64-volume-optimization/problem:
+  en: 8a72deebe73890f3
+  zh: 062f24bc64d389ac
+/agent-note-runtime-closure-and-windows-x64-volume-optimization/proposal:
+  en: ec9f111e45bbb8ac
+  zh: 0ce5b5a90032a4e8
+/agent-note-runtime-closure-and-windows-x64-volume-optimization/alternatives-considered:
+  en: 077d3a49eea213fa
+  zh: 3f30d388630b3ff1
+/agent-note-runtime-closure-and-windows-x64-volume-optimization/verification:
+  en: 2cad28739b4f49fd
+  zh: 2e01d7cc90dad37f
+/agent-note-runtime-closure-and-windows-x64-volume-optimization/acceptance-criteria:
+  en: ed8a4eccbaa38a22
+  zh: eb852d370c560ab9
+/agent-note-runtime-closure-and-windows-x64-volume-optimization/risks:
+  en: 47eae3d7aa2d99a2
+  zh: 4727be3506ddaffa

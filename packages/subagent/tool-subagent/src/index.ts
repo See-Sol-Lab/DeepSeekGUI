@@ -91,13 +91,14 @@ export interface Config {
     deny?: string[]
   }
   /**
-   * Maximum child depth: a non-negative safe integer (default `3`; `0` forbids
-   * delegation entirely), or `'provider-managed'` to send no cap. A numeric cap
+   * Maximum child depth: a non-negative safe integer (`0` forbids delegation),
+   * or `'provider-managed'` to send no cap. A numeric cap
    * requires the provider's `depthLimit` capability (mount fails loud
    * otherwise). The provider checks the calling agent's current depth at every
    * start; the tool remains model-visible so runtime policy owns rejection.
    * `'provider-managed'` is for an out-of-process provider whose recursion
-   * budget belongs to the child runtime or its own deployment.
+   * budget belongs to the child runtime or its own deployment. Omission reads
+   * the current Host subagent depth setting (default `1`) at each delegation.
    */
   maxDepth?: number | 'provider-managed'
 }
@@ -126,7 +127,7 @@ export const Config: z<Config> = z.object({
     allow: z.array(z.string()).default(undefined as unknown as string[]),
     deny: z.array(z.string()).default(undefined as unknown as string[]),
   }).default(undefined as unknown as { allow: string[]; deny: string[] }),
-  maxDepth: z.union([z.natural().max(Number.MAX_SAFE_INTEGER), z.const('provider-managed' as const)]).default(3),
+  maxDepth: z.union([z.natural().max(Number.MAX_SAFE_INTEGER), z.const('provider-managed' as const)]),
 })
 
 /** Render text blocks from the canonical JSON block array without trusting arbitrary values. */
@@ -267,8 +268,7 @@ function providerWording(inheritsConversation: boolean): { description: string; 
       'Delegate a self-contained task to a subagent (a separate agent that works in its own context) '
       + 'to offload focused, independent work — research, a scoped '
       + 'implementation, an analysis — so it does not consume this conversation\'s context. The subagent '
-      + 'returns its result, not its intermediate steps. Give it a '
-      + 'complete, standalone prompt: it does not see this conversation.',
+      + 'returns its result, not its intermediate steps.',
     promptDescription:
       'The complete, self-contained task for the subagent. It does not share this '
       + 'conversation\'s context, so include everything it needs.',
@@ -326,7 +326,7 @@ export function apply(ctx: Context, config: Config, session?: Session): void {
   ctx.sessionProjections.register(subagentModelSelectionProjectionDefinition)
 
   const assertSubagentProviderConfiguration = (subagentProvider: SubagentProvider): void => {
-    if (typeof config.maxDepth === 'number' && !subagentProvider.capabilities.depthLimit) {
+    if (ctx.subagents.resolveMaxDepth(config.maxDepth) !== undefined && !subagentProvider.capabilities.depthLimit) {
       throw new Error(
         `tool-subagent: provider "${subagentProvider.name}" cannot enforce maxDepth (no depthLimit capability) — `
         + 'set maxDepth: \'provider-managed\' to leave the recursion budget to the provider',
@@ -383,8 +383,8 @@ export function apply(ctx: Context, config: Config, session?: Session): void {
           // a separately installed capability, so this promise holds whenever the
           // continuable background path is reachable at all.
           ? continuable
-            ? ' This tool runs in the background by default, immediately returns a durable subagent id, and keeps the child conversation available for later turns. When that run settles, the runtime sends the parent a notice containing its outcome and any final assistant message; `send_message` steers the child\'s nearest step while it is running and starts a turn while it is idle. Set `run_in_background: false` only when your next action depends on receiving the result.'
-            : ' This call waits for the result by default. Set `run_in_background: true` to return a job id; collect with `job_output` and stop with `job_kill`.'
+            ? ' It runs in the background by default and returns a subagent id you can continue with `send_message`; you are notified when the run settles.'
+            : ' This call waits for the result by default.'
           : ' This call waits for the subagent and returns its result.') + choiceDescription,
         parameters: {
           description: {
@@ -421,8 +421,8 @@ export function apply(ctx: Context, config: Config, session?: Session): void {
             run_in_background: {
               type: 'boolean' as const,
               description: continuable
-                ? 'Whether to run in the background and return a durable subagent id immediately. Defaults to true. Set false to wait for the result when your next action depends on it.'
-                : 'Whether to run as a background job and return its id. Defaults to false; collect with job_output or stop with job_kill.',
+                ? 'Defaults to true. Set false only when your next action depends on the result.'
+                : 'Run as a background job and return its id (collect with job_output, stop with job_kill). Defaults to false.',
             },
           } : {},
         },
@@ -511,7 +511,7 @@ export function apply(ctx: Context, config: Config, session?: Session): void {
             }
           }
           exec.signal.throwIfAborted()
-          const maxDepth = typeof config.maxDepth === 'number' ? config.maxDepth : undefined
+          const maxDepth = runtimeCtx.subagents.resolveMaxDepth(config.maxDepth)
           const request = {
             label: args.description,
             prompt: [{ type: 'text', text: args.prompt }] as ContentBlock[],
@@ -544,7 +544,7 @@ export function apply(ctx: Context, config: Config, session?: Session): void {
             const id = jobs.start({
               kind: 'subagent',
               label: args.description,
-              owner: parent,
+              owner: parent.id,
               run: () => {
                 const controller = new AbortController()
                 const start = runtimeCtx.subagents.start(config.provider, { ...request, signal: controller.signal })
@@ -553,7 +553,7 @@ export function apply(ctx: Context, config: Config, session?: Session): void {
                     controller.abort(reason ?? 'background subagent task killed')
                   },
                   done: settleStart(start, controller.signal),
-                  // No readOutput: the child session owns intermediate detail.
+                  // No output sources: the child session owns intermediate detail.
                 }
               },
             })
@@ -600,7 +600,7 @@ export function apply(ctx: Context, config: Config, session?: Session): void {
         order: runtimeCtx.systemPrompt.getSectionOrder('TOOL_SUBAGENT'),
         text: context => mounted === undefined || runtimeCtx.tools.get(toolName, context.scope) === undefined
           ? ''
-          : `Use ${toolName} in the background by default. Start independent delegations together in one assistant message and continue useful work while they run. Set \`run_in_background: false\` only when your next action depends on that subagent's result. When a background run settles, the runtime sends you a notice containing its outcome and any final assistant message.`,
+          : `Start independent ${toolName} delegations together in one assistant message and continue useful work while they run.`,
       })
     }
   }
@@ -619,6 +619,7 @@ export function apply(ctx: Context, config: Config, session?: Session): void {
   }
   const selectForSession = (target: Session): ModelSelectionPolicy | undefined => {
     const freshSession = target.firstLiveSeq === 0
+      // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
       && target.eventAt(SessionSeq(0))?.type !== 'session/end-seed'
     let allowedModels = subagentModelSelectionPolicy(ctx.sessionProjections, target)
     if (allowedModels === undefined) {
@@ -661,8 +662,10 @@ export function apply(ctx: Context, config: Config, session?: Session): void {
   const installing = new WeakSet<Agent>()
   const belongsToComposition = (candidate: Agent): boolean =>
     scopeChainOf(scopeOf(candidate.ctx)).includes(compositionScope)
-  const installScoped = (candidate: Agent): void => {
-    if (scopedInstalls.has(candidate) || installing.has(candidate)) return
+  const installScoped = (candidate: Agent): ReturnType<Context['inject']> | undefined => {
+    const existing = scopedInstalls.get(candidate)
+    if (existing !== undefined) return existing
+    if (installing.has(candidate)) return
     // Reserve before the injected fiber runs: tool registration emits
     // `tools/change` synchronously, which re-enters the reconciliation below.
     installing.add(candidate)
@@ -676,6 +679,7 @@ export function apply(ctx: Context, config: Config, session?: Session): void {
       installing.delete(candidate)
     }
     scopedInstalls.set(candidate, fiber)
+    return fiber
   }
   const removeScoped = (candidate: Agent): void => {
     const fiber = scopedInstalls.get(candidate)
@@ -695,8 +699,8 @@ export function apply(ctx: Context, config: Config, session?: Session): void {
   // The preset-scoped listener admits descendant Agents and installs the
   // sampled tool definition in each Agent's own scope, so a later settings
   // change cannot mutate a live session.
-  ctx.on('agent/created', ({ agent: created }) => {
-    installScoped(created)
+  ctx.on('agent/created', async ({ agent: created }) => {
+    await installScoped(created)
   })
   ctx.on('agent/disposed', ({ agent: disposed }) => { removeScoped(disposed) })
   // Reparenting an Agent between standing presets changes its inherited tool

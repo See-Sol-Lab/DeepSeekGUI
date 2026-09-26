@@ -1,6 +1,37 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-09-02-b4-p8-background-review-notifications.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-02-b4-p8-background-review-notifications.md
-2026-09-02-b4-p8-background-review-notifications.md: abed3fb16e28f85b6c53add79667bf517c9d93fd
-2026-09-02-b4-p8-background-review-notifications.zh.md: 9a31c3d46dcf8b5df3b1b47fa581f74623d1d715
+/agent-note-b4-p8-background-work-review-notifications-official-projections-aggregated-one-shot-event-driven-notifications:
+  en: 9520248fd76de8e4
+  zh: d46a34c1252d9bcf
+/agent-note-b4-p8-background-work-review-notifications-official-projections-aggregated-one-shot-event-driven-notifications/problem:
+  en: 0a3e020df7287677
+  zh: 83acd9fe1e504172
+/agent-note-b4-p8-background-work-review-notifications-official-projections-aggregated-one-shot-event-driven-notifications/decision:
+  en: a15c7c13f167e5ac
+  zh: a15c7c13f167e5ac
+/agent-note-b4-p8-background-work-review-notifications-official-projections-aggregated-one-shot-event-driven-notifications/decision/task-page-the-official-projections-aggregated-per-attached-session:
+  en: 63ba040de740b0f1
+  zh: ad8c2e3fd823baa4
+/agent-note-b4-p8-background-work-review-notifications-official-projections-aggregated-one-shot-event-driven-notifications/decision/review-queue-references-only-loaded-on-open:
+  en: 3d59ff6555fa0f18
+  zh: 6a07913e6990b01a
+/agent-note-b4-p8-background-work-review-notifications-official-projections-aggregated-one-shot-event-driven-notifications/decision/validation-run-table-kept-for-the-review-queue:
+  en: 17c68ee24a2cf480
+  zh: 8d799587c75f165d
+/agent-note-b4-p8-background-work-review-notifications-official-projections-aggregated-one-shot-event-driven-notifications/decision/desktop-notifications-authoritative-events-dedup-focus-gated-click-to-session:
+  en: f327906b0901807a
+  zh: 5715bf3dddab5a38
+/agent-note-b4-p8-background-work-review-notifications-official-projections-aggregated-one-shot-event-driven-notifications/decision/unarchive-navigation-only-reversal:
+  en: 7a5fbc7c216dad07
+  zh: 75b9257bd617cb21
+/agent-note-b4-p8-background-work-review-notifications-official-projections-aggregated-one-shot-event-driven-notifications/verification:
+  en: 21416c185a97d989
+  zh: 18da01f17eb03b98
+/agent-note-b4-p8-background-work-review-notifications-official-projections-aggregated-one-shot-event-driven-notifications/alternatives-considered:
+  en: 9003147a6e4e885d
+  zh: 3c80d8711b375981
+/agent-note-b4-p8-background-work-review-notifications-official-projections-aggregated-one-shot-event-driven-notifications/consequences:
+  en: 523b10ecdc1888d1
+  zh: ea8426719a7c42ba

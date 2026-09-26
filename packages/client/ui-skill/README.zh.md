@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-client-ui-skill` 让用户通过 `/` 建议选择或直接键入 `/name` 来调用 skill。同一条字面命令可以从 Web 编辑器、TUI 和 ACP 一致地加载 skill；如果名称与宿主命令相同，它仍会解析为该命令。skill 调用在对话中显示为可展开的 `Instructions` 卡片；即使已安装的 skill 目录发生变化，卡片落定后的内容仍保持稳定。
+`dsh-client-ui-skill` 让用户通过 `/` 建议选择或直接键入 `/name` 来调用 skill（技能）。同一条字面命令可以从 Web 编辑器、TUI 和 ACP（Agent Client Protocol）一致地加载 skill；如果名称与宿主命令相同，它仍会解析为该命令。skill 调用在对话中显示为可展开的 `Instructions` 卡片；即使已安装的 skill 目录发生变化，卡片落定后的内容仍保持稳定。
 
 ## 目录
 
@@ -29,11 +29,15 @@ kind: "package-reference"
 
 ### source 提供什么
 
-普通会话的候选来自 `skills/list` Remote；宿主提供每一个用户可调用的 skill，`modelInvocable: false` 的条目（即 `disable-model-invocation` skill，此路径是其唯一入口）会以当前语言把仅限用户标记作为描述前缀带上。结果经 `/` 菜单共享的名字排序器（ui-primitives 的 `rankByName`）排名：查询作为不区分大小写的有序子序列匹配 skill 名，前缀命中排最前，同分保持宿主顺序（[排名决策](../../../.agents/notes/archived/feature/2026-08-04-web-slash-command-fuzzy-discovery.md)）。`skills/list` 调用失败时会被记录并静默丢弃该菜单组——菜单只显示 pending/ready 状态。
+普通会话的候选来自 `skills/list` Remote；宿主提供每一个用户可调用的 skill，`modelInvocable: false` 的条目（即 `disable-model-invocation` skill，此路径是其唯一入口）会以当前语言把仅限用户标记作为描述前缀带上。结果经 `/` 菜单共享的名字排序器（ui-primitives 的 `rankByName`）排名：查询作为不区分大小写的有序子序列匹配 skill 名，前缀命中排最前，同分保持宿主顺序（[排名决策](../../../.agents/notes/archived/feature/2026-08-04-web-slash-command-fuzzy-discovery.md)）。`skills/list` 调用失败时会被记录并静默丢弃该菜单组——菜单只显示 pending／ready 状态。
 
 ### skill 工具行
 
-收起的行显示 skill 图标、`Skill` 标题与请求加载的 skill 名称；运行中的调用带有 transcript 的扫光效果，失败时用错误首行替换名称，中断的调用使用警告状态。已结算的行展开为一个尺寸受限的 `Instructions` 卡片，其中原样呈现持久化的工具输出；可用时还会提供标准轨迹的 `Inspect` 入口。该行的名称、生命周期与正文只派生自 ui-tool 提供的冻结调用/结果切片，绝不读取当前目录，因此即使已安装的 skill 或其描述发生变化，回放仍保持稳定。
+`preparing` 阶段只显示技能图标与标题，不显示请求加载的技能名称，也不能展开。`start` 和 `result` 阶段使用下述记录参数与输出；准备阶段不查询已安装目录。
+
+收起的行显示 skill 图标、`Skill` 标题与请求加载的 skill 名称，并与普通工具行使用相同的 secondary 字号轴、行高、行高度和图标缩放。所有生命周期状态都保留普通 skill 图标；运行中的调用带有 transcript（文本记录）的扫光效果，失败时以错误首行替换名称，中断则保留明确状态文本。已结算的行展开为一个尺寸受限的 `Instructions` 卡片，其中原样呈现持久化的工具输出；可用时还会提供标准轨迹的 `Inspect` 入口，展开卡片保留自身排版。该行的名称、生命周期与正文只派生自 ui-tool 提供的冻结调用／结果切片，绝不读取当前目录，因此即使已安装的 skill 或其描述发生变化，回放仍保持稳定。
+
+鼠标移入 `/name` 时，背景覆盖整个引用。点击已知 skill 会在右侧栏打开提供方给出的 `SKILL.md` 路径，同时保留文本的可编辑性。缓存未就绪时，点击复用该 Session 的目录请求，在完成后按点击时的 Session 地址打开预览。切换预设、重置连接和插件释放会取消待处理的预览；后续点击重新获取当前目录。没有文件路径的 skill 仍可调用，但没有文件预览。
 
 -----
 
@@ -49,9 +53,11 @@ source 不实现任何裁决钩子，也没有引用 codec：pick 落下字面�
 
 目录按普通会话缓存，拉取走 single-flight；scope 创建时的 `warm` 钩子预热该会话的缓存项，转发的 owner 事件 `agent-preset/selected` 丢弃该会话这一项（目录属于 preset，而空会话可能在预热之后才切换），`connection/reset` 清空全部缓存。由目录寻址的可继续 subagent 在客户端解析为没有 skill 候选，因为现有 skill RPC 要求会话已挂载；查看其持久化历史不得激活它。列表 RPC 使用插件注册时捕获的根上下文连接；草稿 chip 视觉由 `lexicon` 扫描派生。
 
+每次目录拉取都要求客户端已持有该会话，并等待首次历史打开成功后才发送 `skills/list`。临时的 `skillCatalog` 引用持续持有会话，直到拉取结束。未被持有的会话或打开失败会直接拒绝，不发送 RPC；预设失效、连接重置和插件释放也会取消正在等待的历史打开。
+
 ### 注册
 
-`/client` 导出接口只有插件主体（`apply`/`inject`）；source 对象是注册 effect 的内部实现。工具行把 `skill` wire 名称注册进 ui-tool 的 keyed `tool.call.toolview` slot。
+`/client` 导出接口只有插件主体（`apply`／`inject`）；source 对象是注册 effect 的内部实现。工具行把 `skill` wire 名称注册进 ui-tool 的 keyed `tool.call.toolview` slot。
 
 </details>
 
@@ -107,4 +113,4 @@ source 不实现任何裁决钩子，也没有引用 codec：pick 落下字面�
 
 </details>
 
-**运行时不变式：** 不发布伴生入口。slash source、locale dictionary 与 keyed toolview 都由 registry 持有，HMR 测试覆盖释放；它们不发出 Cordis 事件或持有跨插件可变状态。
+**运行时不变式：** 不发布伴生入口。slash source、locale dictionary 与 keyed toolview 都是由注册表持有的注册项，其释放行为已由 HMR（热模块替换）安全规范证明；它们不发出 Cordis 事件或持有跨插件可变状态。

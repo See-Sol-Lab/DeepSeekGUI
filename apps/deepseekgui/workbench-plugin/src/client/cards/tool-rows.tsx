@@ -115,9 +115,10 @@ function dotStyle(color: string): React.CSSProperties {
 function buttonStyle(primary: boolean): React.CSSProperties {
   return {
     padding: '3px 10px',
-    border: '1px solid var(--dsw-alias-label-caption)',
-    borderRadius: 6,
-    background: primary ? 'var(--dsw-alias-state-business-primary)' : 'transparent',
+    border: primary ? '1px solid transparent' : '1px solid var(--dsw-alias-border-l3)',
+    borderRadius: 8,
+    background: primary ? 'var(--dsw-alias-state-business-primary)' : 'var(--dsw-alias-button-elevated-fill)',
+    transition: 'background-color 150ms ease, border-color 150ms ease',
     // Text on the brand fill uses the official inverted label, never bg-base:
     // the DeepSeekGUI skin sets bg-base to transparent so the sea backdrop
     // shows through (2026-09-05 acceptance: a blue button with no text).
@@ -142,8 +143,8 @@ const inputStyle: React.CSSProperties = {
   width: '100%',
   boxSizing: 'border-box',
   padding: '4px 8px',
-  border: '1px solid var(--dsw-alias-label-caption)',
-  borderRadius: 6,
+  border: '1px solid var(--dsw-alias-border-l2)',
+  borderRadius: 8,
   // layer-2 stays readable under the skin (bg-base is transparent there).
   background: 'var(--dsw-alias-bg-layer-2)',
   color: 'var(--dsw-alias-label-primary)',
@@ -183,7 +184,7 @@ function CodeBlock({ text }: { text: string }) {
 /** One <details> disclosure section inside the expanded row body. */
 function Disclosure({ summary, children }: { summary: string; children: ReactNode }) {
   return (
-    <details style={{ borderTop: '1px solid var(--dsw-alias-label-caption)', padding: '6px 0 2px' }}>
+    <details style={{ borderTop: '1px solid var(--dsw-alias-border-l2)', padding: '6px 0 2px' }}>
       <summary
         style={{
           cursor: 'pointer',
@@ -278,7 +279,7 @@ function FormShell({
   return (
     <form
       onSubmit={onSubmit}
-      style={{ borderTop: '1px solid var(--dsw-alias-label-caption)', padding: '8px 0 2px', display: 'flex', flexDirection: 'column', gap: 6 }}
+      style={{ borderTop: '1px solid var(--dsw-alias-border-l2)', padding: '8px 0 2px', display: 'flex', flexDirection: 'column', gap: 6 }}
     >
       <div style={{ fontSize: 12, lineHeight: '18px', color: 'var(--dsw-alias-label-secondary)' }}>{title}</div>
       {children}
@@ -517,7 +518,7 @@ export function GitPrToolRow({ block, toolName, t, submitInstruction }: ToolRowP
           )}
           <OutputAndArgs body={body} argsRaw={model.argsRaw} t={t} />
           {eligible !== null && openForm === null && (
-            <div style={{ borderTop: '1px solid var(--dsw-alias-label-caption)', padding: '6px 0 2px', display: 'flex', gap: 8 }}>
+            <div style={{ borderTop: '1px solid var(--dsw-alias-border-l2)', padding: '6px 0 2px', display: 'flex', gap: 8 }}>
               <button type="button" onClick={() => setOpenForm(eligible)} style={buttonStyle(false)}>
                 {t(FORM_ACTION_KEYS[eligible])}
               </button>

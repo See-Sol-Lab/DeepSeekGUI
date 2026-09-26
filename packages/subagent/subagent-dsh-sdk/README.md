@@ -1,5 +1,5 @@
 ---
-description: "The out-of-process SDK subagent backend for users and maintainers choosing a delegation provider, configuring a child Harness runtime command, or debugging remote child runs."
+description: "The out-of-process SDK subagent backend for users and maintainers choosing a delegation provider, configuring a child Harness runtime, or debugging local nested child runs."
 kind: "package-reference"
 ---
 
@@ -25,7 +25,7 @@ English | [中文](README.zh.md)
 <a id="use-this-package"></a>
 ## Use this package
 
-Mount this provider when a delegation should run as a complete Harness runtime in its own process. The common path is explicit: mount the seam, mount this provider, and give it a command that starts an SDK runtime with its own `cordis.yml`.
+Mount this provider when a delegation should run as a complete Harness runtime in its own process. The common path is explicit: mount the seam, mount this provider, configure `dshBin` when needed, and select the child `profile` and ordered `patches`.
 
 ### When to choose it
 

@@ -11,7 +11,7 @@ import { releasedV2SessionFormatCodec } from '@deepseek-ai/dsh-session-format-v1
 import { assertReleasedV3Header, assertV3EventAdmission } from './validation.ts'
 import { assertV3Event, assertV3StructuralRow } from './payload.ts'
 
-/** V3 codec validates structural rows before recovery and logical envelopes after provenance decoding. */
+/** V3 codec validates structural rows before recovery and logical envelopes after source-event range decoding. */
 export const releasedV3SessionFormatCodec = Object.freeze({
   version: 3,
   decodeHeader(value: unknown) {
@@ -77,7 +77,7 @@ export const releasedV3SessionFormatCodec = Object.freeze({
 
 /**
  * Validate owned V3 admission rules before a scanner or codec can discard a recoverable tail.
- * This checks only identified structural payloads; physical provenance still belongs to decoding.
+ * This checks only identified structural payloads; physical source-event ranges still belong to decoding.
  * @param row - parsed physical row, before envelope or compressed-range decoding.
  */
 export function assertV3RowAdmission(row: unknown): void {

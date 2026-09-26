@@ -3,6 +3,7 @@ import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry, { agentEvents } from '@deepseek-ai/dsh-agent'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { createUserMessage, HarnessError } from '@deepseek-ai/dsh-llm'
+import type { ContextFormed } from '@deepseek-ai/dsh-llm'
 import SessionStore, { Session, SessionId, type UserMessage } from '@deepseek-ai/dsh-session'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import GoalService, {
@@ -13,6 +14,13 @@ import GoalService, {
 } from '@deepseek-ai/dsh-goal'
 import type { GoalChangeMeta, GoalRef, GoalSnapshotChangeMeta } from '@deepseek-ai/dsh-goal'
 import { createInboxStub } from '@deepseek-ai/dsh-agent-loop-testkit'
+
+declare module '@deepseek-ai/dsh-llm' {
+  interface MessageSourceMap {
+    'test': { kind: 'test' } & ContextFormed
+    'ordinary-user-message': { kind: 'ordinary-user-message' } & ContextFormed
+  }
+}
 
 interface StubAgent {
   agent: Agent
@@ -87,7 +95,7 @@ async function harness(config: { defaultMaxGoalRounds?: number } = {}) {
   await ctx.plugin(AgentRegistry)
   await ctx.plugin(GoalService, config)
   const stub = stubAgent(`goal-test-${Math.random()}`, undefined, ctx)
-  ctx.agents.register(stub.agent)
+  await ctx.agents.register(stub.agent)
   return { ctx, ...stub }
 }
 
@@ -165,7 +173,7 @@ describe('GoalService creation and replay', () => {
     await ctx.plugin(AgentRegistry)
     await ctx.plugin(SessionProjectionRegistry)
     const stub = stubAgent('goal-direct-construction')
-    ctx.agents.register(stub.agent)
+    await ctx.agents.register(stub.agent)
     const goals = new GoalService(ctx)
     await new Promise(resolve => setImmediate(resolve))
     expect(goals.create(stub.agent, { objective: 'direct' })).toMatchObject({
@@ -193,7 +201,7 @@ describe('GoalService creation and replay', () => {
     await ctx.plugin(SessionProjectionRegistry)
     await ctx.plugin(GoalService)
     const resumed = stubAgent('seeded-goal', first.session.snapshotEvents())
-    ctx.agents.register(resumed.agent)
+    await ctx.agents.register(resumed.agent)
     expect(ctx.goals.get(resumed.agent)).toMatchObject({
       id: created.id,
       roundsStarted: 2,
@@ -208,12 +216,12 @@ describe('GoalService creation and replay', () => {
     await ctx.plugin(AgentRegistry)
     await ctx.plugin(GoalService)
     const parent = stubAgentForSession(ctx.sessions.create(SessionId('goal-fork-parent')), ctx)
-    ctx.agents.register(parent.agent)
+    await ctx.agents.register(parent.agent)
     const goal = ctx.goals.create(parent.agent, { objective: 'inherit through fork', maxGoalRounds: 5 })
     appendRound(parent.session, goal, 1)
 
     const child = stubAgentForSession(ctx.sessions.fork(parent.session), ctx)
-    ctx.agents.register(child.agent)
+    await ctx.agents.register(child.agent)
     expect(ctx.goals.get(child.agent)).toMatchObject({
       id: goal.id,
       objective: goal.objective,
@@ -233,7 +241,7 @@ describe('GoalService creation and replay', () => {
     })
     let goal = ctx.goals.create(agent, { objective: 'stay stopped after resume' })
     expect(goal.activation).toBe('armed')
-    agentEvents(ctx, agent).emit('agent/session-start', { source: 'resume' })
+    await agentEvents(ctx, agent).serial('agent/created', { source: 'resume' })
     expect(ctx.goals.get(agent)?.activation).toBe('disarmed')
     goal = ctx.goals.resume(agent, goal)
     expect(goal).toMatchObject({ phase: 'active', activation: 'armed', revision: 2 })
@@ -264,7 +272,7 @@ describe('GoalService creation and replay', () => {
     const fiber = await ctx.plugin(GoalService)
     const first = ctx.goals
     const stub = stubAgent('goal-hmr')
-    ctx.agents.register(stub.agent)
+    await ctx.agents.register(stub.agent)
     const goal = ctx.goals.create(stub.agent, { objective: 'survive service reload' })
 
     await fiber.dispose()
@@ -472,7 +480,7 @@ describe('GoalService mutations', () => {
     await ctx.plugin(AgentRegistry)
     await ctx.plugin(GoalService)
     const stub = stubAgentForSession(ctx.sessions.create(SessionId('goal-reentrant-observer')), ctx)
-    ctx.agents.register(stub.agent)
+    await ctx.agents.register(stub.agent)
     let observed: ReturnType<GoalService['get']>
     ctx.on('session/event', (session, event) => {
       if (session === stub.session && event.type === 'goal/change') observed = ctx.goals.get(stub.agent)
@@ -492,7 +500,7 @@ describe('GoalService mutations', () => {
     await ctx.plugin(GoalService)
     const stub = stubAgent('goal-independent-injection')
     stub.agent.inject = () => { throw new Error('injection must not be called') }
-    ctx.agents.register(stub.agent)
+    await ctx.agents.register(stub.agent)
 
     expect(ctx.goals.create(stub.agent, { objective: 'persist directly' })).toMatchObject({
       objective: 'persist directly',
@@ -618,7 +626,7 @@ describe('goal replay validation', () => {
     expect(foldGoal(session.snapshotEvents())).toMatchObject({ goal: { id: change.goal.id, revision: 1 } })
     const message = createUserMessage({
       content: [{ type: 'text', text: 'unrelated pending context' }],
-      source: { kind: 'plugin', plugin: 'test' },
+      source: { kind: 'test' },
     })
     const inbox = stubAgentForSession(session).agent.inbox
     inbox.append('next-step', message)
@@ -639,10 +647,10 @@ describe('goal replay validation', () => {
     const session = Session.create(SessionId('unrelated'))
     appendInjection(session, createUserMessage({
       content: [{ type: 'text', text: 'other' }],
-      source: { kind: 'plugin', plugin: 'test' },
+      source: { kind: 'test' },
     }))
     expect(foldGoal(session.snapshotEvents())).toEqual({ roundsStarted: 0 })
-    const source = { kind: 'plugin', plugin: 'ordinary-user-message' } as const
+    const source = { kind: 'ordinary-user-message' } as const
     const turn = nextTurn(session)
     session.append('turn/start', { turn })
     session.append('user/message', createUserMessage({

@@ -20,6 +20,7 @@ import { closeSync, openSync, unlinkSync, writeSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import {
   fetchManifestText,
+  UpdateDownloadError,
   isNewerStable,
   parseUpdateManifest,
   streamDownload,
@@ -89,8 +90,8 @@ export function createUpdateRunnerDeps(
 /** check 的结果（未配置/已最新/可用/失败，语义独立于文案）。 */
 export type CheckOutcome =
   | { kind: 'unconfigured' }
-  | { kind: 'current' }
-  | { kind: 'available'; manifest: UpdateManifest }
+  | { kind: 'current'; viaFallback?: boolean }
+  | { kind: 'available'; manifest: UpdateManifest; viaFallback?: boolean }
   | { kind: 'error'; message: string }
 
 /**
@@ -107,19 +108,47 @@ export async function runUpdateCheck(
   feedUrl: string | null,
   currentVersion: string,
   zh = true,
+  fallbackUrl: string | null = null,
 ): Promise<CheckOutcome> {
   if (feedUrl === null) return { kind: 'unconfigured' }
+  const primary = await attemptCheck(deps, feedUrl, currentVersion, zh)
+  if (primary.outcome.kind !== 'error') return primary.outcome
+  // 官网镜像回落（2026-09-15）：只救主通道的**网络类**失败（连不上/超时）。
+  // manifest 语义错误说明通道活着但内容坏了，换镜像只会掩盖问题；主通道
+  // 答复过的一切结果（含"已是最新"）都是权威答案，不回落。
+  if (!primary.network || fallbackUrl === null) return primary.outcome
+  const fallback = await attemptCheck(deps, fallbackUrl, currentVersion, zh)
+  if (fallback.outcome.kind === 'available') return { ...fallback.outcome, viaFallback: true }
+  if (fallback.outcome.kind === 'current') return { kind: 'current', viaFallback: true }
+  // 两边都失败：报主通道的错——那才是用户该修的网络现实。
+  return primary.outcome
+}
+
+/** 单通道尝试一次 check；network 标记失败是否属于网络层（回落判据）。 */
+async function attemptCheck(
+  deps: UpdateRunnerDeps,
+  feedUrl: string,
+  currentVersion: string,
+  zh: boolean,
+): Promise<{ outcome: CheckOutcome; network: boolean }> {
   const signal = AbortSignal.timeout(30_000)
   try {
     const text = await deps.fetchText(feedUrl, signal, zh)
     const manifest = parseUpdateManifest(text, zh)
     if (isNewerStable(manifest.latestVersion, currentVersion, zh)) {
-      return { kind: 'available', manifest }
+      return { outcome: { kind: 'available', manifest }, network: false }
     }
-    return { kind: 'current' }
+    return { outcome: { kind: 'current' }, network: false }
   } catch (error) {
-    if (signal.aborted) return { kind: 'error', message: zh ? '检查更新超时，请稍后重试' : 'Checking for updates timed out; try again later' }
-    return { kind: 'error', message: String(error instanceof Error ? error.message : error) }
+    if (signal.aborted) {
+      return { outcome: { kind: 'error', message: zh ? '检查更新超时，请稍后重试' : 'Checking for updates timed out; try again later' }, network: true }
+    }
+    return {
+      outcome: { kind: 'error', message: String(error instanceof Error ? error.message : error) },
+      // 网络类失败才配回落：连不上/挂死/中断。服务器答复过的（4xx/5xx、
+      // 跳转形状）与 manifest 语义错误都不算——服务器活着，回落只会掩盖。
+      network: error instanceof UpdateDownloadError ? error.network : false,
+    }
   }
 }
 

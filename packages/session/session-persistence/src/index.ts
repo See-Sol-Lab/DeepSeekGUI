@@ -18,14 +18,12 @@ declare module '@deepseek-ai/cordis' {
      * @mode bail
      * @param sessionId - Exact logical identity being deleted.
      * @param authorization - Opaque authorization supplied by the requesting Host.
-     * @dshScopeScan unsupported - authorization precedes access to a detached Session.
      */
     'session/deletion-authorize'(sessionId: SessionId, authorization: string): boolean | undefined
     /**
      * Remove derived content after durable deletion intent, before content cleanup completes.
      * @mode serial
      * @param sessionId - Identity whose Agent has already drained and detached.
-     * @dshScopeScan unsupported - no live Session remains at this storage operation.
      */
     'session/content-deleting'(sessionId: SessionId): Promise<void> | void
   }
@@ -184,6 +182,9 @@ declare module '@deepseek-ai/cordis' {
  * on this backend instance observe at least that prefix.
  */
 export abstract class SessionPersistence extends Service {
+  /** Process-local instance identity, stable through Context proxies and distinct after service replacement. */
+  readonly identity: symbol = Symbol('sessionPersistence')
+
   /** Absent on backends which do not support deleting stored Sessions. */
   readonly deletions?: SessionDeletionStorage
   constructor(ctx: Context) {

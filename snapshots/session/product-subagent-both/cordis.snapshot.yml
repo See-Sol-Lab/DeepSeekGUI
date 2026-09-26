@@ -1,7 +1,7 @@
 # Keyless twin of product-subagent-both.cordis.yml: preserve all four named
 # product tools while replacing only the external model adapter.
 - id: llm-deepseek
-  name: '@deepseek-ai/dsh-llm-deepseek'
+  name: '@deepseek-ai/dsh-llm-deepseek-api-key'
   disabled: true
 
 - insert:
@@ -62,3 +62,6 @@
         toolName: subagent_claude_secondary
         backgroundMode: one-shot
         maxDepth: provider-managed
+
+- id: plugin-package-inventory-deepseek
+  disabled: true

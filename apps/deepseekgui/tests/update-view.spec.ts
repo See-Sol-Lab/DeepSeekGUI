@@ -32,17 +32,19 @@ function temp(): string {
 }
 
 describe('updateViewOf', () => {
-  it('默认形态：idle、无通道、自动下载开、八个字段全部归位', () => {
+  it('默认形态：idle、无通道、自动下载开、全部字段归位', () => {
     expect(updateViewOf()).toEqual({
       channel: null,
       state: 'idle',
       result: null,
       latestVersion: null,
       releaseNotes: null,
+      releasePageUrl: null,
       progressBytes: null,
       progressTotal: null,
       message: null,
       autoDownload: true,
+      viaFallback: false,
     })
   })
 

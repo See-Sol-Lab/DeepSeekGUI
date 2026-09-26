@@ -230,10 +230,12 @@ export class MessageFeedbackService extends TypertRemoteService {
     }
     const live = this.ctx.sessions.get(sessionId)
     if (live !== undefined) {
+      // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
       return operation(live.snapshotEvents(), async (event) => {
         if (event !== undefined) {
           live.append(event.type, event.data)
         }
+        // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
         const last = live.snapshotEvents().at(-1)
         if (!(await this.ctx.sessions.flush(live))) {
           throw new Error(

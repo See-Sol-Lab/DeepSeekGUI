@@ -10,11 +10,12 @@
  * The component renders nothing and lives on the sidebar footer seat so it
  * stays mounted across sessions (root scope).
  */
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-api-session-controller/client'
+import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { NS_NOTIFY } from './locales-notify.ts'
 import { readBridge, type ControlBridgeClient } from './bridge.ts'
@@ -23,6 +24,7 @@ import {
   compactLine,
   officialEventIdOf,
   readPending,
+  type NotifyJobLike,
 } from './notify/notifier-model.ts'
 
 /** Full props of the invisible footer watcher. */
@@ -31,6 +33,8 @@ export type NotificationWatcherProps = PropsRuntime<'sidebar.footer.action'>
   & {
     /** Bridge override for tests; defaults to the page bridge. */
     bridge?: ControlBridgeClient | null
+    /** Client jobs snapshot (0.1.7: jobs left the session list for the job controller). */
+    jobs: { getSnapshot(): { rows: Readonly<Record<string, readonly NotifyJobLike[]>> }; subscribe(listener: () => void): () => void }
   }
 
 /** Notification kinds this consumer may emit. */
@@ -43,11 +47,24 @@ type NotifyKind = 'approval' | 'question' | 'job'
 export function NotificationWatcher(props: NotificationWatcherProps) {
   const bridgeRef = useRef<ControlBridgeClient | null>(null)
   if (bridgeRef.current === null) bridgeRef.current = props.bridge === undefined ? readBridge() : props.bridge
-  const pending = props.useSessionPendingInteraction(snapshot => snapshot)
-  const sessionFacts = props.useSessions(snapshot => ({
-    current: snapshot.current,
-    jobs: snapshot.jobsBySession,
-  }))
+  // 0.1.7: pending interactions ride on the per-session status map. The session the user is
+  // looking at is the one the main view retains, unless another panel covers the main area —
+  // the same rule the document title follows. The desktop shows whatever arrives here.
+  const statuses = props.useSessionStatus(snapshot => snapshot)
+  const mainAreaShowsSession = props.usePanelInfo(info => info.activePanelId === null)
+  const viewedSession = props.useSessions(state => Object.values(state.byId)
+    .find(session => (session.retainedBy.mainView ?? 0) > 0)?.id)
+  const pending = useMemo((): ReadonlyMap<SessionId, unknown> => new Map(
+    [...statuses].flatMap(([sessionId, status]) =>
+      (status.pendingInteraction === undefined ? [] : [[sessionId, status.pendingInteraction] as const])),
+  ), [statuses])
+  // The store is a class instance (ClientJobsModel): its methods read `this`, so they are called
+  // through the object rather than passed around detached.
+  const jobs = props.jobs
+  const subscribeJobs = useCallback((listener: () => void) => jobs.subscribe(listener), [jobs])
+  const readJobs = useCallback(() => jobs.getSnapshot(), [jobs])
+  const jobRows = useSyncExternalStore(subscribeJobs, readJobs).rows
+  const sessionFacts = { current: mainAreaShowsSession ? viewedSession : undefined, jobs: jobRows }
   const notified = useRef(new Set<string>())
   const jobMemory = useRef(new Map<string, string>())
   const { t } = props
@@ -60,12 +77,12 @@ export function NotificationWatcher(props: NotificationWatcherProps) {
     body: string,
     current: SessionId | undefined,
   ): void => {
-    // 目标会话正被聚焦查看时官方 UI 已经展示着该事实，不打扰；桌面侧还
-    // 有主窗可见+聚焦的总闸，两端一致（都只管"正在看"这一种情况）。
-    if (document.hasFocus() && current === sessionId) return
     const key = `${sessionId}/${kind}/${id}`
     if (notified.current.has(key)) return
     notified.current.add(key)
+    // 只有"窗口有焦点且正看着这个会话"才不打扰：官方 UI 已经展示着该事实，
+    // 也算处理过了（切走以后不再补弹）。看着别的会话、在首页或设置页时照常通知。
+    if (document.hasFocus() && current === sessionId) return
     const bridge = bridgeRef.current
     if (bridge === null) return
     void bridge.run({ type: 'notify', id: key, sessionId, kind, title, body }).catch(() => {

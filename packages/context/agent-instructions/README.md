@@ -178,7 +178,7 @@ Each discovered scope adds bounded history tokens until compaction. Unchanged co
 
 #### KV Cache effect
 
-Append-only; newly visible content follows the reusable request prefix and does not invalidate existing KV-cache entries.
+Append-only; newly visible content follows the reusable request prefix and does not invalidate existing KV Cache entries.
 
 ### Changed or removed instruction context
 
@@ -202,7 +202,7 @@ Each confirmed change or removal is one retained history message bounded by `max
 
 #### KV Cache effect
 
-Append-only; newly visible content follows the reusable request prefix and does not invalidate existing KV-cache entries.
+Append-only; newly visible content follows the reusable request prefix and does not invalidate existing KV Cache entries.
 
 ## Known Limitations and Deferred Work
 

@@ -31,7 +31,7 @@ import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local'
 import type { Config as LocalConfig } from '@deepseek-ai/dsh-fs-local'
 import { FsError } from '@deepseek-ai/dsh-fs'
 import type { FsEditOutcome, FsEditRequest, FsTarget, FsVersion, FsWriteIntent, FsWriteOutcome } from '@deepseek-ai/dsh-fs'
-import { writableRoots } from '@deepseek-ai/dsh-sandbox'
+import { isGitMetadataPath, writableRoots, zoneOfPath } from '@deepseek-ai/dsh-sandbox'
 import type { SandboxExecutionPolicy, SandboxMode } from '@deepseek-ai/dsh-sandbox'
 import type {} from '@deepseek-ai/dsh-sandbox-policy'
 import { isPathUnder } from './containment.ts'
@@ -139,6 +139,20 @@ export class SandboxedFileSystem extends LocalFileSystem {
     }
     if (!contained) {
       throw new FsError(`cannot write "${target.displayPath}": file access denied under workspace-write mode`, 'FS_SANDBOX_DENIED')
+    }
+    // DeepSeekGUI: repository metadata is read-only under workspace-write; a
+    // change to it goes through escalation, i.e. a person's approval.
+    if (isGitMetadataPath(policy.workspaceRoot, String(fresh.targetKey))) {
+      throw new FsError(`cannot write "${target.displayPath}": .git is read-only under workspace-write mode`, 'FS_SANDBOX_DENIED')
+    }
+    // DeepSeekGUI: protected code inside a wider workspace (DeepSeekGUI's own
+    // checkout under a parent folder chosen as the workspace) is not the
+    // workspace's to change; only a danger-full-access call the user approves
+    // may write it. A workspace that IS that code is already clamped read-only,
+    // and its per-call escalation carries the red approval.
+    const zone = zoneOfPath(String(fresh.targetKey))
+    if (zone !== undefined && zoneOfPath(policy.workspaceRoot) !== zone) {
+      throw new FsError(`cannot write "${target.displayPath}": it is ${zone === 'gui' ? "DeepSeekGUI's own code" : 'a protected system or application location'}; only a danger-full-access escalation the user approves may change it`, 'FS_SANDBOX_DENIED')
     }
     return fresh
   }

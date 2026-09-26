@@ -2,9 +2,12 @@
  * Node half of the HMR plugin: bundle watches follow the graph, stat changes
  * report through clientModuleHost.rebuilt, and everything dies with the fiber.
  */
+import { EventEmitter } from 'node:events'
+import type { ServerResponse, IncomingMessage } from 'node:http'
 import { mkdtempSync, rmSync, statSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import Loader from '@deepseek-ai/cordis-plugin-loader'
 import { Context } from '@deepseek-ai/cordis'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ClientArtifactBaseline, ClientModuleRegistry, WebBootGraph } from '@deepseek-ai/dsh-client-modules'
@@ -31,7 +34,7 @@ interface FakeHostOptions {
 
 function artifactBaseline(path: string): ClientArtifactBaseline {
   const bundle = statSync(path)
-  return { path, mtimeMs: bundle.mtimeMs, size: bundle.size }
+  return { path, mtimeMs: bundle.mtimeMs, ctimeMs: bundle.ctimeMs, size: bundle.size }
 }
 
 function fakeClientModuleHost(rows: Map<string, string>, options: FakeHostOptions = {}): FakeHost {
@@ -45,7 +48,7 @@ function fakeClientModuleHost(rows: Map<string, string>, options: FakeHostOption
       options.beforeGraphRead?.()
       return {
         rev: 'r',
-        entries: [...rows.keys()].map(id => ({ id, url: `/plugins/??${id}/client.js&rev=r`, rev: 'r' })),
+        entries: [...rows.keys()].map(id => ({ id, url: `plugins/??${id}/client.js&rev=r`, rev: 'r' })),
         batches: [],
       }
     },
@@ -160,7 +163,7 @@ describe('hmr node half', () => {
     await fiber.dispose()
   })
 
-  it('rehashes only a row changed between its startup snapshot and watch installation', async () => {
+  it('publishes only a row changed between its startup snapshot and watch installation', async () => {
     const bundle = join(dir, 'construction.js')
     writeFileSync(bundle, 'v1')
     let rewrite = true
@@ -181,7 +184,30 @@ describe('hmr node half', () => {
     await fiber.dispose()
   })
 
-  it('marks a vanished bundle dirty so identical metadata still re-hashes after it reappears', async () => {
+  it('publishes a ctime change when a rewrite preserves mtime and size', async () => {
+    const bundle = join(dir, 'preserved-mtime.js')
+    writeFileSync(bundle, 'seed')
+    const fixedTime = new Date(1_600_000_000_000)
+    utimesSync(bundle, fixedTime, fixedTime)
+    const baseline = statSync(bundle)
+    const clientModuleHost = fakeClientModuleHost(new Map([['pkg-a', bundle]]))
+    const fiber = await mount(clientModuleHost, fakeHttpServer([]))
+    try {
+      expect(clientModuleHost.rebuiltCalls).toEqual([])
+      // Filesystem ctime can advance more coarsely than Date.now(); the fixture needs a distinct value.
+      await expect.poll(() => {
+        writeFileSync(bundle, 'next')
+        utimesSync(bundle, fixedTime, fixedTime)
+        return statSync(bundle).ctimeMs
+      }).not.toBe(baseline.ctimeMs)
+      expect(statSync(bundle)).toMatchObject({ mtimeMs: baseline.mtimeMs, size: baseline.size })
+      await vi.waitFor(() => { expect(clientModuleHost.rebuiltCalls).toEqual(['pkg-a']) }, { timeout: 3_000 })
+    } finally {
+      await fiber.dispose()
+    }
+  })
+
+  it('publishes a reappearing bundle with restored mtime and size', async () => {
     const bundle = join(dir, 'replace.js')
     writeFileSync(bundle, 'seed')
     const fixedTime = new Date(1_600_000_000_000)
@@ -204,7 +230,7 @@ describe('hmr node half', () => {
     await fiber.dispose()
   })
 
-  it('retains a dirty baseline when a catch-up re-hash races a rename', async () => {
+  it('retains a dirty baseline when catch-up publication races a rename', async () => {
     const bundle = join(dir, 'rename.js')
     writeFileSync(bundle, 'v1')
     let first = true
@@ -225,4 +251,89 @@ describe('hmr node half', () => {
     await vi.waitFor(() => { expect(clientModuleHost.rebuiltCalls).toEqual(['pkg-a', 'pkg-a']) }, { timeout: 3_000 })
     await fiber.dispose()
   })
+})
+
+
+it('broadcasts the desired graph without waiting for Host activation or cleanup', async () => {
+  const ctx = new Context()
+  await ctx.plugin(Loader)
+  const bundle = join(dir, 'a.js')
+  writeFileSync(bundle, 'a')
+  const rows = new Map([['a', bundle]])
+  const host = fakeClientModuleHost(rows)
+  const routes: WebRoute[] = []
+  ctx.provide('clientModules', host)
+  ctx.provide('webServer', fakeHttpServer(routes))
+  let release!: () => void
+  let cleaned!: () => void
+  let started!: () => void
+  const starting = new Promise<void>((resolve) => { started = resolve })
+  const activation = new Promise<void>((resolve) => { release = resolve })
+  const cleanup = new Promise<void>((resolve) => { cleaned = resolve })
+  let disposed = false
+  ctx.loader.internal = { version: 'client', import: async () => ({
+    apply: async (pluginCtx: Context) => {
+      pluginCtx.effect(() => async () => { await cleanup; disposed = true })
+      started()
+      await activation
+    },
+  }) } as never
+  const entryId = await ctx.loader.create({ name: 'owned' })
+  await starting
+  const fiber = ctx.plugin({ inject, Config, apply }, { pollIntervalMs: POLL_MS })
+  await fiber.await()
+  const route = routes[0]!
+  const connect = async () => {
+    const lines: string[] = []
+    const response = Object.assign(new EventEmitter(), {
+      writeHead: vi.fn(), write: (line: string) => { lines.push(line) },
+      destroy: vi.fn(), end: vi.fn(),
+    })
+    await route.handler({ method: 'GET' } as IncomingMessage, response as unknown as ServerResponse)
+    return { lines, response }
+  }
+  try {
+    const first = await connect()
+    expect(first.lines).toHaveLength(2)
+    const frame = JSON.parse(first.lines[1]!.slice(6)) as { graph: WebBootGraph }
+    expect(frame.graph.entries.map(row => row.id)).toEqual(['a'])
+    const second = await connect()
+    expect(second.lines[1]).toBe(first.lines[1])
+    expect(first.lines).toHaveLength(2)
+    release()
+    const owned = ctx.loader.resolve(entryId).fiber!
+    await owned.await()
+    const child = owned.ctx.plugin({ apply() {} })
+    await child.await()
+    expect(child.entry).toBe(owned.entry)
+    await child.dispose()
+    await child.await()
+    await ctx.loader.await()
+    await new Promise<void>(resolve => setImmediate(resolve))
+    expect(second.lines).toHaveLength(2)
+    first.response.emit('close')
+    ctx.loader.remove(entryId)
+    rows.clear()
+    host.fireGraphChanged()
+    expect(second.lines).toHaveLength(3)
+    expect(disposed).toBe(false)
+    expect((JSON.parse(second.lines[2]!.slice(6)) as { graph: WebBootGraph }).graph.entries).toEqual([])
+    const third = await connect()
+    expect(third.lines[1]).toBe(second.lines[2])
+    expect(second.lines).toHaveLength(3)
+    cleaned()
+    while (owned.inertia !== undefined) await owned.inertia
+    expect(disposed).toBe(true)
+    expect(second.lines).toHaveLength(3)
+    await fiber.dispose()
+    host.fireGraphChanged()
+    expect(second.lines).toHaveLength(3)
+    expect(second.response.destroy).toHaveBeenCalledOnce()
+    expect(third.response.destroy).toHaveBeenCalledOnce()
+  } finally {
+    release()
+    cleaned()
+    await fiber.dispose()
+    await ctx.fiber.dispose()
+  }
 })

@@ -65,6 +65,8 @@ An invocation policy on every skill decides which surfaces may advertise and loa
 
 A skill that any provider reports appears in the merged catalog, and loading it by its exact kebab-case name returns the body; an invalid name returns no skill rather than throwing. A provider that fails discovery is logged and skipped, and the observation is reported incomplete so consumers keep their last-good catalog; an explicit incomplete observation still contributes its candidates. A malformed candidate fails fast — the registry validates names, descriptions, invocation booleans, and provider ownership before caching or returning anything.
 
+Skill summaries retain the winning provider’s optional instruction-file `path` for discovery consumers that offer file previews. Listing still reads no skill body, and model-facing catalogs continue to select only their owned routing fields.
+
 -----
 
 <a id="understand-the-implementation"></a>
@@ -79,7 +81,7 @@ This section explains how the registry merges, caches, and invalidates provider 
 
 The package is built on one separation: the registry owns merging, winning resolution, and validation, while providers own where skills come from. A provider is a borrowed same-process object with a `list()` that returns candidates and a `get()` that loads a body; the registry never inspects skill content beyond validating its semantic fields.
 
-The registry is host+per-scope layered, the shape the tools registry established: a registration files into the layer of its calling context's scope — host rows and repository plugins land in the global layer, a plugin mounted by an agent preset's standing composition lands in that preset's layer. A read merges the global layer with the viewing scope's chain; the nearest layer wins a duplicate name outright, and within one layer duplicates resolve by rank, provider registration order, then provider-local order.
+The registry is host+per-scope layered, the shape the tools registry established: a registration is filed into the layer of its calling context's scope — host rows and repository plugins land in the global layer, a plugin mounted by an agent preset's standing composition lands in that preset's layer. A read merges the global layer with the viewing scope's chain; the nearest layer wins a duplicate name outright, and within one layer duplicates resolve by rank, provider registration order, then provider-local order.
 
 ### Source map
 

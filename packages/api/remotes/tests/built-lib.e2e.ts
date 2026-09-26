@@ -130,92 +130,97 @@ describe.skipIf(!requiredArtifacts)('Goal Remote built LIB chain', () => {
       const address = server.address()
       if (address === null || typeof address === 'string') throw new Error('HTTP server has no TCP address')
       const origin = 'http://127.0.0.1:' + String(address.port)
-      const login = await fetch(host.connection.authenticatedUrl(origin), { redirect: 'manual' })
-      const setCookie = login.headers.get('set-cookie')
-      if (login.status !== 303 || setCookie === null) throw new Error('browser token exchange failed')
-      const cookie = setCookie.split(';', 1)[0]
-      const hostFetch = globalThis.fetch
-      globalThis.fetch = (input, init = {}) => {
-        const headers = new Headers(init.headers)
-        headers.set('cookie', cookie)
-        return hostFetch(input, { ...init, headers })
-      }
-
-      const handoffs = new Map()
-      globalThis.window = {
-        __ModuleLoader__: {
-          load(handoff) { handoffs.set(handoff.id, handoff) },
-        },
-      }
-      globalThis.location = { hostname: '127.0.0.1', origin, search: '' }
-      await import(urls.registryClient)
-      await import(urls.connectionClient)
-      await import(urls.apiGatewayClient)
-      await import(urls.remotesClient)
-
-      const instantiate = id => {
-        const handoff = handoffs.get(id)
-        if (handoff === undefined) throw new Error('missing Client bundle handoff ' + id)
-        return handoff.factory(specifier => {
-          if (specifier === '@deepseek-ai/cordis') return cordis
-          if (specifier === 'zod') return zod
-          throw new Error('unexpected Client external ' + specifier)
-        })
-      }
-      const client = new Context()
-      for (const id of [
-        '@deepseek-ai/dsh-typert-registry',
-        '@deepseek-ai/dsh-client-connection',
-        '@deepseek-ai/dsh-api-gateway',
-        '@deepseek-ai/dsh-api-remotes',
-      ]) {
-        const plugin = instantiate(id)
-        await client.plugin({ inject: plugin.inject, apply: plugin.apply })
-      }
-      client.typert.contexts.registerClient('agent', {
-        identity: candidate => candidate.builtAgentId,
-      })
-
-      let invalidRejected = false
+      // The browser emulation below installs page globals the Client halves
+      // read; the finally restores this process's own values.
+      const previousDocument = Object.getOwnPropertyDescriptor(globalThis, 'document')
+      const previousFetch = globalThis.fetch
       try {
-        await client.remote.goals.create(rootAgent.id, { objective: 1 })
-      } catch {
-        invalidRejected = true
-      }
-      // Every generated method resolves to the RemoteResult envelope; the
-      // business values below are what the assertions pin.
-      const rootResult = await client.remote.goals.create(rootAgent.id, { objective: 'root goal' })
-      const rootEdit = await client.remote.goals.edit(
-        rootAgent.id,
-        rootResult.value.ref,
-        { objective: 'edited root goal' },
-      )
-      const agentContext = client.extend({ builtAgentId: scopedAgent.id })
-      const scopedResult = await agentContext.remote.goals.create({ objective: 'scoped goal', maxGoalRounds: 3 })
-      const result = {
-        invalidRejected,
-        rootResult: rootResult.value,
-        rootEdit: rootEdit.value,
-        scopedResult: scopedResult.value,
-        rootGoal: host.goals.get(rootAgent)?.objective,
-        scopedGoal: host.goals.get(scopedAgent)?.objective,
-        rootEvents: rootAgent.session.snapshotEvents().length,
-        scopedEvents: scopedAgent.session.snapshotEvents().length,
-      }
+        globalThis.document = { baseURI: origin + '/' }
+        const login = await fetch(host.connection.authenticatedUrl(origin), { redirect: 'manual' })
+        const setCookie = login.headers.get('set-cookie')
+        if (login.status !== 303 || setCookie === null) throw new Error('browser token exchange failed')
+        const cookie = setCookie.split(';', 1)[0]
+        globalThis.fetch = (input, init = {}) => {
+          const headers = new Headers(init.headers)
+          headers.set('cookie', cookie)
+          return previousFetch(new URL(input, document.baseURI), { ...init, headers })
+        }
 
-      await client.fiber.dispose()
-      await new Promise((resolveClose, rejectClose) => server.close(error => {
-        if (error === undefined) resolveClose()
-        else rejectClose(error)
-      }))
-      await host.fiber.dispose()
-      console.log(JSON.stringify(result))
+        const handoffs = new Map()
+        globalThis.window = {
+          __ModuleLoader__: {
+            load(handoff) { handoffs.set(handoff.id, handoff) },
+          },
+        }
+        globalThis.location = { hostname: '127.0.0.1', origin, search: '' }
+        await import(urls.registryClient)
+        await import(urls.connectionClient)
+        await import(urls.apiGatewayClient)
+        await import(urls.remotesClient)
+
+        const instantiate = id => {
+          const handoff = handoffs.get(id)
+          if (handoff === undefined) throw new Error('missing Client bundle handoff ' + id)
+          return handoff.factory(specifier => {
+            if (specifier === '@deepseek-ai/cordis') return cordis
+            if (specifier === 'zod') return zod
+            throw new Error('unexpected Client external ' + specifier)
+          })
+        }
+        const client = new Context()
+        for (const id of [
+          '@deepseek-ai/dsh-typert-registry',
+          '@deepseek-ai/dsh-client-connection',
+          '@deepseek-ai/dsh-api-gateway',
+          '@deepseek-ai/dsh-api-remotes',
+        ]) {
+          const plugin = instantiate(id)
+          await client.plugin({ inject: plugin.inject, apply: plugin.apply })
+        }
+        client.typert.contexts.registerClient('agent', {
+          identity: candidate => candidate.builtAgentId,
+        })
+
+        const invalidResult = await client.remote.goals.create(rootAgent.id, { objective: 1 })
+        // Every generated method resolves to the RemoteResult envelope; the
+        // business values below are what the assertions pin.
+        const rootResult = await client.remote.goals.create(rootAgent.id, { objective: 'root goal' })
+        const rootEdit = await client.remote.goals.edit(
+          rootAgent.id,
+          rootResult.value.ref,
+          { objective: 'edited root goal' },
+        )
+        const agentContext = client.extend({ builtAgentId: scopedAgent.id })
+        const scopedResult = await agentContext.remote.goals.create({ objective: 'scoped goal', maxGoalRounds: 3 })
+        const result = {
+          invalidResult,
+          rootResult: rootResult.value,
+          rootEdit: rootEdit.value,
+          scopedResult: scopedResult.value,
+          rootGoal: host.goals.get(rootAgent)?.objective,
+          scopedGoal: host.goals.get(scopedAgent)?.objective,
+          rootEvents: rootAgent.session.snapshotEvents().length,
+          scopedEvents: scopedAgent.session.snapshotEvents().length,
+        }
+
+        await client.fiber.dispose()
+        await new Promise((resolveClose, rejectClose) => server.close(error => {
+          if (error === undefined) resolveClose()
+          else rejectClose(error)
+        }))
+        await host.fiber.dispose()
+        console.log(JSON.stringify(result))
+      } finally {
+        if (previousDocument === undefined) delete globalThis.document
+        else Object.defineProperty(globalThis, 'document', previousDocument)
+        globalThis.fetch = previousFetch
+      }
     `
 
     const result = await runPlainNode(script)
     expect(result.exitCode, `stderr:\n${result.stderr}`).toBe(0)
     const output = JSON.parse(result.stdout.trim().split('\n').at(-1) ?? '{}') as {
-      invalidRejected: boolean
+      invalidResult: { ok: boolean; error?: { code: string } }
       rootResult: { ref: { id: string; revision: number } }
       rootEdit: { objective: string; revision: number }
       scopedResult: { ref: { id: string; revision: number } }
@@ -225,7 +230,7 @@ describe.skipIf(!requiredArtifacts)('Goal Remote built LIB chain', () => {
       scopedEvents: number
     }
     expect(output).toMatchObject({
-      invalidRejected: true,
+      invalidResult: { ok: false, error: { code: 'gateway/input-invalid' } },
       rootResult: { ref: { revision: 1 } },
       rootEdit: { objective: 'edited root goal', revision: 2 },
       scopedResult: { ref: { revision: 1 } },

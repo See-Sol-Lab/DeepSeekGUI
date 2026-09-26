@@ -14,13 +14,14 @@ export const markdownLabels: MarkdownLabels = {
 }
 
 export const diffBlockLabels: DiffBlockLabels = {
+  codeLabel: '代码块', wrapLabel: '自动换行', unwrapLabel: '取消自动换行',
   copy: '复制', copied: '复制成功', collapseAria: '收起差异',
   expandAria: hidden => `展开其余 ${hidden} 行差异`,
   collapse: '收起', expand: hidden => `… 其余 ${hidden} 行`,
-  files: count => `${count} ${count === 1 ? 'file' : 'files'}`,
 }
 
 export const readBlockLabels: ReadBlockLabels = {
+  codeLabel: '代码块', wrapLabel: '自动换行', unwrapLabel: '取消自动换行',
   window: (shown, total) => `显示 ${shown} / ${total} 行`,
   copy: '复制', copied: '复制成功', collapseAria: '收起内容',
   expandAria: hidden => `展开其余 ${hidden} 行`,
@@ -43,6 +44,7 @@ export const searchBlockLabels: SearchBlockLabels = {
 export const terminalBlockLabels: TerminalBlockLabels = {
   signal: signal => `信号 ${signal}`,
   exitCode: code => `退出码 ${code}`,
+  noExitCode: '未正常退出',
   running: '运行中', failed: '失败', done: '已完成',
   copy: '复制', copied: '复制成功', noOutput: '无输出',
   collapseAria: '收起输出', collapse: '收起',

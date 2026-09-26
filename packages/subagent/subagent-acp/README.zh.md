@@ -1,5 +1,5 @@
 ---
-description: "面向用户与维护者的进程外 ACP subagent 后端，用于选择委派提供方、配置子 ACP agent 命令或排查远程子 agent 运行问题。"
+description: "面向用户与维护者的进程外 ACP（Agent Client Protocol）subagent 后端，用于选择委派提供方、配置子 ACP agent（智能体）命令或排查远程子 agent 运行问题。"
 kind: "package-reference"
 ---
 
@@ -25,11 +25,11 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-当组合需要一个说 Agent Client Protocol 的完全隔离进程外子 agent 时，挂载本提供方。常用路径是显式的：挂载 seam、挂载本提供方，并给出一个启动 ACP agent 的命令。
+当组合需要一个支持 Agent Client Protocol、完全隔离且在进程外运行的子 agent 时，挂载本提供方。常用路径是显式的：挂载 seam、挂载本提供方，并给出一个启动 ACP agent 的命令。
 
 ### 何时选择
 
-当子 agent 必须在独立进程中运行、拥有自己的运行时、模型和工具时选择此后端——例如来自其他项目的 ACP agent——或者你希望委派完全无法触及父 harness 时。当子 agent 必须共享父级组合或遵守父级强制的能力时，请选择进程内后端：本提供方不声明任何可选启动时能力，因此 seam 会拒绝要求 `agentOptions`、结构化输出、深度上限、工具过滤或 persona 的请求，而不是静默省略。
+当子 agent 必须在独立进程中运行、拥有自己的运行时、模型和工具时选择此后端——例如来自其他项目的 ACP agent——或者你希望委派完全无法触及父 harness 时。当子 agent 必须共享父级组合或遵守父级强制执行的能力约束时，请选择进程内后端：本提供方不声明任何可选启动时能力，因此 seam 会拒绝要求 `agentOptions`、结构化输出、深度上限、工具过滤或 persona 的请求，而不是静默省略。
 
 ### 配置
 
@@ -46,7 +46,7 @@ kind: "package-reference"
 
 生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-subagent-acp)是每个受支持字段及其 JSDoc 的穷尽式真源。
 
-DeepSeek Harness 子进程使用产品启动器和一个显式的绝对路径 `DSH_HOME`。隔离 home 可防止嵌套 runtime 发现启动者个人的 profile 或凭据；通用 ACP provider 不会把这一要求强加给非 DSH agent。
+DeepSeek Harness 子进程使用产品启动器和一个显式的绝对路径 `DSH_HOME`。隔离的 home 可防止嵌套运行时发现启动者个人的 profile 或凭据；通用 ACP 提供方不会把这一要求强加给非 DSH agent。
 
 ```yaml
 - id: subagent-acp
@@ -85,7 +85,7 @@ spawn、初始化或新建会话失败会在发布前拒绝，通常先证明 ma
 
 ### 设计理念
 
-- **完全进程隔离。** 每个子 agent 在全新子进程中运行，拥有自己的会话、模型与工具；只有解析后的工作目录从父级跨越。
+- **完全进程隔离。** 每个子 agent 在全新子进程中运行，拥有自己的会话、模型与工具；只有解析后的工作目录来自父级。
 - **每次运行一个进程。** 每次运行都 spawn 新进程；没有进程池。
 - **ACP 协议格式（wire format）是序列化边界。** 同进程 subagent 值不会为防御目的克隆；协议才是校验不可信输入的地方。
 
@@ -172,7 +172,7 @@ spawn、初始化或新建会话失败会在发布前拒绝，通常先证明 ma
 
 - **进程池**——持久进程复用是可能的未来优化，但会改变每次运行的隔离模型。
 - **远程工作区**——映射远程 ACP agent 的工作区需要独立的后端能力。
-- **可继续 ACP 子级**——需要持久化远程会话 id 与逐子级的继续执行能力声明。
+- **可继续执行的 ACP 子 agent**——需要持久化远程会话 id，并为每个子 agent 声明继续执行能力。
 
 </details>
 

@@ -16,12 +16,12 @@ function checkpointId(
   event: Parameters<ConversationNodeDefinition['match']>[0],
 ): string | undefined {
   if (event.type !== 'user/message') return undefined
-  const source = event.data.source as unknown as {
+  const source = event.data.source as {
     readonly kind?: unknown
     readonly plugin?: unknown
     readonly compactionId?: unknown
   }
-  return source.kind === 'plugin' && source.plugin === 'compact'
+  return source.kind === 'compact-checkpoint'
     && typeof source.compactionId === 'string' && source.compactionId !== ''
     ? source.compactionId
     : undefined
@@ -64,7 +64,7 @@ function requestFromState(
         resultSeq: summary.seq,
         summary: summary.data.summary,
         ...(summary.data.rawOutput === undefined ? {} : { rawOutput: summary.data.rawOutput }),
-        provenance: { provider: summary.data.provider, model: summary.data.model },
+        providerMetadata: { provider: summary.data.provider, model: summary.data.model },
         requestConfig: {
           provider: summary.data.provider,
           model: summary.data.model,

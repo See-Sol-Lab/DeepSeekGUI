@@ -29,7 +29,7 @@ This package boots an application fixture the way an installed consumer would an
 
 ### Booting an application fixture
 
-`runLoaderSmoke` takes bin and config paths, optional complete bin arguments, environment overrides, stdin, pre-run setup, and pre-cleanup inspection. It owns the isolated cwd, DSH homes, diagnostics, deadline, termination, EOF, and cleanup, and returns both streams after a zero exit or rejects with both streams on failure:
+`runLoaderSmoke` takes bin and config paths, optional complete bin arguments, environment overrides, stdin, pre-run setup, and pre-cleanup inspection. It owns the isolated cwd, DSH homes, diagnostics, deadline, termination, EOF, and cleanup of a cwd it created (a caller-provided cwd is left in place), and returns both streams after a zero exit or rejects with both streams on failure:
 
 ```text
 const result = await runLoaderSmoke({
@@ -41,11 +41,11 @@ const result = await runLoaderSmoke({
 })
 ```
 
-Set `expectedExitCode` when the scenario pins a designed failure surface — a one-shot turn ending in an error result — and a run that exits any other way, including succeeding, still fails the smoke.
+Set `sourceImport: 'tsx/esm'` when a source smoke exercises the supported `dsh` launcher; built mode ignores this option. Set `expectedExitCode` when the scenario pins a designed failure surface — a one-shot turn ending in an error result — and a run that exits any other way, including succeeding, still fails the smoke.
 
 ### Testing a shipped profile
 
-Profile integration drivers use the repository-only `tests/fixtures/production-profile.ts` helper. It loads the named shipped profile and its bundle patches through `loadProfile`, reconciles the profile's module fallback, and passes the bundle patches followed by the test's `*.patch.yml` files to the root `cordis:include` mounted by `boot`. Those patches should contain only the test provider or model, isolated persistence paths, and subject-specific changes. Package-level unit tests that need an agent loop without profile integration mount `dsh-agent-loop-testkit` locally instead.
+Profile integration drivers use the repository-only `tests/fixtures/production-profile.ts` helper. It loads the named shipped profile and its bundle patches through `loadProfile`, computes the runtime resolution, installs it through `PluginPackages`, and passes the bundle patches followed by the test's `*.patch.yml` files to the root `cordis:include` mounted by `boot`. Those patches should contain only the test provider or model, isolated persistence paths, and subject-specific changes. Package-level unit tests that need an agent loop without profile integration mount `dsh-agent-loop-testkit` locally instead.
 
 ### Driving a fixture turn
 
@@ -73,7 +73,7 @@ This section explains the design of the harness; the observable behavior is full
 
 ### Design
 
-The harness is built on one separation: the smoke runs in a child process under an isolated world, and the test process only observes and asserts. `runLoaderSmoke` creates a temporary cwd, prepares world state there, spawns the resolved bin with isolated DSH homes (`DSH_HOME`, `DSH_AGENTS_HOME` under the temp cwd), closes stdin immediately, and awaits a clean exit within the deadline before inspecting and cleaning up on every outcome. `runFixtureTurn` stays in-process: it looks up the composition's single root agent, follows the task from its durable inbox receipt through whole-agent idle, sums per-step usage, and flushes the session before returning.
+The harness is built on one separation: the smoke runs in a child process under an isolated world, and the test process only observes and asserts. `runLoaderSmoke` creates a temporary cwd (or reuses a caller-provided one), prepares world state there, spawns the resolved bin with isolated DSH homes (`DSH_HOME`, `DSH_AGENTS_HOME` under that cwd), closes stdin immediately, and awaits a clean exit within the deadline before inspecting on every outcome and removing only a cwd it created. `runFixtureTurn` stays in-process: it looks up the composition's single root agent, follows the task from its durable inbox receipt through whole-agent idle, sums per-step usage, and flushes the session before returning.
 
 ### Source map
 

@@ -18,6 +18,8 @@ import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import {
   cardTitle,
   cwdOf,
+  gitDanger,
+  gitReadOnlyByDefault,
   writableCwd,
   json,
   requireApproval,
@@ -189,6 +191,10 @@ export function registerGitTools(ctx: Context): void {
     },
     async execute(args: { cwd?: string; path: string }, exec: ToolExec) {
       const cwd = await writableCwd(ctx, exec, args.cwd, 'git_stage')
+      // DeepSeekGUI: .git is read-only by default under workspace-write.
+      if (gitReadOnlyByDefault(ctx, exec)) {
+        await requireApproval(ctx, exec, 'git_stage', `Stage ${args.path} in ${cwd}? This changes the repository index (.git).`, cwd, gitDanger(cwd))
+      }
       await git.stageFile(cwd, args.path)
       return json(await git.status(cwd))
     },
@@ -212,6 +218,10 @@ export function registerGitTools(ctx: Context): void {
     },
     async execute(args: { cwd?: string; path: string }, exec: ToolExec) {
       const cwd = await writableCwd(ctx, exec, args.cwd, 'git_unstage')
+      // DeepSeekGUI: .git is read-only by default under workspace-write.
+      if (gitReadOnlyByDefault(ctx, exec)) {
+        await requireApproval(ctx, exec, 'git_unstage', `Unstage ${args.path} in ${cwd}? This changes the repository index (.git).`, cwd, gitDanger(cwd))
+      }
       await git.unstageFile(cwd, args.path)
       return json(await git.status(cwd))
     },
@@ -238,7 +248,7 @@ export function registerGitTools(ctx: Context): void {
       const cwd = await writableCwd(ctx, exec, args.cwd, 'git_revert')
       const expectedPatch = (await git.diff(cwd, 'unstaged', args.path, true, 8 * 1024 * 1024)).patch
       if (expectedPatch === undefined) throw new Error('Cannot inspect the file changes before requesting revert approval')
-      await requireApproval(ctx, exec, 'git_revert', `Revert ${args.path} in ${cwd}? Unstaged changes to this tracked file will be discarded.`, cwd)
+      await requireApproval(ctx, exec, 'git_revert', `Revert ${args.path} in ${cwd}? Unstaged changes to this tracked file will be discarded.`, cwd, gitDanger(cwd))
       await git.revertFile(cwd, args.path, expectedPatch)
       return json(await git.status(cwd))
     },
@@ -263,7 +273,7 @@ export function registerGitTools(ctx: Context): void {
     async execute(args: { cwd?: string; message: string }, exec: ToolExec) {
       const cwd = await writableCwd(ctx, exec, args.cwd, 'git_commit')
       const expectedTree = await git.stagedTree(cwd)
-      await requireApproval(ctx, exec, 'git_commit', `Commit staged tree ${expectedTree} in ${cwd} with message: ${args.message}`, cwd)
+      await requireApproval(ctx, exec, 'git_commit', `Commit staged tree ${expectedTree} in ${cwd} with message: ${args.message}`, cwd, gitDanger(cwd))
       return json(await git.commit(cwd, args.message, expectedTree))
     },
   }))
@@ -316,7 +326,7 @@ export function registerGitTools(ctx: Context): void {
       const preview = await git.pushPreview(cwd, args.remote, args.localBranch, args.remoteBranch)
       const ahead = preview.aheadCommits.length
       const pushUrl = preview.remote.pushUrl ?? preview.remote.fetchUrl
-      await requireApproval(ctx, exec, 'git_push', `Push ${args.localBranch} (${preview.sourceOid}) to ${args.remote}/${args.remoteBranch} (${ahead} candidate commit(s), remote ${pushUrl})?`, cwd)
+      await requireApproval(ctx, exec, 'git_push', `Push ${args.localBranch} (${preview.sourceOid}) to ${args.remote}/${args.remoteBranch} (${ahead} candidate commit(s), remote ${pushUrl})?`, cwd, gitDanger(cwd))
       return json(await git.push(cwd, args.remote, args.localBranch, args.remoteBranch,
         { sourceOid: preview.sourceOid, destinationToken: preview.destinationToken }))
     },

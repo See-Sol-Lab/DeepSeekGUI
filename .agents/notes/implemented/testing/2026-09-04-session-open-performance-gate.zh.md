@@ -37,7 +37,7 @@ Session benchmark 使用固定参数合成 released-v0 输入：200 轮，每轮
 
 一个不计时的小型 fixture 前置用例验证当前 migration、消息保留、V0 字节不变及后继再次打开。Worker 失败时保留 stderr 首尾各十行或致命堆错误，使准备阶段拒绝与预算超限可区分。计时性能用例不重复功能测试的内容断言，只要求目标调用完成并到达对应的可观察终点。Client fold benchmark 继续使用真实 `ConversationNodeAssembler` 与全部 Chat Definition，要求大窗口的绝对时间和相对小窗口的缩放比均低于固定预算。
 
-预算按各测量终点分别校准。两次 Node 24.19 x64 CI 运行的中位数最大相差 5.2%；其 CPU 密集型壁钟时间是 Node 24.18 arm64 参考运行的 1.95–2.06 倍。除当前 generation `open` 和 first-open Agent resume 外，源码常量记录参考机器上的预期耗时；`ciTimeBudget()` 将其乘以实测的 2 倍 CI 时间系数和 1.25 倍波动余量。当前 generation `open` 使用标准运行器直接测得的 50 ms 预期值，仅乘以 1.25 倍余量，向上取整得到 63 ms 预算。First-open Agent resume 使用经审查的 562 ms 托管上限。GC 后增量堆与 Client fold 缩放预算不属于壁钟时间，因此只使用 1.25 倍余量。128 MB 完成性检查仍是独立的瞬时分配限制。由此得到的 first-open 时间上限、受限堆检查与 Client fold 上限都会拒绝已知退化。栈前参考提交固定为 `0d7ea53743e273930a31e9e2b6ca682f21dd4ca5`，只用于校准和评审预算；CI 不 checkout 或执行历史仓库。预算是源码中的受评审常量，不由环境变量覆盖。
+预算按各测量终点分别校准。两次 Node 24.19 x64 CI 运行的中位数最大相差 5.2%；其 CPU 密集型壁钟时间是 Node 24.18 arm64 参考运行的 1.95–2.06 倍。除当前 generation `open` 和 first-open Agent resume 外，源码常量记录参考机器上的预期耗时；`ciTimeBudget()` 将其乘以实测的 2 倍 CI 时间系数和 1.25 倍波动余量。当前 generation `open` 使用标准运行器直接测得的 50 ms 预期值，仅乘以 1.25 倍余量，向上取整得到 63 ms 预算。First-open Agent resume 使用经审查的 562 ms 托管上限。GC 后增量堆与 Client fold 缩放预算不属于壁钟时间，因此只使用 1.25 倍余量。128 MB 完成性检查仍是独立的瞬时分配限制。由此得到的 first-open 时间上限、受限堆检查与 Client fold 上限都会拒绝已知退化。参考固定为 PR #3533 的合并结果，只用于校准和评审预算；CI 不 checkout 或执行历史仓库。预算是源码中的受评审常量，不由环境变量覆盖。
 
 ## 校准证据
 
@@ -54,11 +54,11 @@ Session benchmark 使用固定参数合成 released-v0 输入：200 轮，每轮
 
 栈前实现以 V0 作为当前格式，因此 first open 不改变磁盘表示；它的原生 V0 首屏历史与 Agent resume 测量同时适用于两个生命周期行。
 
-`ca3ffe95dac2c55eefeb16ed9b61067bbd19ee90` 上的[标准双 CPU 运行](https://github.com/deepseek-harness/deepseek-harness/actions/runs/34023970384/job/101461539961)使用 Node 24.20.0 x64 和 Ubuntu 镜像 `20260831.293.1`。当前 generation `open` 的五次样本为 49.2、47.4、49.1、48.6 和 48.1 ms：中位数 48.6 ms，最大值 49.2 ms。取整后的 50 ms CI 预期值给出 63 ms 上限，不重复乘以 2 倍机器系数。日志标明两个可用 CPU，但未记录型号；它无法区分硬件变化与 Node 版本变化的影响。这是端点专属的运行器校准，不是应用优化或参考机器新测量的证据。其他每项 benchmark 均通过既有预算。确定性正反例在历史 30 ms 上限下拒绝实测中位数，在 63 ms 下接受它，拒绝合成的 75 ms reopen 中位数，并以未改变的 550 ms 上限拒绝合成的 4,000 ms 首次打开耗时。这些正反例验证预算执行，不代表测得新的退化。
+PR #3640 的标准双 CPU 运行 (run 34023970384, job 101461539961)使用 Node 24.20.0 x64 和 Ubuntu 镜像 `20260831.293.1`。当前 generation `open` 的五次样本为 49.2、47.4、49.1、48.6 和 48.1 ms：中位数 48.6 ms，最大值 49.2 ms。取整后的 50 ms CI 预期值给出 63 ms 上限，不重复乘以 2 倍机器系数。日志标明两个可用 CPU，但未记录型号；它无法区分硬件变化与 Node 版本变化的影响。这是端点专属的运行器校准，不是应用优化或参考机器新测量的证据。其他每项 benchmark 均通过既有预算。确定性正反例在历史 30 ms 上限下拒绝实测中位数，在 63 ms 下接受它，拒绝合成的 75 ms reopen 中位数，并以未改变的 550 ms 上限拒绝合成的 4,000 ms 首次打开耗时。这些正反例验证预算执行，不代表测得新的退化。
 
-一次冷 verifier 打包调整移除了运行时 workspace 模块加载，未改变这些预算或测量终点。在 macOS arm64、Node 24.18.0 上，`ac48359b195558806ee5a2286697074fd1a52815` 对同一份 127,400-event fixture 的首次 writable resume 耗时为 164.2、162.4、159.7、149.3、167.7 ms（中位数 162.4 ms）。通过 workspace build 打包 verifier 后为 119.8、120.9、121.9、122.3、121.8 ms（中位数 121.8 ms，降低 25%）。Retained heap 保持 5.4 MB；peak RSS 中位数从 144.9 变为 143.7 MB。Reopen 中位数为 27.5 和 27.1 ms，包含 128 MB completion check 的全部 16 项 Session 用例通过。CPU profile 将旧 verifier 的部分成本归因于模块解析和编译。隔离 package 的 built-worker 测试在旧 worker 上因无法解析 workspace import 而失败，在打包后的 worker 上通过，同时验证错误的 event count 会被拒绝。这些本地结果不能证明 Linux runner 耗时；这些用例使用 450 ms CI 上限。
+一次冷 verifier 打包调整移除了运行时 workspace 模块加载，未改变这些预算或测量终点。在 macOS arm64、Node 24.18.0 上，verifier 打包前对同一份 127,400-event fixture 的首次 writable resume 耗时为 164.2、162.4、159.7、149.3、167.7 ms（中位数 162.4 ms）。通过 workspace build 打包 verifier 后为 119.8、120.9、121.9、122.3、121.8 ms（中位数 121.8 ms，降低 25%）。Retained heap 保持 5.4 MB；peak RSS 中位数从 144.9 变为 143.7 MB。Reopen 中位数为 27.5 和 27.1 ms，包含 128 MB completion check 的全部 16 项 Session 用例通过。CPU profile 将旧 verifier 的部分成本归因于模块解析和编译。隔离 package 的 built-worker 测试在旧 worker 上因无法解析 workspace import 而失败，在打包后的 worker 上通过，同时验证错误的 event count 会被拒绝。这些本地结果不能证明 Linux runner 耗时；这些用例使用 450 ms CI 上限。
 
-[`a7884138be` 的托管运行](https://github.com/deepseek-harness/deepseek-harness/actions/runs/34265057987/job/102192211510)包含已打包的 verifier，first-open Agent-resume 样本为 454.2、454.8、455.4、457.8 和 459.8 ms：中位数 455.4 ms，超过 450 ms。[代码等价的前一次运行](https://github.com/deepseek-harness/deepseek-harness/actions/runs/34263062688/job/102185561214)报告 436.2 ms 中位数；两个 head 之间只有请求历史双语 README 及其配对记录不同。经审查的上限为 562 ms，即 `floor(450 × 1.25)`，增加 24.89%，比观测到的 455.4 ms 中位数高 23.4%。五次新进程 M4 Pro / Node 24.19 样本范围为 150.07–158.22 ms，中位数为 152.57 ms。一次有界的主线程 profile 未发现明显的小型优化；它不包含 verifier 线程 CPU，也不能证明托管耗时变化的原因。对照在 450 ms 下拒绝已记录中位数，在 562 ms 下接受该值，并拒绝 600 ms。Verifier 打包优化、工作负载、其他时间预算、共享缩放和内存限制均保持不变。
+托管运行 (run 34265057987, job 102192211510)包含已打包的 verifier，first-open Agent-resume 样本为 454.2、454.8、455.4、457.8 和 459.8 ms：中位数 455.4 ms，超过 450 ms。代码等价的前一次运行 (run 34263062688, job 102185561214)报告 436.2 ms 中位数；两个 head 之间只有请求历史双语 README 及其配对记录不同。经审查的上限为 562 ms，即 `floor(450 × 1.25)`，增加 24.89%，比观测到的 455.4 ms 中位数高 23.4%。五次新进程 M4 Pro / Node 24.19 样本范围为 150.07–158.22 ms，中位数为 152.57 ms。一次有界的主线程 profile 未发现明显的小型优化；它不包含 verifier 线程 CPU，也不能证明托管耗时变化的原因。对照在 450 ms 下拒绝已记录中位数，在 562 ms 下接受该值，并拒绝 600 ms。Verifier 打包优化、工作负载、其他时间预算、共享缩放和内存限制均保持不变。
 
 校准后的源码预算如下：
 
@@ -77,6 +77,22 @@ Session benchmark 使用固定参数合成 released-v0 输入：200 轮，每轮
 | Client fold 绝对时间 | 16 ms | 40 ms |
 | Client fold delta 缩放比 | 2.5× | 3.125× |
 | 受限 old space | — | 128 MB |
+
+### 按索引遍历持久化 JSON 数组
+
+JSONL backend 在 memo 化前冻结解码后的 event graph。原生 decoder 与固定 migration catalog 产出无环 JSON graph，其中数组只包含索引值。按数字索引遍历数组仍会冻结每个嵌套对象和数组，同时避免枚举 compact stream 中 125,000 个文本条目和 124,600 个时间差值的字符串键。对象遍历继续保留自有的 `__proto__` 和 `constructor` 数据。Admission、关系校验、解码与冻结都仍在被测 open 终点前完成；浅层 `Object.isFrozen()` 结果不会跳过后代遍历。
+
+在 Apple M4 Pro、Node 24.19.0 上，仅覆盖 open 的 CPU profile 将约 4.2 ms 归因于完整 event 冻结。独立的全新进程 V4 运行得到以下结果；末列恢复并重新构建完全相同的原始遍历，作为负对照：
+
+| Reopen 测量项 | 原始遍历 | 索引遍历 | 恢复原始遍历 |
+|---|---|---|---|
+| `open` 样本（ms） | 22.2, 22.4, 22.8, 22.6, 22.9 | 17.7, 18.4, 17.4, 17.8, 17.6 | 21.7, 22.4, 22.2, 21.7, 21.6 |
+| `open` 中位数（ms） | 22.6 | 17.7 | 21.7 |
+| 首屏历史中位数（ms） | 35.0 | 30.6 | 33.6 |
+| Agent resume 中位数（ms） | 30.5 | 26.8 | 29.8 |
+| Agent 保留堆（MB） | 4.5 | 4.5 | 4.5 |
+
+每次运行的全部 17 个 Session 用例均通过，包括 128 MB 完成性检查。原始实现在本机仍低于 63 ms；恢复原始遍历展示了被移除的成本，而托管 benchmark 仍负责给出必须满足的预算结果。工作负载、时间上限、内存上限、冷进程准备与测量终点保持不变。JSONL owner 测试覆盖历史 V3 和当前读取中的嵌套不透明 JSON、修改拒绝及不可变 event 共享。这些测量确认了 reopen 改善，但没有确认一致的 first-open 改善或托管运行器耗时。
 
 ## 考虑过的替代方案
 

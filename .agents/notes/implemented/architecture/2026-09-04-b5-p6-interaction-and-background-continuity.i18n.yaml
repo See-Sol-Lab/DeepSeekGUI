@@ -1,6 +1,22 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-09-04-b5-p6-interaction-and-background-continuity.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-09-04-b5-p6-interaction-and-background-continuity.md
-2026-09-04-b5-p6-interaction-and-background-continuity.md: 1ce1e4e98f6193df36b750a721aa1e5c30760af4
-2026-09-04-b5-p6-interaction-and-background-continuity.zh.md: f58636e5711b5345763d1de2d80132214898bc56
+/agent-note-b5-p6-interaction-background-continuity:
+  en: e816a7316e39cedc
+  zh: b4e72445f194f2ba
+/agent-note-b5-p6-interaction-background-continuity/problem:
+  en: 66fe8d27dcba0b7b
+  zh: b3abe593854e2278
+/agent-note-b5-p6-interaction-background-continuity/decision:
+  en: 3dc22caa1785f494
+  zh: 087890acf9ef02a6
+/agent-note-b5-p6-interaction-background-continuity/alternatives-considered:
+  en: 03ead20c4b571223
+  zh: cc8122e3c4415c8c
+/agent-note-b5-p6-interaction-background-continuity/verification:
+  en: 7d694d4450cf91d0
+  zh: cdfc444c5bbb480f
+/agent-note-b5-p6-interaction-background-continuity/consequences:
+  en: 377bc821b9154929
+  zh: 4c35034b51d2aa7f

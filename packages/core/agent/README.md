@@ -101,10 +101,13 @@ The package is built on one separation: the public `Agent` surface and registry 
 | [`src/consumed-work.ts`](src/consumed-work.ts) | `foldConsumedWork(events)`: what the log's consumed work became |
 | [`src/model-selection.ts`](src/model-selection.ts) | `installModelSelection`: coupling one selection to assembly and routing |
 | [`src/invariant.ts`](src/invariant.ts) | Invariant companion: no-op `agent/status` transitions fail |
+| [`src/archive-admission.ts`](src/archive-admission.ts) | The `turn` family of the Workspace registry's archive admission: a running turn and its user-cause cancel |
 
 ### Registry and lifecycle
 
-`AgentRegistry` keeps one entry per live agent with its carrier and creator relation. `register()` records an already-constructed agent; the async factory uses the split `enter()`/`announce()` pair so setup and publication stay rollback-covered. A detach requested during a creation dispatch waits for that dispatch to unwind, and each detach is bound to the exact entry, so a stale disposer cannot remove a later same-id replacement. Teardown order is stop-and-drain the loop, unwind the scope, detach the agent, detach the session; the id becomes reusable after private cleanup.
+`AgentRegistry` keeps one entry per live agent with its carrier and creator relation. Await `register()` to finish serial creation listeners with source `startup` before using an already-constructed agent; the async factory uses the split `enter()`/`announce()` pair so setup and initialization stay rollback-covered. A detach requested during creation waits for every awaited listener to settle, and each detach is bound to the exact entry, so a stale disposer cannot remove a later same-id replacement. Teardown stops and drains the loop, unwinds the scope, detaches the agent, then detaches the session; the id becomes reusable after private cleanup.
+
+The registry also answers the Workspace registry's archive admission ([seam](../../workspace/workspace/README.md)) for every Agent it publishes: `workspace/session-activity` reports the `turn` family while the Session's Agent is running, a turn waiting for an approval or an answer included, and `workspace/session-stop` cancels that turn the way the user's own stop does — `agent.cancel({ kind: 'user' })`, but without the stop button's `keepInbox`, so queued input is discarded with a logged inbox splice instead of waking the archived Session later. Nothing is awaited to settlement; a Session without a live Agent has no turn that could run. The `turn` key is merged into `SessionActivityKindMap` from [`src/types.ts`](src/types.ts), so a Client that renders the families imports `@deepseek-ai/dsh-agent/types` for it.
 
 ### Initiator scope
 
@@ -171,7 +174,7 @@ These limits define when this package needs special care. They are current packa
 
 - **Initiator scope is process-local** — workers, child processes, HTTP, durable queues, and restarts must materialize any required identity explicitly.
 - **Ambient identity may outlive liveness** — consumers still check `agent.status`, cancellation, and the owning capability contract before lifecycle-sensitive work.
-- **`agent/session-start` cannot gate startup** — it remains a synchronous, veto-less notification; async composition that must finish before publication belongs in the factory's `setup(agentCtx, agent)` transaction instead.
+- **Creation listeners share the initialization lifetime.** An `agent/created` listener must not await `agent.whenIdle()` or its own owner's disposal: those operations wait for creation to finish. Return only after required asynchronous tool and prompt installation completes.
 - **`cancel()` clears the inbox by default** — it aborts the in-flight turn plus queued and steering work; `cancel(cause, { keepInbox: true })` aborts only the turn and preserves pending items, and there is no step-only abort that keeps the turn running.
 - **Each additional `UserMessage` carries exactly one `MessageSource`** — contributions from several plugins merged onto one message collapse under one source, so the message cannot name several producers.
 

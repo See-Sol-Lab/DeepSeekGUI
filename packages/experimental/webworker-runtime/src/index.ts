@@ -11,14 +11,16 @@ export {
   type TunnelAbortFrame, type TunnelInboundFrame, type TunnelOutboundFrame, type TunnelRequestFrame,
   type TunnelRequestId, type TunnelResponseChunkFrame, type TunnelResponseEndFrame,
   type TunnelResponseErrorFrame, type TunnelResponseFrame, type TunnelResponseHeadFrame,
-  type TunnelStreamEndFrame, type TunnelStreamErrorFrame, type TunnelStreamItemFrame,
-  type TunnelStreamOpenFrame,
+  type TunnelStreamEndFrame, type TunnelStreamErrorFrame, type TunnelStreamUplinkEndFrame,
+  type TunnelStreamUplinkItemFrame, type TunnelStreamItemFrame, type TunnelStreamOpenFrame,
 } from './transport/frames.ts'
 export {
   DEFAULT_CONDITIONS, requireActiveModuleLoader, setActiveModuleLoader, WorkerModuleLoader,
   type Resolution, type StaticModuleFactory, type WorkerModuleLoaderOptions, type WorkerRequire,
 } from './module-system/module-loader.ts'
 export * as posixPath from './module-system/posix-path.ts'
+export { MODULE_PROXIES, MODULE_PROXY_PREFIXES } from './module-proxies.ts'
+export { REPLACED_EXTERNAL_PACKAGES } from './node/external_packages/replaced-externals.ts'
 export {
   createSyntheticExchange,
   type RequestListener, type ResponseSink, type SyntheticExchange,

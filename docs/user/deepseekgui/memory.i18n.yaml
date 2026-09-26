@@ -1,6 +1,25 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for memory.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/user/deepseekgui/memory.md
-memory.md: 756672af1281947390b947963e5524f896d4558f
-memory.zh.md: ef1adf31798cd1772d5c82980e4954d8cfb560d5
+/memory:
+  en: 13f9dd5dca621da4
+  zh: cf05649252928b16
+/memory/global-memory:
+  en: 1c42c0fb8bb24f8e
+  zh: 9a9d236dd6bd3774
+/memory/project-memory:
+  en: bf7104eebaf63a05
+  zh: 5a896558353197e4
+/memory/entry-memory-optional:
+  en: c598a1d6783c437e
+  zh: dbbb5655c5b0a40c
+/memory/rules-templates:
+  en: 8bd85e5b83bee12b
+  zh: 39a5cddca7d9a460
+/memory/how-memory-reaches-the-session:
+  en: 1d38e82770208d20
+  zh: 72e087e5b2386229
+/memory/related-guides:
+  en: aa2f09262756372c
+  zh: fb0ac402f3ee4f0b

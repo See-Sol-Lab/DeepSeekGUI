@@ -31,12 +31,11 @@ function event(
       content: (content ?? [{ type: 'text', text }]) as ContentBlock[],
       source: plugin === 'time-context'
         ? {
-          kind: 'plugin',
-          plugin,
+          kind: 'time-context',
           form: 'snapshot',
           sections: [{ name: plugin, text }],
         }
-        : { kind: 'plugin', plugin },
+        : { kind: 'other' },
     }),
   }
 }
@@ -78,8 +77,7 @@ function appendReading(session: Session, text: string): void {
   session.append('user/message', createUserMessage({
     content: [{ type: 'text', text }],
     source: {
-      kind: 'plugin',
-      plugin: 'time-context',
+      kind: 'time-context',
       form: 'snapshot',
       sections: [{ name: 'time-context', text }],
     },
@@ -102,7 +100,7 @@ describe('time-context invariants', () => {
     }).not.toThrow()
   })
 
-  it('requires browser-zone policy and timestamp to match current-turn request provenance', async () => {
+  it('requires browser-zone policy and timestamp to match current-turn request sources', async () => {
     const ctx = await setup()
     const policy = 'Browser time zone for this request: Asia/Shanghai. '
       + 'Interpret otherwise-unqualified dates and times in this zone.'
@@ -150,7 +148,7 @@ describe('time-context invariants', () => {
     }
   })
 
-  it('rejects invalid browser provenance loaded across the durable boundary', async () => {
+  it('rejects invalid browser-zone data loaded across the durable boundary', async () => {
     const ctx = await setup()
     const timeZone = 'Not/A_Real_Zone'
     const policy = `Browser time zone for this request: ${timeZone}. `
@@ -283,27 +281,24 @@ describe('time-context invariants', () => {
     }).toThrow(message)
   })
 
-  it('requires exact snapshot provenance without copied request authority', async () => {
+  it('requires the exact snapshot source without copied request authority', async () => {
     const ctx = await setup()
     const base = event(reading())
     for (const source of [
-      { kind: 'plugin', plugin: 'time-context' },
+      { kind: 'time-context' },
       { ...base.data.source, authority: {} },
       {
-        kind: 'plugin',
-        plugin: 'time-context',
+        kind: 'time-context',
         form: 'snapshot',
         sections: [{ name: 'time-context', text: 'different' }],
       },
       {
-        kind: 'plugin',
-        plugin: 'time-context',
+        kind: 'time-context',
         form: 'snapshot',
         sections: { 0: { name: 'time-context', text: reading() }, length: 1 },
       },
       {
-        kind: 'plugin',
-        plugin: 'time-context',
+        kind: 'time-context',
         form: 'snapshot',
         sections: [{ name: 'time-context', text: reading(), extra: true }],
       },

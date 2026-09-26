@@ -1,7 +1,8 @@
+import { imageOffloadProjection } from '@deepseek-ai/dsh-compaction-image-offload/projection'
 import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import {
-  LlmRuntime, LlmAdapter, createMessage, createUserMessage, projectFilesToText,
+  LlmRuntime, LlmAdapter, createMessage, createToolResultMessage, createUserMessage, projectFilesToText, ToolCallId,
 } from '@deepseek-ai/dsh-llm'
 import type { GenerateOptions, LlmImageRequestPricing, Message, StreamChunk, TokenUsage, UserMessage } from '@deepseek-ai/dsh-llm'
 import { AttachmentId } from '@deepseek-ai/dsh-attachment'
@@ -85,7 +86,7 @@ async function harness(pricing: (model: string) => LlmImageRequestPricing | unde
   const llm = new LlmRuntime(ctx)
   llm.registerAdapter(['mock'], new PricingAdapter(pricing))
   const meter = new TokenMeter(ctx)
-  return { ctx, meter, session: Session.create(SessionId('route-priced')) }
+  return { ctx, meter, session: Session.create(SessionId('route-priced'), undefined, undefined, undefined, [imageOffloadProjection]) }
 }
 
 /** Route price of one image-bearing message under the fixed pricing double. */
@@ -202,6 +203,37 @@ describe('request projection pricing', () => {
     expect(unknownRoute.nodes[0]!.tokens).toBe(estimateMessage(message))
   })
 
+  it('reprices logged offloads without changing surface node identities or heuristic totals', async () => {
+    const placeholder = '[offloaded]'
+    const markedPricing: LlmImageRequestPricing = {
+      priceImages: images => images.map(block => (block.offloaded === true
+        ? { visualTokens: 0, text: placeholder }
+        : { visualTokens: VISUAL_TOKENS, text: HANDLE_TEXT })),
+    }
+    const { ctx, meter, session } = await harness(() => markedPricing)
+    session.append('turn/start', { turn: 1 })
+    const older = imageMessage('older')
+    const newer = imageMessage('newer')
+    const olderSeq = session.append('user/message', older, { surfaceOp: 'append' }).seq
+    session.append('user/message', newer, { surfaceOp: 'append' })
+    session.append('request/header', { header: header('vision'), reason: 'initial' })
+    const before = meter.measure(session)
+    expect(before.nodes.map(node => node.tokens)).toEqual([routedMessageTokens(older), routedMessageTokens(newer)])
+
+    session.append('image/offload', { targets: [{ seq: olderSeq, imageIndexes: [0] }] })
+    const after = meter.measure(session)
+    const imageFree = estimateMessage({ ...older, content: older.content.filter(block => block.type !== 'image') })
+    expect(after.nodes[0]!.tokens).toBe(imageFree + estimateContent([{ type: 'text', text: placeholder }]))
+    expect(after.nodes[1]!.tokens).toBe(routedMessageTokens(newer))
+    expect(after.totalTokens).toBeLessThan(before.totalTokens)
+    expect(after.nodes.map(node => node.seq)).toEqual(before.nodes.map(node => node.seq))
+    expect(after.nodes.map(node => node.heuristicTokens)).toEqual(before.nodes.map(node => node.heuristicTokens))
+    const breakdown = ctx.sessionProjections.snapshot(session).values.contextBreakdown
+    expect(breakdown?.messageTokens).toBe(after.nodes.reduce((total, node) => total + node.heuristicTokens, 0))
+    const restored = Session.create(SessionId('offloaded-restored'), session.snapshotEvents(), undefined, undefined, [imageOffloadProjection])
+    expect(meter.measure(restored).surfaceTokens).toBe(after.surfaceTokens)
+  })
+
   it('fails loud when a route answers a mismatched occurrence count', async () => {
     const broken: LlmImageRequestPricing = { priceImages: () => [] }
     const { meter, session } = await harness(() => broken)
@@ -211,29 +243,55 @@ describe('request projection pricing', () => {
       .toThrow('route image pricing answered 0 prices for 1 occurrences')
   })
 
-  it('prices nested tool-result images through the same route pricing', async () => {
+  it('offloads one of two equal attachments without rewriting the prior usage anchor', async () => {
+    const placeholder = '[offloaded]'
+    const { ctx, meter, session } = await harness(() => ({
+      priceImages: images => images.map(block => block.offloaded === true
+        ? { visualTokens: 0, text: placeholder }
+        : { visualTokens: VISUAL_TOKENS, text: HANDLE_TEXT }),
+    }))
+    try {
+      const ref = imageRef('same')
+      const source = session.append('user/message', createUserMessage({
+        source: { kind: 'user' },
+        content: [{ type: 'image', attachment: ref }, { type: 'image', attachment: ref }],
+      }), { surfaceOp: 'append' })
+      appendSuccessfulCall(session, header('vision'), { inputTokens: 5000, outputTokens: 10 })
+      const before = meter.measure(session)
+      session.append('image/offload', { targets: [{ seq: source.seq, imageIndexes: [0] }] })
+      const after = meter.measure(session)
+      const saving = VISUAL_TOKENS + estimateContent([{ type: 'text', text: HANDLE_TEXT }])
+        - estimateContent([{ type: 'text', text: placeholder }])
+      expect(after.baseline).toEqual(before.baseline)
+      expect(after.surfaceDeltaTokens - before.surfaceDeltaTokens).toBe(-saving)
+      expect(after.totalTokens).toBe(before.totalTokens - saving)
+      expect(after.nodes[0]?.heuristicTokens).toBe(before.nodes[0]?.heuristicTokens)
+      const projection = session.deriveMessages()[0]!
+      expect(projection.content).toEqual([{ type: 'image', attachment: ref, offloaded: true }, { type: 'image', attachment: ref }])
+      expect(estimateMessage(projection)).toBe(after.nodes[0]?.heuristicTokens)
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('prices tool-result images through the same route pricing', async () => {
     const { meter, session } = await harness(() => fixedPricing)
-    const nested = createUserMessage({
-      content: [{
-        type: 'tool-result',
-        toolCallId: 'call-1' as never,
-        content: [
-          { type: 'text', text: 'screenshot below' },
-          { type: 'image', attachment: imageRef('nested') },
-        ],
-      }],
-      source: { kind: 'user' },
+    const result = createToolResultMessage({
+      callId: ToolCallId('call-1'),
+      content: [
+        { type: 'text', text: 'screenshot below' },
+        { type: 'image', attachment: imageRef('nested') },
+      ],
+      isError: false,
     })
-    session.append('user/message', nested, { surfaceOp: 'append' })
+    session.append('tool/result', { turn: 1, step: 1, message: result }, { surfaceOp: 'append' })
     session.append('request/header', { header: header('vision'), reason: 'initial' })
     const measurement = meter.measure(session)
-    const imageFree = estimateMessage({
-      ...nested,
-      content: [{
-        ...nested.content[0] as Extract<Message['content'][number], { type: 'tool-result' }>,
-        content: [{ type: 'text', text: 'screenshot below' }],
-      }],
-    })
+    const imageFree = estimateMessage(createToolResultMessage({
+      callId: ToolCallId('call-1'),
+      content: [{ type: 'text', text: 'screenshot below' }],
+      isError: false,
+    }))
     expect(measurement.nodes[0]!.tokens)
       .toBe(imageFree + VISUAL_TOKENS + estimateContent([{ type: 'text', text: HANDLE_TEXT }]))
   })

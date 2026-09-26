@@ -25,16 +25,20 @@ When users type `/` or `@` at the caret in the Web GUI, this package opens a gro
 <a id="use-this-package"></a>
 ## Use this package
 
-Mount this plugin alongside `ui-conversation`; the menu then appears in the input overlay when the user types a trigger under the caret. Grouped candidates render under title rows; a pick routes to the source, and the consuming surface applies the result — a slash command opens its popup or executes, a reference inserts its inline token.
+Mount this plugin alongside `ui-conversation`; the menu then appears in the input overlay when the user types a trigger under the caret. Grouped candidates render under title rows, or under the section headings a source attaches to its own rows; a pick routes to the source, and the consuming surface applies the result — a slash command opens its popup or executes, a reference inserts its inline token. Menu icons and navigation chevrons use the `--dsw-alias-menu-icon` color. A row shows its icon, its title (the candidate `label`, or the `name` when no label is given), the `name` as a trailing alias when the label is not the name in another letter case, and the description right-aligned; a query matches either the name or the label.
 
 ### Keyboard and mouse
 
-The composer surface keeps focus while the menu is open: rows pick on mousedown, the highlight rides `aria-activedescendant`, and a pointer press outside both the menu and the composer card dismisses it. Space and Enter adjudication polls the optional `matchSpace`/`matchEnter` hooks in registration order; the first non-undefined answer wins, and a source can refuse a submission it cannot consume whole. Tab acts on the highlighted completion: a candidate declaring `drill: true` routes through `onPick` with `action: 'drill'`, while an ordinary candidate settles through `action: 'pick'`; without a highlight, Tab passes untouched so native focus traversal survives. A drillable row's trailing chevron exposes the same second verb to pointer users. A source implementing the optional `header` hook additionally publishes crumbs above its group: the pipeline re-polls it on every hit with the live query and whether a drill, rather than typing, produced it, and a crumb pick routes back through `onPick` with `action: 'drill'`.
+The composer surface keeps focus while the menu is open: rows pick on mousedown, the highlight rides `aria-activedescendant`, and a pointer press outside both the menu and the composer card dismisses it. Opening it from the launcher button puts the keyboard back in the editor before the menu opens, so the arrows drive it there too. Space and Enter adjudication polls the optional `matchSpace`/`matchEnter` hooks in registration order; the first non-undefined answer wins, and a source can refuse a submission it cannot consume whole. Tab acts on the highlighted completion: a candidate declaring `drill: true` routes through `onPick` with `action: 'drill'`, while an ordinary candidate settles through `action: 'pick'`; without a highlight Tab passes untouched so native focus traversal survives. Escape and Shift+Tab leave the menu instead, never settling: the exit gesture cannot consume or rewrite the draft. A dismissed menu stays dismissed: the same token re-tracked with the same query keeps its menu closed, so restoring the caret after a pointer dismissal — or after a settled command closes the surface it opened — cannot bring the menu back; typing a new query or moving to another token re-arms it. A drillable row's trailing chevron exposes the same second verb to pointer users. A source implementing the optional `header` hook additionally publishes crumbs above its group: the pipeline re-polls it on every hit with the live query and whether a drill, rather than typing, produced it, and a crumb pick routes back through `onPick` with `action: 'drill'`.
+
+A source may implement `openReference(session, reference)` to open a draft reference without submitting it. Acceptance may precede asynchronous catalog loading. Chips route by source name; editable tokens route through the current source lexicon. Returning `false`, a missing source, or a disposed controller leaves the editor gesture unchanged.
 
 -----
 
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
+
+Menus use the shared `MenuSurface` material, including the macOS backing for background blur; custom content follows the [menu rules](../../../docs/web-styling.md#component-rules).
 
 <details>
 <summary>Implementation internals — click to expand</summary>
@@ -74,7 +78,6 @@ None; this package neither assembles nor sends a provider request.
 These limits define the current trigger pipeline. They are current package constraints, not a general menu comparison or a task backlog.
 
 - **Global source layer only** — session-scope source registration (per-session shadowing) is designed but not enabled; the ledger tracks the trigger condition, a real per-session source need.
-- **`InputTriggerCandidate.icon` renders as text** — `MenuView` drops the string into the icon slot verbatim; wiring to the design-system icon enum lands when that enum ships.
 - **Overlay SlotMap merge home is split from slot ownership** — the sole `conversation.input.overlay` merge lives here, while ui-conversation owns its anchor, children declaration, and lifecycle because the dependency direction is ui-conversation → ui-input-trigger.
 
 <a id="dev-note"></a>

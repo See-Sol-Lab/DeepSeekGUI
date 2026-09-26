@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`ask_user_question` lets a model pause work and ask the human for confirmation, a choice, or missing information. It accepts one or more questions and returns their answers as compact JSON. The call waits until an answer is accepted or the turn is cancelled; if no answer handler accepts it, the model receives an error. Runtime-owned child agents cannot call this tool and must report unresolved questions in their final result. The package does not render or collect input, so callers must provide a compatible user interaction surface.
+`ask_user_question` lets a model pause work and ask the human for confirmation, a choice, or missing information. It accepts one or more questions and returns their answers as compact JSON. The call waits until an answer is accepted or the turn is cancelled; if no answer handler accepts it, the model receives an error. A live child agent owned by another agent cannot call this tool and must report unresolved questions in its final result. The package does not render or collect input, so callers must provide a compatible user interaction surface.
 
 ## Table of Contents
 

@@ -1,5 +1,5 @@
 ---
-description: "Shared in-process subagent run driver for maintainers and backend authors understanding or extending the spawn and fork run lifecycle."
+description: "Shared in-process subagent run driver for maintainers and backend authors who need to understand or extend the spawn and fork run lifecycle."
 kind: "package-library"
 ---
 

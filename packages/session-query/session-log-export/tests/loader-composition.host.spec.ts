@@ -57,10 +57,11 @@ describe('session-log-download real Loader composition', () => {
     })
     await context.loader.await()
 
-    const session = (context.get('sessions') as unknown as SessionStore)
+    const session = (context.get('sessions') as SessionStore)
       .create(SessionId('loader-session-export'), { meta: { createdAt: 1 } })
     const agent = { session, status: 'idle', options: {} } as unknown as Agent
     expect(context.commands.list(agent)).toContainEqual({
+      definitionId: '@deepseek-ai/dsh-session-log-export',
       name: 'export', description: 'Download this Session log as a ZIP archive',
     })
     const execution = await context.commands.execute(agent, '/export', [], new AbortController().signal)

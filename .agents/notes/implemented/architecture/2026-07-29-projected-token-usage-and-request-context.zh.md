@@ -58,4 +58,4 @@ token 总量在分页、压缩、回放、重启和重连期间保持稳定，�
 
 占用率在上文记录的意义上是近似值。由于两个字段都是持久的，它在恢复或重连后立即可用；代价是它描述的是最后一条已记录的请求，而不是精确的当前边界。
 
-每个会话日志会为每次路由或已公布容量变化增加一条小型 `request/context` 记录。token-meter 是持久用量语义的正典所有方，包括累计投影中的重试 attempt 分离，以及可复用的精确 attempt／Turn fold；Web Chat 只选择已完整加载的 Turn 并渲染 fold 结果。TUI 未挂载通用投影 seam，因此保留自己的实时逐步骤 map，而独立浏览器 fixture（测试前置数据）会镜像该单元。Connection 与 API Gateway 不携带任何 token 专用代码，不拥有逐会话指标缓存，也不执行测量。浏览器只保留两个通用投影值，不保留连接本地的遥测数据；流式文本增量不会迫使统计行重新计算或反复替换布局 observer 订阅。
+每个会话日志会为每次路由或已公布容量变化增加一条小型 `request/context` 记录。token-meter 是持久用量语义的正典所有方，包括累计投影中的重试 attempt 分离，以及可复用的精确 attempt／Turn fold；Web Chat 只选择已完整加载的 Turn 并渲染 fold 结果。TUI 未挂载通用投影 seam，因此保留自己的实时逐步骤 map，而组装 RemoteMock 场景提供相同投影值。Connection 与 API Gateway 不携带任何 token 专用代码，不拥有逐会话指标缓存，也不执行测量。浏览器只保留两个通用投影值，不保留连接本地的遥测数据；流式文本增量不会迫使统计行重新计算或反复替换布局 observer 订阅。

@@ -1,6 +1,19 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-08-16-deepseekgui-b2-p1-ui-state-and-daily-ux.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-08-16-deepseekgui-b2-p1-ui-state-and-daily-ux.md
-2026-08-16-deepseekgui-b2-p1-ui-state-and-daily-ux.md: 540cee02a1e9c5938cddacd2131f267d6da4a923
-2026-08-16-deepseekgui-b2-p1-ui-state-and-daily-ux.zh.md: af4d80cec0e0c0893b4fc97a7566e756a64646c7
+/agent-note-deepseekgui-desktop-ui-state-window-geometry-themes-and-launcher-rescue:
+  en: 24d9282374ba0aa1
+  zh: 36ac1ab13f13b97e
+/agent-note-deepseekgui-desktop-ui-state-window-geometry-themes-and-launcher-rescue/problem:
+  en: c85bd303816214c6
+  zh: 42020fd226333766
+/agent-note-deepseekgui-desktop-ui-state-window-geometry-themes-and-launcher-rescue/decision:
+  en: 0c6b1ba32c2b2dec
+  zh: 20d3f1177e0e9662
+/agent-note-deepseekgui-desktop-ui-state-window-geometry-themes-and-launcher-rescue/alternatives-considered:
+  en: f9dd2c3462f5b1d1
+  zh: ff7b96fa5e119a7e
+/agent-note-deepseekgui-desktop-ui-state-window-geometry-themes-and-launcher-rescue/consequences:
+  en: 8089f807764336eb
+  zh: 0503c642fc8e1ac9

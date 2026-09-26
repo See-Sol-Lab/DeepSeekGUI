@@ -6,7 +6,7 @@ English | [中文](2026-09-05-base-default-file-editor.zh.md)
 
 ## Problem
 
-The shared base selects both `read`/`write`/`edit` and `str_replace_editor`, which offer overlapping file editing interfaces. [Issue #3599](https://github.com/deepseek-harness/deepseek-harness/issues/3599) requests one default interface for base-backed profiles while preserving the dedicated minimal compositions.
+The shared base selects both `read`/`write`/`edit` and `str_replace_editor`, which offer overlapping file editing interfaces. Issue #3599 requests one default interface for base-backed profiles while preserving the dedicated minimal compositions.
 
 ## Decision
 

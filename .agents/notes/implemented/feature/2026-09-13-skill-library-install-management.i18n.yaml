@@ -1,0 +1,19 @@
+# Bilingual-pair consistency record for 2026-09-13-skill-library-install-management.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-13-skill-library-install-management.md
+/agent-note-skill-library-with-reviewed-directory-complete-installs:
+  en: 1782d4ec6b2793b4
+  zh: cf4c10fff8c249ce
+/agent-note-skill-library-with-reviewed-directory-complete-installs/problem:
+  en: 98e3fb35886557df
+  zh: 585db5d3db1dcba5
+/agent-note-skill-library-with-reviewed-directory-complete-installs/decision:
+  en: e83baf30c28c7048
+  zh: bdc998eabb3e5346
+/agent-note-skill-library-with-reviewed-directory-complete-installs/alternatives-considered:
+  en: f7689e6a66558e36
+  zh: 2efbc6a5b8bbc5fb
+/agent-note-skill-library-with-reviewed-directory-complete-installs/consequences:
+  en: 9299f81299a7cbb6
+  zh: 794142c74c0cf3fa

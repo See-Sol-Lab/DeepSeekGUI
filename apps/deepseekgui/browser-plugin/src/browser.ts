@@ -439,7 +439,13 @@ export class DeepSeekGUIBrowser implements BrowserFacade {
   private async attachPane(bridge: PaneBridge, proxy: SsrfProxy): Promise<void> {
     const { cdpPort, paneUrl } = await paneEnsure(bridge)
     await paneSetProxy(bridge, `http=127.0.0.1:${String(proxy.port)};https=127.0.0.1:${String(proxy.port)}`)
-    const browser = await chromium.connectOverCDP(`http://127.0.0.1:${String(cdpPort)}`)
+    // `noDefaults` 是必须的：没有它，Playwright 接管每个已有页面时会按
+    // context 默认值下发 Emulation.setEmulatedMedia（colorScheme 缺省
+    // "light"），把官方 UI 与 backdrop 的 prefers-color-scheme 一并钉成浅
+    // 色——系统深色下即"深壁纸 + 黑字"（issue #5，关 pane 也不恢复，因为
+    // 连接一直挂着）。带上它，默认 context（= 主界面所在的 Electron 默认
+    // session）跳过全部默认 override；pane 在独立 partition，不受影响。
+    const browser = await chromium.connectOverCDP(`http://127.0.0.1:${String(cdpPort)}`, { noDefaults: true })
       .catch((error: unknown) => { throw cdpConnectFailure(cdpPort, error) })
     // The shell awaits the pane's navigation before replying, so the URL is
     // committed on its side; CDP page state can still trail it by a tick, so

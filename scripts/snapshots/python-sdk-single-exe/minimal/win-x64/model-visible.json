@@ -1,67 +1,65 @@
 [
   {
+    "system": "You are a helpful software engineer assistant.",
     "tools": [
       {
-        "type": "function",
-        "function": {
-          "name": "pwsh",
-          "description": "Run commands in a PowerShell shell\n* When invoking this tool, the contents of the \"command\" parameter does NOT need to be XML-escaped.\n* You don't have access to the internet via this tool.\n* State is persistent across command calls and discussions with the user.\n* Use native Windows paths (C:\\...) and $env:NAME variables; this is PowerShell, not bash.\n* Please avoid commands that may produce a very large amount of output.\n* Please run long lived commands in the background, e.g. 'Start-Job' or start a server with Start-Process.",
-          "parameters": {
-            "type": "object",
-            "properties": {
-              "command": {
-                "type": "string",
-                "description": "The PowerShell command to run. Relative path is preferred in the command."
-              }
-            },
-            "required": [
-              "command"
-            ]
-          }
+        "name": "pwsh",
+        "description": "Run commands in a PowerShell shell\n* When invoking this tool, the contents of the \"command\" parameter does NOT need to be XML-escaped.\n* You don't have access to the internet via this tool.\n* State is persistent across command calls and discussions with the user.\n* Use native Windows paths (C:\\...) and $env:NAME variables; this is PowerShell, not bash.\n* Please avoid commands that may produce a very large amount of output.\n* Please run long lived commands in the background, e.g. 'Start-Job' or start a server with Start-Process.",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "command": {
+              "type": "string",
+              "description": "The PowerShell command to run. Relative path is preferred in the command."
+            }
+          },
+          "required": [
+            "command"
+          ]
         }
       }
     ],
     "messages": [
       {
-        "role": "system",
-        "text": "You are a helpful software engineer assistant."
-      },
-      {
         "role": "user",
-        "text": "Exercise the packaged minimal agent's persistent shell."
+        "content": [
+          {
+            "type": "text",
+            "text": "Exercise the packaged minimal agent's persistent shell."
+          }
+        ]
       }
     ]
   },
   {
+    "system": "You are a helpful software engineer assistant.",
     "tools": [
       {
-        "type": "function",
-        "function": {
-          "name": "pwsh",
-          "description": "Run commands in a PowerShell shell\n* When invoking this tool, the contents of the \"command\" parameter does NOT need to be XML-escaped.\n* You don't have access to the internet via this tool.\n* State is persistent across command calls and discussions with the user.\n* Use native Windows paths (C:\\...) and $env:NAME variables; this is PowerShell, not bash.\n* Please avoid commands that may produce a very large amount of output.\n* Please run long lived commands in the background, e.g. 'Start-Job' or start a server with Start-Process.",
-          "parameters": {
-            "type": "object",
-            "properties": {
-              "command": {
-                "type": "string",
-                "description": "The PowerShell command to run. Relative path is preferred in the command."
-              }
-            },
-            "required": [
-              "command"
-            ]
-          }
+        "name": "pwsh",
+        "description": "Run commands in a PowerShell shell\n* When invoking this tool, the contents of the \"command\" parameter does NOT need to be XML-escaped.\n* You don't have access to the internet via this tool.\n* State is persistent across command calls and discussions with the user.\n* Use native Windows paths (C:\\...) and $env:NAME variables; this is PowerShell, not bash.\n* Please avoid commands that may produce a very large amount of output.\n* Please run long lived commands in the background, e.g. 'Start-Job' or start a server with Start-Process.",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "command": {
+              "type": "string",
+              "description": "The PowerShell command to run. Relative path is preferred in the command."
+            }
+          },
+          "required": [
+            "command"
+          ]
         }
       }
     ],
     "messages": [
       {
-        "role": "system",
-        "text": "You are a helpful software engineer assistant."
-      },
-      {
         "role": "user",
-        "text": "Exercise the packaged minimal agent's persistent shell."
+        "content": [
+          {
+            "type": "text",
+            "text": "Exercise the packaged minimal agent's persistent shell."
+          }
+        ]
       },
       {
         "role": "assistant",
@@ -73,42 +71,46 @@
         ]
       },
       {
-        "role": "tool",
-        "toolCallId": "minimal-bash-1",
-        "text": "{{tool-result}}"
+        "role": "user",
+        "content": [
+          {
+            "type": "tool_result",
+            "tool_use_id": "minimal-bash-1",
+            "content": "{{tool-result}}"
+          }
+        ]
       }
     ]
   },
   {
+    "system": "You are a helpful software engineer assistant.",
     "tools": [
       {
-        "type": "function",
-        "function": {
-          "name": "pwsh",
-          "description": "Run commands in a PowerShell shell\n* When invoking this tool, the contents of the \"command\" parameter does NOT need to be XML-escaped.\n* You don't have access to the internet via this tool.\n* State is persistent across command calls and discussions with the user.\n* Use native Windows paths (C:\\...) and $env:NAME variables; this is PowerShell, not bash.\n* Please avoid commands that may produce a very large amount of output.\n* Please run long lived commands in the background, e.g. 'Start-Job' or start a server with Start-Process.",
-          "parameters": {
-            "type": "object",
-            "properties": {
-              "command": {
-                "type": "string",
-                "description": "The PowerShell command to run. Relative path is preferred in the command."
-              }
-            },
-            "required": [
-              "command"
-            ]
-          }
+        "name": "pwsh",
+        "description": "Run commands in a PowerShell shell\n* When invoking this tool, the contents of the \"command\" parameter does NOT need to be XML-escaped.\n* You don't have access to the internet via this tool.\n* State is persistent across command calls and discussions with the user.\n* Use native Windows paths (C:\\...) and $env:NAME variables; this is PowerShell, not bash.\n* Please avoid commands that may produce a very large amount of output.\n* Please run long lived commands in the background, e.g. 'Start-Job' or start a server with Start-Process.",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "command": {
+              "type": "string",
+              "description": "The PowerShell command to run. Relative path is preferred in the command."
+            }
+          },
+          "required": [
+            "command"
+          ]
         }
       }
     ],
     "messages": [
       {
-        "role": "system",
-        "text": "You are a helpful software engineer assistant."
-      },
-      {
         "role": "user",
-        "text": "Exercise the packaged minimal agent's persistent shell."
+        "content": [
+          {
+            "type": "text",
+            "text": "Exercise the packaged minimal agent's persistent shell."
+          }
+        ]
       },
       {
         "role": "assistant",
@@ -120,9 +122,14 @@
         ]
       },
       {
-        "role": "tool",
-        "toolCallId": "minimal-bash-1",
-        "text": "{{tool-result}}"
+        "role": "user",
+        "content": [
+          {
+            "type": "tool_result",
+            "tool_use_id": "minimal-bash-1",
+            "content": "{{tool-result}}"
+          }
+        ]
       },
       {
         "role": "assistant",
@@ -134,9 +141,14 @@
         ]
       },
       {
-        "role": "tool",
-        "toolCallId": "minimal-bash-2",
-        "text": "{{tool-result}}"
+        "role": "user",
+        "content": [
+          {
+            "type": "tool_result",
+            "tool_use_id": "minimal-bash-2",
+            "content": "{{tool-result}}"
+          }
+        ]
       }
     ]
   }

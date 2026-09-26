@@ -1,6 +1,34 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-09-02-b4-p7-task-actions-services-terminal.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-02-b4-p7-task-actions-services-terminal.md
-2026-09-02-b4-p7-task-actions-services-terminal.md: 310dd766395e74444b79414ad6fc9f05daef8ba1
-2026-09-02-b4-p7-task-actions-services-terminal.zh.md: 30c2e91c6a6ce9e48aaa9c4dad65368d17a523c0
+/agent-note-b4-p7-task-actions-services-terminal-task-rooted-processes-with-one-owner-and-redacted-output:
+  en: f1f8dcbce65c9174
+  zh: c1129140913c1fc5
+/agent-note-b4-p7-task-actions-services-terminal-task-rooted-processes-with-one-owner-and-redacted-output/problem:
+  en: d7b8e70c8e7b1e5f
+  zh: 6f4667db8bcfd097
+/agent-note-b4-p7-task-actions-services-terminal-task-rooted-processes-with-one-owner-and-redacted-output/decision:
+  en: a15c7c13f167e5ac
+  zh: a15c7c13f167e5ac
+/agent-note-b4-p7-task-actions-services-terminal-task-rooted-processes-with-one-owner-and-redacted-output/decision/task-terminal-the-desktop-terminal-rooted-at-the-task-workdir:
+  en: 846382b686d8b7a8
+  zh: 320c9e38a8198fad
+/agent-note-b4-p7-task-actions-services-terminal-task-rooted-processes-with-one-owner-and-redacted-output/decision/project-services-controlled-definitions-process-owner-run-state:
+  en: f4ef96bcbcb20868
+  zh: c58e797f81ba6123
+/agent-note-b4-p7-task-actions-services-terminal-task-rooted-processes-with-one-owner-and-redacted-output/decision/browser-only-declared-service-urls:
+  en: 11bf923dbf31d8c6
+  zh: 88b87e1db6a97303
+/agent-note-b4-p7-task-actions-services-terminal-task-rooted-processes-with-one-owner-and-redacted-output/decision/redaction-and-environment-at-the-process-owner:
+  en: b85474423085dedd
+  zh: cc1febea098c3b30
+/agent-note-b4-p7-task-actions-services-terminal-task-rooted-processes-with-one-owner-and-redacted-output/verification:
+  en: 83df638672080bb6
+  zh: d8ce1885a0fd37fe
+/agent-note-b4-p7-task-actions-services-terminal-task-rooted-processes-with-one-owner-and-redacted-output/alternatives-considered:
+  en: 7b0a4608465bf9fd
+  zh: 119615ba6a2bf7b8
+/agent-note-b4-p7-task-actions-services-terminal-task-rooted-processes-with-one-owner-and-redacted-output/consequences:
+  en: ba4b053c4ce9a8b0
+  zh: 85f720ddf387dda7

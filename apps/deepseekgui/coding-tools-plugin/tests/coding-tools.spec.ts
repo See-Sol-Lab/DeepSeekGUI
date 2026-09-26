@@ -143,12 +143,33 @@ describe('write gates', () => {
     await def('git_commit').execute({ cwd: 'C:\\repo', message: 'reviewed' }, execWith())
     expect(git.commit).toHaveBeenCalledWith('C:\\repo', 'reviewed', 'tree-1')
   })
-  it('stage executes without approval in a writable session and returns fresh status', async () => {
+  it('stage asks first under workspace-write (.git is read-only by default), then returns fresh status', async () => {
     const { def, git, approval } = makeCtx()
     const value = await def('git_stage').execute({ cwd: 'C:\\repo', path: 'a.ts' }, execWith())
+    expect(approval.request).toHaveBeenCalledWith(expect.objectContaining({
+      toolName: 'git_stage',
+      reason: expect.stringContaining('.git'),
+      danger: ['git'],
+    }))
+    expect(git.stageFile).toHaveBeenCalledWith('C:\\repo', 'a.ts')
+    expect(value).toMatchObject({ clean: true })
+  })
+
+  it('stage and unstage stay untouched when the person rejects the .git change', async () => {
+    const { def, git, approval } = makeCtx()
+    approval.request.mockResolvedValue('rejected')
+    await expect(def('git_stage').execute({ cwd: 'C:\\repo', path: 'a.ts' }, execWith())).rejects.toThrow()
+    await expect(def('git_unstage').execute({ cwd: 'C:\\repo', path: 'a.ts' }, execWith())).rejects.toThrow()
+    expect(git.stageFile).not.toHaveBeenCalled()
+    expect(git.unstageFile).not.toHaveBeenCalled()
+  })
+
+  it('stage executes without approval under full access', async () => {
+    const { def, git, approval, sandboxPolicy } = makeCtx()
+    sandboxPolicy.resolve.mockReturnValue({ mode: 'danger-full-access', workspaceRoot: 'C:\\repo' })
+    await def('git_stage').execute({ cwd: 'C:\\repo', path: 'a.ts' }, execWith())
     expect(git.stageFile).toHaveBeenCalledWith('C:\\repo', 'a.ts')
     expect(approval.request).not.toHaveBeenCalled()
-    expect(value).toMatchObject({ clean: true })
   })
 
   it('stage refuses in a read-only session', async () => {

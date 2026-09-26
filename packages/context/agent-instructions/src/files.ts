@@ -14,8 +14,8 @@ import { resolveConfig, resolveDiscoveryConfig, type ResolvedConfig } from './co
 import { trimmedInstructionDigest } from './digest.ts'
 import {
   decodeScopeKey,
-  renderWorkspaceInstructionSet,
-  type RenderedWorkspaceContext,
+  renderAgentInstructionSet,
+  type RenderedAgentInstructions,
   USER_GLOBAL_DIRECTORY,
   USER_GLOBAL_FILE,
 } from './render.ts'
@@ -64,7 +64,7 @@ interface LoadOptions extends DiscoverOptions {
 
 /** Rendered baseline plus the successfully read and byte-budget-retained files. */
 export interface RenderedInstructionSet {
-  rendered: RenderedWorkspaceContext
+  rendered: RenderedAgentInstructions
   /** Successfully read candidates before content deduplication and byte budgeting. */
   observed: LoadedInstructionFile[]
   /** Candidates retained by content deduplication and byte budgeting. */
@@ -97,6 +97,16 @@ function isMissingPathError(error: unknown): boolean {
 
 function isMissingProviderPathError(error: unknown): boolean {
   return error instanceof Error && 'code' in error && error.code === 'FS_NOT_FOUND'
+}
+
+/**
+ * DeepSeekGUI: a marker this process may not open still stands there. A `.git`
+ * whose permissions went wrong made every turn fail with a bare EPERM; the
+ * directory is still the project root.
+ */
+function isPermissionError(error: unknown): boolean {
+  return error instanceof Error && 'code' in error
+    && (error.code === 'EPERM' || error.code === 'EACCES' || error.code === 'FS_PERMISSION_DENIED')
 }
 
 async function nodeStatFile(path: string, signal?: AbortSignal): Promise<StatFileProbe> {
@@ -154,6 +164,7 @@ async function existsAsMarker(path: string, fileSystem?: FileSystem, signal?: Ab
     } catch (error: unknown) {
       signal?.throwIfAborted()
       if (isMissingProviderPathError(error)) return false
+      if (isPermissionError(error)) return true
       throw error
     }
   }
@@ -165,6 +176,7 @@ async function existsAsMarker(path: string, fileSystem?: FileSystem, signal?: Ab
   } catch (error: unknown) {
     signal?.throwIfAborted()
     if (isMissingPathError(error)) return false
+    if (isPermissionError(error)) return true
     throw error
   }
 }
@@ -401,7 +413,7 @@ export function dedupInstructionFilesByDirectory(files: LoadedInstructionFile[])
 export async function loadBaselineInstructions(
   options: LoadOptions,
   fileSystem?: FileSystem,
-): Promise<RenderedWorkspaceContext | undefined> {
+): Promise<RenderedAgentInstructions | undefined> {
   return (await loadBaselineInstructionSet(options, fileSystem))?.rendered
 }
 
@@ -434,7 +446,7 @@ export async function loadBaselineInstructionSet(
   const deduped = dedupInstructionFilesByDirectory(loaded)
   if (deduped.length === 0) {
     if (options.replacePreviousBaseline !== true) return undefined
-    const { rendered, included } = renderWorkspaceInstructionSet([], {
+    const { rendered, included } = renderAgentInstructionSet([], {
       maxBytes: config.maxBytes,
       replacePreviousBaseline: true,
     })
@@ -444,7 +456,7 @@ export async function loadBaselineInstructionSet(
       included,
     }
   }
-  const { rendered, included } = renderWorkspaceInstructionSet(deduped, {
+  const { rendered, included } = renderAgentInstructionSet(deduped, {
     maxBytes: config.maxBytes,
     ...options.replacePreviousBaseline === undefined
       ? {}

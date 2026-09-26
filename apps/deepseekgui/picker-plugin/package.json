@@ -7,10 +7,12 @@
   "main": "lib/index.js",
   "exports": {
     ".": "./lib/index.js",
+    "./locale/*.json": "./locale/*.json",
     "./package.json": "./package.json"
   },
   "license": "SEE LICENSE IN ../../../DEEPSEEKGUI-LICENSE.md",
   "files": [
+    "locale/*.json",
     "lib/index.js"
   ]
 }

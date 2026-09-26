@@ -1,6 +1,19 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-08-31-b3-p1-direct-composition-spike.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-31-b3-p1-direct-composition-spike.md
-2026-08-31-b3-p1-direct-composition-spike.md: 58b46d58612d9a36c3fd661fb9d26b29c8df53d9
-2026-08-31-b3-p1-direct-composition-spike.zh.md: 2799b43c7d92e6c4f9118027e7f64224b319250e
+/agent-note-b3-p1-direct-composition-spike-the-workbench-product-plugin:
+  en: f42b1ac3c31f8b79
+  zh: 03b9014d973cb5bf
+/agent-note-b3-p1-direct-composition-spike-the-workbench-product-plugin/problem:
+  en: 5ff865090ef6000c
+  zh: f47e631772ce1c46
+/agent-note-b3-p1-direct-composition-spike-the-workbench-product-plugin/decision:
+  en: b10d6aa7e66d104c
+  zh: 7ba87d77a1b1f868
+/agent-note-b3-p1-direct-composition-spike-the-workbench-product-plugin/alternatives-considered:
+  en: 210033b28896dae6
+  zh: 573bfa06a095c6f1
+/agent-note-b3-p1-direct-composition-spike-the-workbench-product-plugin/consequences:
+  en: ab27e6b5f602a970
+  zh: edb0ecf39ea019e1

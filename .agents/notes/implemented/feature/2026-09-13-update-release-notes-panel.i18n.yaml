@@ -1,0 +1,19 @@
+# Bilingual-pair consistency record for 2026-09-13-update-release-notes-panel.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-13-update-release-notes-panel.md
+/agent-note-readable-release-notes-in-the-update-panel-and-a-hover-preview:
+  en: 25225641dccc0c84
+  zh: 4224765745b161da
+/agent-note-readable-release-notes-in-the-update-panel-and-a-hover-preview/problem:
+  en: 3d09601c8cc627e8
+  zh: 4272af48761e56d5
+/agent-note-readable-release-notes-in-the-update-panel-and-a-hover-preview/decision:
+  en: b40d1c9a950f209b
+  zh: b765761fbd61d910
+/agent-note-readable-release-notes-in-the-update-panel-and-a-hover-preview/alternatives-considered:
+  en: 83da0b010b9fe96b
+  zh: 13bfe095b2bf855a
+/agent-note-readable-release-notes-in-the-update-panel-and-a-hover-preview/consequences:
+  en: 0c8cd618c1866ceb
+  zh: 2a368fa7715041a5

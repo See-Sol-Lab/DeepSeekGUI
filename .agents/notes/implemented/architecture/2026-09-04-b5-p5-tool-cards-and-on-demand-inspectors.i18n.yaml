@@ -1,6 +1,22 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-09-04-b5-p5-tool-cards-and-on-demand-inspectors.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-09-04-b5-p5-tool-cards-and-on-demand-inspectors.md
-2026-09-04-b5-p5-tool-cards-and-on-demand-inspectors.md: 832e343c2f11a63dcd8627819b2f3dfb36c36b38
-2026-09-04-b5-p5-tool-cards-and-on-demand-inspectors.zh.md: bc076d7b01f87ac428fbe902464827846c68f8fa
+/agent-note-b5-p5-tool-result-cards-and-on-demand-inspectors:
+  en: d3ef5436fee1d5ec
+  zh: f627a11a3f837d87
+/agent-note-b5-p5-tool-result-cards-and-on-demand-inspectors/problem:
+  en: 6c9d996b57bb8fbf
+  zh: a7d864de2dfe9fc7
+/agent-note-b5-p5-tool-result-cards-and-on-demand-inspectors/decision:
+  en: 8e348a2508dcfa65
+  zh: 1af584aadef65e06
+/agent-note-b5-p5-tool-result-cards-and-on-demand-inspectors/alternatives-considered:
+  en: e31346f8257fb1c1
+  zh: e1c66fd744ad716e
+/agent-note-b5-p5-tool-result-cards-and-on-demand-inspectors/verification:
+  en: 2cd97c2459e642a4
+  zh: e49d26ab9111744e
+/agent-note-b5-p5-tool-result-cards-and-on-demand-inspectors/consequences:
+  en: 38aece8a0de48924
+  zh: 44116f135c5afed8

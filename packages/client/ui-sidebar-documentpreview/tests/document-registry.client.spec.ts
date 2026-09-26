@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { DocumentPreviewRegistry } from '../src/client/document/registry.ts'
+import { binaryDocumentPath, DocumentPreviewRegistry } from '../src/client/document/registry.ts'
 import type { DocumentPreviewDefinition } from '../src/client/document/registry.ts'
 
 function definition(id: string, overrides: Partial<DocumentPreviewDefinition> = {}): DocumentPreviewDefinition {
@@ -56,6 +56,25 @@ describe('document preview implementations', () => {
     unsubscribe()
     registry.register(entry)
     expect(listener).toHaveBeenCalledTimes(2)
+  })
+
+  it('marks a path binary only for declared binary suffixes, case-insensitively', () => {
+    const image = definition('image', { extensions: ['png', 'svg'], binaryExtensions: ['png'] })
+    const text = definition('text', { extensions: [] })
+    expect(binaryDocumentPath([image, text], '/work/photo.PNG')).toBe(true)
+    expect(binaryDocumentPath([image, text], 'C:\\work\\photo.png')).toBe(true)
+    expect(binaryDocumentPath([image, text], '/work/diagram.svg')).toBe(false)
+    expect(binaryDocumentPath([image, text], '/work.png/plain')).toBe(false)
+    expect(binaryDocumentPath([text], '/work/photo.png')).toBe(false)
+  })
+
+  it('rejects a binary suffix outside the declared extensions without registering', () => {
+    const registry = new DocumentPreviewRegistry()
+    expect(() => registry.register(definition('image', { extensions: ['png', 'svg'], binaryExtensions: ['pdf'] })))
+      .toThrow(/binary suffix "pdf" outside its extensions/u)
+    expect(registry.getSnapshot()).toEqual([])
+    registry.register(definition('image', { extensions: ['PNG', 'svg'], binaryExtensions: ['.png'] }))
+    expect(registry.getSnapshot()).toHaveLength(1)
   })
 
   it('rejects duplicate ids without replacing the existing registration', () => {

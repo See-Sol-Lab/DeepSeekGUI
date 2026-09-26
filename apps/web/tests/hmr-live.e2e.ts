@@ -1,4 +1,4 @@
-/** Published dsh web + pnpm dev:web → browser HMR, with no page reload. */
+/** Built dsh web + the `pnpm run dev:web --no-serve` watchers → browser HMR, with no page reload. */
 
 import { existsSync, globSync, statSync } from 'node:fs'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
@@ -17,6 +17,8 @@ const CLIENT_ARTIFACT_PATTERNS = [
   'apps/web/dist/**/*',
   'packages/*/*/lib/client.js',
   'packages/*/*/lib/client.js.map',
+  'packages/*/*/lib/client.*.js',
+  'packages/*/*/lib/client.*.js.map',
 ]
 
 /** Return every artifact that `pnpm run dev:web` can rewrite. */
@@ -106,12 +108,14 @@ it('hot-reloads a real client-plugin source edit without refreshing the page', a
   const failures: unknown[] = []
   try {
     subprocessFiber = await subprocessCtx.plugin(LocalSubprocessRuntime)
+    // Watchers only: the built `dsh web` below is the server under test, and the
+    // built tree is this lane's precondition rather than something to rebuild.
     watcher = subprocessCtx.subprocess.spawn(spawnSpec(
-      ['pnpm', 'run', 'dev:web'],
+      ['pnpm', 'run', 'dev:web', '--skip-build', '--no-serve'],
       REPO_ROOT,
       { ...clientBuildEnvironment },
     ))
-    await waitForOutput(watcher, /dev-web: watching/, 'pnpm run dev:web')
+    await waitForOutput(watcher, /dev-web: watching/, 'pnpm run dev:web --skip-build --no-serve')
     host = subprocessCtx.subprocess.spawn(spawnSpec(
       [process.execPath, binPath, 'web', '--no-open', '--port', '0'],
       world,

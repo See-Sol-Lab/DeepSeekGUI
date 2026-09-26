@@ -7,9 +7,8 @@
  * @module @deepseek-ai/dsh-client-ui-message-feedback/client/controller
  */
 
-import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
-import type { MessageId } from '@deepseek-ai/dsh-api-remotes/client'
+import type { ClientRemote, MessageId } from '@deepseek-ai/dsh-api-remotes/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { FeedbackRecord } from '@deepseek-ai/dsh-command-feedback/types'
 import type {
@@ -95,11 +94,11 @@ export class MessageFeedbackController implements HostObservable<MessageFeedback
   private disposed = false
 
   /**
-   * @param ctx - the browser plugin context carrying the messageFeedback Remote namespace.
+   * @param remote - the messageFeedback Remote namespace.
    * @param sessionId - Session owning every addressed assistant message.
    */
   constructor(
-    private readonly ctx: ClientContext,
+    private readonly remote: ClientRemote['messageFeedback'],
     private readonly sessionId: SessionId,
   ) {}
 
@@ -194,7 +193,7 @@ export class MessageFeedbackController implements HostObservable<MessageFeedback
     entry: FeedbackRecord,
     observed: MessageFeedbackItem | undefined,
   ): Promise<MessageFeedbackActionResult> {
-    const carried = await this.ctx.remote.messageFeedback.put({
+    const carried = await this.remote.put({
       sessionId: this.sessionId,
       messageId,
       rating,
@@ -217,7 +216,7 @@ export class MessageFeedbackController implements HostObservable<MessageFeedback
     messageId: MessageId,
     observed: MessageFeedbackItem,
   ): Promise<MessageFeedbackActionResult> {
-    const carried = await this.ctx.remote.messageFeedback.delete({
+    const carried = await this.remote.delete({
       sessionId: this.sessionId,
       messageId,
       ifVersion: observed.version,
@@ -240,7 +239,7 @@ export class MessageFeedbackController implements HostObservable<MessageFeedback
 
   /** Fetch the whole sidecar and publish it as the seeded view. */
   private async load(): Promise<MessageFeedbackActionResult> {
-    const carried = await this.ctx.remote.messageFeedback.list({ sessionId: this.sessionId })
+    const carried = await this.remote.list({ sessionId: this.sessionId })
     if (this.disposed) return OK
     if (!carried.ok) {
       this.publish({ status: 'error', items: this.view.items, error: carried.error.message })

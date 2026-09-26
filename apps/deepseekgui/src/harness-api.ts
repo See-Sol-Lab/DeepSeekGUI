@@ -243,7 +243,20 @@ export function createHarnessApi(options: HarnessApiOptions): HarnessApi {
   const zh = options.zh ?? (() => true)
 
   /** 单次调用的超时上限：调用方传更紧的超时（如退出确认的 1500ms）时取更小值。 */
-  const call = async (method: string, args: unknown, callTimeoutMs: number | null = timeoutMs): Promise<unknown> => {
+  /**
+   * 一次官方 RPC。
+   * @param method - `namespace/method` 端点。
+   * @param args - payload.args 的内容。
+   * @param callTimeoutMs - 这一次的超时；null = 不设超时（等回复结束的删除）。
+   * @param expects - 'value' 要求成功响应带值；'void' 是返回 void 的端点：
+   *   它们的成功响应是 `{ ok: true, value: undefined }`，JSON 里那个键直接
+   *   消失，所以缺 value 才是正常的（0.1.7 合并后 session/rename、
+   *   workspace/archiveSession、workbenchInspector/deleteSession 都撞上了）。
+   * @returns 端点的返回值；void 端点返回 undefined。
+   */
+  const call = async (
+    method: string, args: unknown, callTimeoutMs: number | null = timeoutMs, expects: 'value' | 'void' = 'value',
+  ): Promise<unknown> => {
     const rpcId = randomUUID()
     let response: { ok: boolean; status: number; json: () => Promise<unknown> }
     try {
@@ -274,7 +287,10 @@ export function createHarnessApi(options: HarnessApiOptions): HarnessApi {
     const result = body.result
     if (!isRecord(result)) throw new HarnessRpcError('bad-response', zh() ? 'result: 必须是对象' : 'result: must be an object')
     if (result.ok === true) {
-      if (!('value' in result)) throw new HarnessRpcError('bad-response', zh() ? 'ok 响应缺少 value' : 'The successful response is missing value')
+      if (!('value' in result)) {
+        if (expects === 'void') return undefined
+        throw new HarnessRpcError('bad-response', zh() ? 'ok 响应缺少 value' : 'The successful response is missing value')
+      }
       return result.value
     }
     const error = result.error
@@ -313,10 +329,10 @@ export function createHarnessApi(options: HarnessApiOptions): HarnessApi {
       assertSessionPromptValue(await call('session/prompt', { request: { requestId, ...payload } }), zh())
     },
     async sessionRename(sessionId, title) {
-      await call('session/rename', { request: { sessionId, title } })
+      await call('session/rename', { request: { sessionId, title } }, timeoutMs, 'void')
     },
     async sessionArchive(sessionId) {
-      await call('workspace/archiveSession', { request: { sessionId } })
+      await call('workspace/archiveSession', { request: { sessionId } }, timeoutMs, 'void')
     },
     async workbenchLastReply(sessionId) {
       const value = await call('workbenchInspector/lastReply', { sessionId })
@@ -327,7 +343,7 @@ export function createHarnessApi(options: HarnessApiOptions): HarnessApi {
     },
     async sessionDelete(sessionId, signature) {
       // Deletion waits for the current reply rather than an ordinary RPC deadline.
-      await call('workbenchInspector/deleteSession', { sessionId, signature }, null)
+      await call('workbenchInspector/deleteSession', { sessionId, signature }, null, 'void')
     },
   }
 }

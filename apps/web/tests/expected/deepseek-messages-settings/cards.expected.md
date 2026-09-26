@@ -1,0 +1,46 @@
+- dialog "设置":
+  - navigation:
+    - text: 设置
+    - button "通用设置"
+    - button "模型"
+    - button "内置插件"
+    - button "Agent 预设"
+  - button "打开配置文件"
+  - button "关闭"
+  - heading "模型" [level=2]
+  - paragraph: 填入各提供商的 API 密钥即可使用其模型。
+  - list:
+    - listitem:
+      - text: DeepSeek
+      - img "API 密钥已配置"
+      - button "编辑 DeepSeek (deepseek-official)": 编辑
+      - text: DeepSeek deepseek-official API 密钥
+      - textbox "API 密钥":
+        - /placeholder: 已配置——输入新值可替换
+      - group:
+        - text: 自定义设置 API 地址
+        - textbox "API 地址":
+          - /placeholder: https://api.deepseek.com/anthropic
+        - text: 请填写兼容 Anthropic Messages 协议的 API 地址。
+        - region "模型目录":
+          - text: 模型目录 正在使用适配器默认模型
+          - textbox "模型 ID 1":
+            - /placeholder: 模型 ID
+            - text: deepseek-flash
+          - textbox "显示名称 1":
+            - /placeholder: 显示名称
+            - text: DeepSeek-V41-Flash
+          - button "模型选项 1"
+          - button "删除模型 1"
+          - textbox "模型 ID 2":
+            - /placeholder: 模型 ID
+            - text: deepseek-v4-pro
+          - textbox "显示名称 2":
+            - /placeholder: 显示名称
+            - text: DeepSeek-V4-Pro
+          - button "模型选项 2"
+          - button "删除模型 2"
+          - button "添加模型"
+      - button "取消"
+      - button "保存"
+  - button "添加模型提供商"

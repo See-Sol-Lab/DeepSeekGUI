@@ -26,7 +26,6 @@ const base: FeedbackDiagnosticsInput = {
     { name: 'my-plugin', spec: 'file:../local' },
   ],
   lastExitUnclean: false,
-  recoveryJournalState: null,
   logTail: [
     'spawned DSH with sk-abcdefgh12345678 in env',
     'reading C:\\Users\\Alice\\AppData\\Local\\DeepSeekGUI\\logs\\main.log',
@@ -67,11 +66,6 @@ describe('buildFeedbackDiagnostics 结构', () => {
     expect(text).toContain('(no logs available)')
     expect(text).toContain('Permissions: unknown')
     expect(text).toContain('Last exit: no record')
-  })
-
-  it('recovery journal 状态如实进入（pending 证据不丢）', () => {
-    const text = buildFeedbackDiagnostics({ ...base, recoveryJournalState: 'pending-verification' })
-    expect(text).toContain('Plugin recovery journal: pending-verification')
   })
 })
 

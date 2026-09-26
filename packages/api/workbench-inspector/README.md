@@ -45,6 +45,17 @@ Git inspection disables optional index locks, external diff/textconv programs, a
 
 </details>
 
+<details>
+<summary>DeepSeekGUI desktop account bridge</summary>
+
+When DeepSeekGUI launches the Host it sets `DEEPSEEKGUI_ACCOUNT_BRIDGE` (a loopback `host:port#token`). Only then does the inspector add one head script to the served index and publish account state; any other launch leaves both off.
+
+The script runs before the official client scripts and acts only in a page whose URL carries DeepSeekGUI's control-bridge parameter. It defines the `dshDesktop` carrier that the official account settings, sign-in, and onboarding require, plus a `dshPlatform` bridge that forwards open, move, and close requests for the embedded Platform view to the desktop. An external browser tab or `dsh web` stays plain Web.
+
+Every `deepseekAccount` frame goes to the desktop with the Host-only Platform session, as the official Desktop Host does. The page never receives the token, and the desktop validates every frame because the agent can read the variable.
+
+</details>
+
 <a id="further-exploration"></a>
 ## Further Exploration
 

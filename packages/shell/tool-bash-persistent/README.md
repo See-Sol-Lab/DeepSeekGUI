@@ -56,7 +56,7 @@ Commands share one shell per agent, so state persists until an `exit`, a timeout
 
 ### What can go wrong
 
-A call without an owning agent session fails with `bash requires an owning agent session`, and a composition without a PTY backend activates the tool but fails its first call with `no PTY backend registered for "shell"`. An interactive foreground child (for example a REPL) returns early with partial output only where the backend proves its stdin wait; elsewhere the call runs to `timeoutMs`, which closes the uncertain shell and reports the reset. Cancellation also resets and discards the result, even when a complete status marker is already observable.
+A call without an owning agent session fails with `bash requires an owning agent session`, and a composition without a PTY backend activates the tool but fails its first call with `no PTY backend registered for "shell"`. An interactive foreground child (for example a REPL) returns early with partial output only where the backend proves its stdin wait; elsewhere the call runs to `timeoutMs`, which closes the uncertain shell and reports the reset. Cancellation also resets and discards the result, even when a complete status marker is already observable. After cleanup settles, ToolRuntime publishes `Error: tool call aborted` with code `ABORTED`; cancellation reasons are not rendered as command output. A queued cancelled call sends no command.
 
 -----
 
@@ -80,7 +80,7 @@ This section explains the design decisions behind the tool and points at the cod
 | File | Role |
 |---|---|
 | [`src/index.ts`](src/index.ts) | Plugin entry: shell registry, command wrapping, scrollback polling, extraction and rendering |
-| — | No runtime invariant companion is published; the adapter's private owner-to-shell cache has no observable event or data relation. Lifecycle tests prove its cleanup without adding a public API solely for an invariant. |
+| — | No runtime invariant companion is published; the adapter's private owner-to-shell cache has no observable event or data relation. Shell reuse remains observable through tool execution. Lifecycle tests prove its cleanup without adding a public API solely for an invariant. |
 
 ### Command flow
 
@@ -126,7 +126,7 @@ Prefix-stable while the configured description and schema remain unchanged.
 
 #### What the model sees
 
-Commands share one shell per Agent, so cwd, exported variables, activated environments, functions, and background jobs persist across calls. Results exclude private completion markers. When the shell reads stdin again without having printed the completion marker — after `exec`, an interrupt, or an interactive foreground child whose stdin wait the provider proves — the call returns the captured partial output, which can end with the backend's own prompt text. Every settled command appends `[Command finished with exit code N]`; a shell that exits before reporting that status instead appends `[shell exited: code N]`, `[shell killed by signal: SIG]`, or `[shell exited]` when the backend supplies neither, then resets and tells the model that the next call starts fresh. Long output keeps the earliest retained prefix plus a clipping notice. If the PTY has already dropped that prefix, the result says so explicitly instead of presenting a tail as complete output. Timeout returns bounded partial output followed by `[Command timed out or OOM]`, closes the uncertain shell, and reports the reset.
+Commands share one shell per agent, so cwd, exported variables, activated environments, functions, and background jobs persist across calls. Results exclude private completion markers. When the shell reads stdin again without having printed the completion marker — after `exec`, an interrupt, or an interactive foreground child whose stdin wait the provider proves — the call returns the captured partial output, which can end with the backend's own prompt text. Every settled command appends `[Command finished with exit code N]`; a shell that exits before reporting that status instead appends `[shell exited: code N]`, `[shell killed by signal: SIG]`, or `[shell exited]` when the backend supplies neither, then resets and tells the model that the next call starts fresh. Long output keeps the earliest retained prefix plus a clipping notice. If the PTY has already dropped that prefix, the result says so explicitly instead of presenting a tail as complete output. Timeout returns bounded partial output followed by `[Command timed out or OOM]`, closes the uncertain shell, and reports the reset.
 
 #### Token effect
 
@@ -143,7 +143,7 @@ Append-only tool results follow the reusable request prefix.
 
 These limits define when the tool is a poor fit or needs special care. They are current package constraints, not a task backlog.
 
-- **The tool requires an owning Agent and a real PTY backend** — agent-less calls and backends that cannot start an interactive shell fail.
+- **The tool requires an owning agent and a real PTY backend** — agent-less calls and backends that cannot start an interactive shell fail.
 - **An interactive foreground child returns early with partial output only where the subprocess provider proves its stdin wait** — elsewhere the call runs to `timeoutMs`.
 - **Explicit `exit` and timeout discard shell state** — cancellation also resets and discards the result, even when a complete status marker is already observable; the next call starts a fresh shell.
 - **Environment facts such as network access and package mirrors belong in the configured `description`** — not this package's default.

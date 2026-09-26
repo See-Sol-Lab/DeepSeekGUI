@@ -176,11 +176,15 @@ describe('discoverProfiles（真实 dev 入口）', () => {
     stageProfile(home, 'web', ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'])
     stageProfile(home, 'headless', ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-headless'])
     stageProfile(home, 'custom', ['@deepseek-ai/dsh-base'])
-    // malformed：bundle 列表指向不存在的包。
+    // rc.2：真实启动跳过解析不到的 bundle 继续启动，发现按剩下的组合分类，跳过的原因进 evidence。
     stageProfile(home, 'broken', ['@deepseek-ai/dsh-ghost'])
+    // malformed：profile 自己的 manifest 读不出来，真实启动同样失败。
+    mkdirSync(join(home, 'profiles', 'corrupt'), { recursive: true })
+    writeFileSync(join(home, 'profiles', 'corrupt', 'package.json'), '{ not json')
     const result = await launch(home)
     expect(result.profiles.map(profile => [profile.name, profile.staticStatus])).toEqual([
-      ['broken', 'malformed'],
+      ['broken', 'candidate'],
+      ['corrupt', 'malformed'],
       ['custom', 'candidate'],
       ['headless', 'headless'],
       ['web', 'web-capable'],
@@ -190,7 +194,10 @@ describe('discoverProfiles（真实 dev 入口）', () => {
     expect(web.dir).toBe(join(home, 'profiles', 'web'))
     expect(web.evidence.length).toBeGreaterThan(0)
     const broken = result.profiles.find(profile => profile.name === 'broken')!
-    expect(broken.error).toContain('cannot resolve profile bundle')
+    expect(broken.bundles).toEqual([])
+    expect(broken.evidence.join('\n')).toContain('bundle @deepseek-ai/dsh-ghost skipped')
+    expect(broken.evidence.join('\n')).toContain('cannot resolve profile bundle')
+    expect(result.profiles.find(profile => profile.name === 'corrupt')!.error).toBeTruthy()
   })
 
   it('spaces/Unicode 的 home 与 profile 名原样进入文档', async () => {

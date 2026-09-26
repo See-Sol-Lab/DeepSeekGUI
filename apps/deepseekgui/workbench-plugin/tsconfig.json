@@ -12,6 +12,8 @@
   "references": [
     { "path": "../../../packages/api/remotes/tsconfig.client.json" },
     { "path": "../../../packages/api/workbench-inspector" },
+    { "path": "../../../packages/api/workbench-memory" },
+    { "path": "../../../packages/credentials/deepseek-account" },
     { "path": "../../../packages/git/git" },
     { "path": "../../../packages/typert/protocol" },
     {
@@ -30,7 +32,7 @@
       "path": "../../../packages/api/session-controller/tsconfig.client.json"
     },
     {
-      "path": "../../../packages/client/locale"
+      "path": "../../../packages/client/locale/tsconfig.client.json"
     },
     {
       "path": "../../../packages/client/ui-slots"
@@ -42,10 +44,19 @@
       "path": "../../../packages/client/ui-sidebar"
     },
     {
-      "path": "../../../packages/client/ui-conversation"
+      "path": "../../../packages/client/ui-conversation/tsconfig.client.json"
     },
     {
-      "path": "../../../packages/client/ui-chat"
+      "path": "../../../packages/client/ui-settings/tsconfig.client.json"
+    },
+    {
+      "path": "../../../packages/client/ui-chat/tsconfig.client.json"
+    },
+    {
+      "path": "../../../packages/client/ui-workspace"
+    },
+    {
+      "path": "../../../packages/api/job-controller/tsconfig.client.json"
     },
     {
       "path": "../../../packages/client/ui-tool"

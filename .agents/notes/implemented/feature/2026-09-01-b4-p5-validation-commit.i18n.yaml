@@ -1,6 +1,31 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-09-01-b4-p5-validation-commit.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-01-b4-p5-validation-commit.md
-2026-09-01-b4-p5-validation-commit.md: b20dcf8dc20f7ca726048a5a185078cf44a50eb1
-2026-09-01-b4-p5-validation-commit.zh.md: a5b19f71d6e9c6c27d5377af8b3a966c06ae6cd4
+/agent-note-b4-p5-validation-commit-explicit-task-actions-with-streamed-runs-and-a-tree-guarded-commit:
+  en: f003defdcd76c4a7
+  zh: 1da9dc8618e5f9d1
+/agent-note-b4-p5-validation-commit-explicit-task-actions-with-streamed-runs-and-a-tree-guarded-commit/problem:
+  en: 1f19ba3a5280ebbf
+  zh: 66262db71d979a11
+/agent-note-b4-p5-validation-commit-explicit-task-actions-with-streamed-runs-and-a-tree-guarded-commit/decision:
+  en: a15c7c13f167e5ac
+  zh: 63bcc2ef60c2f344
+/agent-note-b4-p5-validation-commit-explicit-task-actions-with-streamed-runs-and-a-tree-guarded-commit/decision/task-actions-exact-executable-argv-cwd-run-state-stays-with-the-process-owner:
+  en: 80aeaf48a84c3ff8
+  zh: cf10f50a29d03647
+/agent-note-b4-p5-validation-commit-explicit-task-actions-with-streamed-runs-and-a-tree-guarded-commit/decision/the-guarded-commit:
+  en: 5942770d43263354
+  zh: 56dcec79767c79ec
+/agent-note-b4-p5-validation-commit-explicit-task-actions-with-streamed-runs-and-a-tree-guarded-commit/decision/boundaries-held:
+  en: 4bb7e00dfea0a270
+  zh: 9d2dadd1b7c7c9de
+/agent-note-b4-p5-validation-commit-explicit-task-actions-with-streamed-runs-and-a-tree-guarded-commit/verification:
+  en: 9155bd67e6473a5a
+  zh: 85e2e9cb1b8bdd20
+/agent-note-b4-p5-validation-commit-explicit-task-actions-with-streamed-runs-and-a-tree-guarded-commit/alternatives-considered:
+  en: 7c5942ebe8b50f3d
+  zh: b65fb08759d6aa4c
+/agent-note-b4-p5-validation-commit-explicit-task-actions-with-streamed-runs-and-a-tree-guarded-commit/consequences:
+  en: 0ccaeab6ed83a0a5
+  zh: c4679e5a952e8335

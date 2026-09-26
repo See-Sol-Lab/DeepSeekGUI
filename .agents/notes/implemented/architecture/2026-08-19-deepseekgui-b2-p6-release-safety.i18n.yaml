@@ -1,6 +1,25 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-08-19-deepseekgui-b2-p6-release-safety.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-08-19-deepseekgui-b2-p6-release-safety.md
-2026-08-19-deepseekgui-b2-p6-release-safety.md: b6758e9f53fa94ea5bb62298c2a97ef8a890c5ab
-2026-08-19-deepseekgui-b2-p6-release-safety.zh.md: 077fcec984075cef6ebc953662d96cdc6ea705ed
+/agent-note-deepseekgui-b2-p6-windows-v1-0-0-final-release-gate:
+  en: 165acac8f3028112
+  zh: e9e342d670d99ac5
+/agent-note-deepseekgui-b2-p6-windows-v1-0-0-final-release-gate/problem:
+  en: 827cda8f2afdcccd
+  zh: 388aa184800dc991
+/agent-note-deepseekgui-b2-p6-windows-v1-0-0-final-release-gate/decision:
+  en: 8a585e310b6998af
+  zh: 5af6ffb193ee34db
+/agent-note-deepseekgui-b2-p6-windows-v1-0-0-final-release-gate/decision/interrupted-recovery:
+  en: ddb27a40d5dd2c4a
+  zh: bf5c301b0d6665c3
+/agent-note-deepseekgui-b2-p6-windows-v1-0-0-final-release-gate/alternatives-considered:
+  en: 6b3b273e35e2ea17
+  zh: d3a5edcc5a2569ba
+/agent-note-deepseekgui-b2-p6-windows-v1-0-0-final-release-gate/consequences:
+  en: 3c11eaca0ff058a7
+  zh: e186571a9de0e2e6
+/agent-note-deepseekgui-b2-p6-windows-v1-0-0-final-release-gate/verification-notes-for-the-acceptance-stage:
+  en: da1f4cd991db9ffd
+  zh: 04b195020ab81721

@@ -1,6 +1,6 @@
 /** ACL/token bindings layered on the shared Win32 process owner. */
 
-import koffi from 'koffi'
+import { createLazyRequire } from '@deepseek-ai/dsh-lazy-require'
 import {
   ERROR_INSUFFICIENT_BUFFER,
   Win32Error,
@@ -22,9 +22,18 @@ export {
 } from '@deepseek-ai/dsh-win32-process'
 export type { NativePtr } from '@deepseek-ai/dsh-win32-process'
 
-type Ptr = ReturnType<typeof koffi.pointer>
-const PVOID: Ptr = koffi.pointer('void')
-const PPVOID: Ptr = koffi.pointer(PVOID)
+type Koffi = typeof import('koffi')['default']
+type Ptr = ReturnType<Koffi['pointer']>
+
+const requireKoffi = createLazyRequire<Koffi>('koffi', import.meta.url)
+let cachedTypes: { PVOID: Ptr; PPVOID: Ptr } | undefined
+
+function ffiTypes(): { PVOID: Ptr; PPVOID: Ptr } {
+  if (cachedTypes !== undefined) return cachedTypes
+  const koffi = requireKoffi()
+  const PVOID = koffi.pointer('void')
+  return cachedTypes = { PVOID, PPVOID: koffi.pointer(PVOID) }
+}
 
 /** ACL/token calls composed with the generic Win32 process binding table. */
 export interface Win32Bindings extends Win32ProcessBindings {
@@ -51,6 +60,8 @@ export interface Win32Bindings extends Win32ProcessBindings {
     newToken: NativePtr,
   ): number
   setEntriesInAclW(count: number, entries: Buffer, oldAcl: NativePtr | null, newAcl: NativePtr): number
+  initializeAcl(acl: NativePtr, length: number, revision: number): number
+  addMandatoryAce(acl: NativePtr, revision: number, aceFlags: number, policy: number, sid: NativePtr): number
   setNamedSecurityInfoW(
     path: string,
     objectType: number,
@@ -58,7 +69,7 @@ export interface Win32Bindings extends Win32ProcessBindings {
     owner: null,
     group: null,
     dacl: NativePtr | null,
-    sacl: null,
+    sacl: NativePtr | null,
   ): number
   getNamedSecurityInfoW(
     path: string,
@@ -120,7 +131,7 @@ export function isInvalidHandle(handle: NativePtr | null | undefined): boolean {
  * @param value - unsigned value to store.
  */
 export function encodeUint32(slot: NativePtr, value: number): void {
-  koffi.encode(slot, 'uint32', value)
+  requireKoffi().encode(slot, 'uint32', value)
 }
 
 /**
@@ -129,7 +140,7 @@ export function encodeUint32(slot: NativePtr, value: number): void {
  * @returns pointer address.
  */
 export function ptrAddress(ptr: NativePtr): bigint {
-  return koffi.address(ptr)
+  return requireKoffi().address(ptr)
 }
 
 /**
@@ -138,7 +149,7 @@ export function ptrAddress(ptr: NativePtr): bigint {
  * @returns allocated pointer.
  */
 export function allocBytes(length: number): NativePtr {
-  return koffi.alloc('uint8', length) as NativePtr
+  return requireKoffi().alloc('uint8', length) as NativePtr
 }
 
 /**
@@ -158,7 +169,7 @@ export function allocOverlapped(): NativePtr {
  * @returns decoded pointer, or null for address zero.
  */
 export function decodePtrAt(buffer: Buffer, offset: number): NativePtr | null {
-  const value = koffi.decode(buffer, offset, PVOID) as NativePtr | null
+  const value = requireKoffi().decode(buffer, offset, ffiTypes().PVOID) as NativePtr | null
   return isNullPtr(value) ? null : value
 }
 
@@ -169,7 +180,7 @@ export function decodePtrAt(buffer: Buffer, offset: number): NativePtr | null {
  * @returns decoded value.
  */
 export function decodeUint8At(ptr: NativePtr, offset: number): number {
-  return koffi.decode(ptr, offset, 'uint8') as number
+  return requireKoffi().decode(ptr, offset, 'uint8') as number
 }
 
 /**
@@ -179,7 +190,7 @@ export function decodeUint8At(ptr: NativePtr, offset: number): number {
  * @returns decoded value.
  */
 export function decodeUint16At(ptr: NativePtr, offset: number): number {
-  return koffi.decode(ptr, offset, 'uint16') as number
+  return requireKoffi().decode(ptr, offset, 'uint16') as number
 }
 
 /**
@@ -189,7 +200,7 @@ export function decodeUint16At(ptr: NativePtr, offset: number): number {
  * @returns decoded value.
  */
 export function decodeUint32At(ptr: NativePtr, offset: number): number {
-  return koffi.decode(ptr, offset, 'uint32') as number
+  return requireKoffi().decode(ptr, offset, 'uint32') as number
 }
 
 /**
@@ -226,6 +237,8 @@ let cached: Win32Bindings | undefined
 
 function bindings(): Win32Bindings {
   if (cached !== undefined) return cached
+  const koffi = requireKoffi()
+  const { PVOID, PPVOID } = ffiTypes()
   cached = extendWin32ProcessBindings(({ kernel32, advapi32, bind }) => ({
     openProcess: bind(kernel32, 'OpenProcess', PVOID, ['uint32', 'int', 'uint32']),
     openProcessToken: bind(advapi32, 'OpenProcessToken', 'int', [PVOID, 'uint32', PPVOID]),
@@ -246,6 +259,8 @@ function bindings(): Win32Bindings {
       PVOID, 'uint32', 'uint32', PVOID, 'uint32', PVOID, 'uint32', PVOID, PPVOID,
     ]),
     setEntriesInAclW: bind(advapi32, 'SetEntriesInAclW', 'uint32', ['uint32', PVOID, PVOID, PPVOID]),
+    initializeAcl: bind(advapi32, 'InitializeAcl', 'int', [PVOID, 'uint32', 'uint32']),
+    addMandatoryAce: bind(advapi32, 'AddMandatoryAce', 'int', [PVOID, 'uint32', 'uint32', 'uint32', PVOID]),
     setNamedSecurityInfoW: bind(advapi32, 'SetNamedSecurityInfoW', 'uint32', [
       'str16', 'int', 'uint32', PVOID, PVOID, PVOID, PVOID,
     ]),
@@ -268,7 +283,7 @@ function bindings(): Win32Bindings {
     unlockFileEx: bind(kernel32, 'UnlockFileEx', 'int', [
       PVOID, 'uint32', 'uint32', 'uint32', PVOID,
     ]),
-  })) as unknown as Win32Bindings
+  })) as Win32Bindings
   return cached
 }
 

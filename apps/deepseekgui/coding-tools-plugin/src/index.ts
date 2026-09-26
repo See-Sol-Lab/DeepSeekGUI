@@ -18,7 +18,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { existsSync } from 'node:fs'
 import { relative, isAbsolute, resolve, sep } from 'node:path'
-import { canonicalPath, writableRoots } from '@deepseek-ai/dsh-sandbox'
+import { canonicalPath, writableRoots, zoneOfPath } from '@deepseek-ai/dsh-sandbox'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { ToolCallId } from '@deepseek-ai/dsh-llm'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
@@ -27,7 +27,7 @@ import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import type {} from '@deepseek-ai/dsh-git'
 import type {} from '@deepseek-ai/dsh-pull-request'
 import type {} from '@deepseek-ai/dsh-sandbox-policy'
-import type {} from '@deepseek-ai/dsh-user-approval'
+import type { ApprovalDanger } from '@deepseek-ai/dsh-user-approval'
 import { registerGitTools } from './git-tools.ts'
 import { registerPrTools } from './pr-tools.ts'
 
@@ -59,6 +59,28 @@ export async function writableCwd(ctx: Context, exec: ToolExec, explicitCwd: str
   })) throw new Error(`${toolName} refused: repository ${root} is outside the writable workspace`)
   exec.signal.throwIfAborted()
   return root
+}
+
+/**
+ * DeepSeekGUI (2026-09-24): the concerns a repository write carries — it
+ * changes `.git`, and inside a DeepSeekGUI source checkout it changes
+ * DeepSeekGUI's own code (red warning).
+ * @param cwd - the repository root the write addresses.
+ * @returns the approval concerns.
+ */
+export function gitDanger(cwd: string): ApprovalDanger[] {
+  return zoneOfPath(cwd) === 'gui' ? ['gui', 'git'] : ['git']
+}
+
+/**
+ * Whether the session's standing mode is workspace-write: `.git` is read-only
+ * there by default, so even staging asks the person first.
+ * @param ctx - sandbox policy service.
+ * @param exec - calling session.
+ * @returns true under workspace-write.
+ */
+export function gitReadOnlyByDefault(ctx: Context, exec: ToolExec): boolean {
+  return ctx.sandboxPolicy?.resolve(exec.agent === undefined ? {} : { session: exec.agent.session }).mode === 'workspace-write'
 }
 
 /**
@@ -113,7 +135,10 @@ export function cardTitle(tool: string, cwd: string | undefined, detail = ''): s
  * @param reason - human-readable action summary the approval card shows.
  * @returns resolution after the user approved.
  */
-export async function requireApproval(ctx: Context, exec: ToolExec, toolName: string, reason: string, cwd: string): Promise<void> {
+export async function requireApproval(
+  ctx: Context, exec: ToolExec, toolName: string, reason: string, cwd: string,
+  danger: readonly ApprovalDanger[] = [],
+): Promise<void> {
   exec.signal.throwIfAborted()
   const approval = ctx.approval
   if (approval === undefined || exec.agent === undefined) {
@@ -124,6 +149,7 @@ export async function requireApproval(ctx: Context, exec: ToolExec, toolName: st
     toolName,
     callId: exec.callId,
     reason,
+    ...danger.length > 0 ? { danger } : {},
     signal: exec.signal,
   })
   if (outcome !== 'allowed-once') {

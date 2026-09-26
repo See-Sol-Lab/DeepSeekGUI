@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Workbench inspector",
+    "description": "Reads file and Git facts for the Workbench tabs (read-only) and carries out the deletion of archived sessions."
+  }
+}

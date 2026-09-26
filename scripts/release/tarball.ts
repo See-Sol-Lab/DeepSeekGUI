@@ -27,14 +27,8 @@ export interface PackedIdentity {
  * @returns Every path inside the archive.
  */
 export function tarballFiles(tarball: string): string[] {
-  // DeepSeekGUI: run tar from the tarball's own directory and pass only the file
-  // name. Windows' bundled bsdtar reads its arguments through the ANSI code page,
-  // so an absolute path holding non-ASCII characters — a checkout under a Chinese
-  // directory name, say — reaches it as `????` and the archive fails to open. The
-  // directory travels as the working directory instead, which the OS resolves
-  // without a code-page round trip.
-  return capture('tar', ['-tzf', basename(tarball)], { cwd: dirname(tarball) })
-    .split(/\r?\n/u).filter(line => line !== '')
+  // GNU tar reads the colon in a Windows drive path as a remote-host separator, so tar runs beside the tarball.
+  return capture('tar', ['-tzf', basename(tarball)], { cwd: dirname(tarball) }).split(/\r?\n/u).filter(line => line !== '')
 }
 
 /**

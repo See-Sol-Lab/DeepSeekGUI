@@ -6,6 +6,7 @@ import {
   SessionLogOffset,
   SessionSeq,
   foldSurface,
+  snapshotSessionEvent,
   isAppendSurfaceEvent,
   isReplacementSurfaceEvent,
   isSurfaceEligibleType,
@@ -13,16 +14,31 @@ import {
 } from '@deepseek-ai/dsh-session'
 import { SurfaceManager } from '@deepseek-ai/dsh-session/surface'
 import {
+  MessageId,
+  ToolCallId,
   createMessage,
+  createDeveloperMessage,
   createSystemMessage,
   createToolResultMessage,
   createUserMessage,
   freezeMessage,
-  ToolCallId,
-  MessageId,
 } from '@deepseek-ai/dsh-llm'
+import type { ContextFormed, MessageSource } from '@deepseek-ai/dsh-llm'
+
+declare module '@deepseek-ai/dsh-llm' {
+  interface MessageSourceMap {
+    'test': { kind: 'test' } & ContextFormed
+    'watcher': { kind: 'watcher' } & ContextFormed
+  }
+}
 
 type TestSurfaceOp = 'append' | { op: 'replace'; startSeq: number; endSeq: number }
+type CheckpointSource = Extract<MessageSource, { readonly kind: 'compact-checkpoint' }>
+
+/** Build a typed checkpoint source for a surface replacement fixture. */
+function checkpointSource(compactionId: string): CheckpointSource {
+  return { kind: 'compact-checkpoint', compactionId: compactionId as CheckpointSource['compactionId'] }
+}
 
 function surfaceOp(value: TestSurfaceOp): SurfaceEvent['surfaceOp'] {
   return value === 'append'
@@ -33,7 +49,7 @@ function surfaceOp(value: TestSurfaceOp): SurfaceEvent['surfaceOp'] {
 function replacementMessage(text: string) {
   return createUserMessage({
     content: [{ type: 'text', text }],
-    source: { kind: 'plugin', plugin: 'test' },
+    source: { kind: 'test' },
   })
 }
 
@@ -64,7 +80,7 @@ function surfaceSession(): Session {
   return s
 }
 
-function provenanceEvent(seq: SessionSeq, sourceEventSeqs: unknown): SessionEvent {
+function sourceEventReferenceEvent(seq: SessionSeq, sourceEventSeqs: unknown): SessionEvent {
   return {
     type: 'user/message',
     seq,
@@ -104,10 +120,10 @@ function toolResultEvent(
 describe('foldSurface source-event references', () => {
   it('accepts absent or valid source-event references and complete replacement coverage', () => {
     const events = [
-      provenanceEvent(SessionSeq(0), undefined),
-      provenanceEvent(SessionSeq(1), undefined),
+      sourceEventReferenceEvent(SessionSeq(0), undefined),
+      sourceEventReferenceEvent(SessionSeq(1), undefined),
       {
-        ...provenanceEvent(SessionSeq(2), [0, 1]),
+        ...sourceEventReferenceEvent(SessionSeq(2), [0, 1]),
         surfaceOp: surfaceOp({ op: 'replace', startSeq: 0, endSeq: 1 }),
       },
     ] as SessionEvent[]
@@ -125,7 +141,7 @@ describe('foldSurface source-event references', () => {
     expect(() => foldSurface([event])).toThrow(/cannot carry sourceEventSeqs/)
   })
 
-  it('rejects obsolete source-event provenance on an assistant message', () => {
+  it('rejects obsolete Assistant chunk references on an assistant message', () => {
     const event = {
       type: 'assistant/message',
       seq: SessionSeq(0),
@@ -150,19 +166,19 @@ describe('foldSurface source-event references', () => {
   })
 
   it.each([
-    ['a non-array', [{ ...provenanceEvent(SessionSeq(0), undefined), sourceEventSeqs: 'invalid' }], /must be an array/],
-    ['an empty array', [provenanceEvent(SessionSeq(0), [])], /must not be empty/],
-    ['duplicates', [provenanceEvent(SessionSeq(0), undefined), provenanceEvent(SessionSeq(1), [0, 0])], /must not contain duplicates/],
-    ['a sparse array', [provenanceEvent(SessionSeq(0), Array<number>(1))], /densely contain/],
-    ['a non-number', [{ ...provenanceEvent(SessionSeq(0), undefined), sourceEventSeqs: ['0'] }], /non-negative safe integers/],
-    ['a fractional number', [provenanceEvent(SessionSeq(0), [0.5])], /non-negative safe integers/],
-    ['a negative number', [provenanceEvent(SessionSeq(0), [-1])], /non-negative safe integers/],
-    ['a self reference', [provenanceEvent(SessionSeq(0), [0])], /must reference earlier events/],
-    ['a non-contiguous event seq', [provenanceEvent(SessionSeq(0), undefined), provenanceEvent(SessionSeq(2), [1])], /seq 2 is not contiguous; expected 1/],
+    ['a non-array', [{ ...sourceEventReferenceEvent(SessionSeq(0), undefined), sourceEventSeqs: 'invalid' }], /must be an array/],
+    ['an empty array', [sourceEventReferenceEvent(SessionSeq(0), [])], /must not be empty/],
+    ['duplicates', [sourceEventReferenceEvent(SessionSeq(0), undefined), sourceEventReferenceEvent(SessionSeq(1), [0, 0])], /must not contain duplicates/],
+    ['a sparse array', [sourceEventReferenceEvent(SessionSeq(0), Array<number>(1))], /densely contain/],
+    ['a non-number', [{ ...sourceEventReferenceEvent(SessionSeq(0), undefined), sourceEventSeqs: ['0'] }], /non-negative safe integers/],
+    ['a fractional number', [sourceEventReferenceEvent(SessionSeq(0), [0.5])], /non-negative safe integers/],
+    ['a negative number', [sourceEventReferenceEvent(SessionSeq(0), [-1])], /non-negative safe integers/],
+    ['a self reference', [sourceEventReferenceEvent(SessionSeq(0), [0])], /must reference earlier events/],
+    ['a non-contiguous event seq', [sourceEventReferenceEvent(SessionSeq(0), undefined), sourceEventReferenceEvent(SessionSeq(2), [1])], /seq 2 is not contiguous; expected 1/],
     ['incomplete replacement coverage', [
-      provenanceEvent(SessionSeq(0), undefined),
-      provenanceEvent(SessionSeq(1), undefined),
-      { ...provenanceEvent(SessionSeq(2), [0]), surfaceOp: { op: 'replace', startSeq: 0, endSeq: 1 } },
+      sourceEventReferenceEvent(SessionSeq(0), undefined),
+      sourceEventReferenceEvent(SessionSeq(1), undefined),
+      { ...sourceEventReferenceEvent(SessionSeq(2), [0]), surfaceOp: { op: 'replace', startSeq: 0, endSeq: 1 } },
     ], /missing 1/],
   ] as const)(
     'rejects %s',
@@ -175,8 +191,8 @@ describe('foldSurface source-event references', () => {
 describe('foldSurface tool-result rewrites', () => {
   it('rejects a replacement spanning multiple current nodes', () => {
     const events = [
-      provenanceEvent(SessionSeq(0), undefined),
-      provenanceEvent(SessionSeq(1), undefined),
+      sourceEventReferenceEvent(SessionSeq(0), undefined),
+      sourceEventReferenceEvent(SessionSeq(1), undefined),
       toolResultEvent(SessionSeq(2), 'rewrite', { op: 'replace', startSeq: 0, endSeq: 1 }, [0, 1]),
     ]
     expect(() => foldSurface(events)).toThrow(/must rewrite exactly one current node/)
@@ -184,7 +200,7 @@ describe('foldSurface tool-result rewrites', () => {
 
   it('rejects a replacement targeting a non-result node', () => {
     const events = [
-      provenanceEvent(SessionSeq(0), undefined),
+      sourceEventReferenceEvent(SessionSeq(0), undefined),
       toolResultEvent(SessionSeq(1), 'rewrite', { op: 'replace', startSeq: 0, endSeq: 0 }, [0]),
     ]
     expect(() => foldSurface(events)).toThrow(/must target a current tool\/result/)
@@ -204,7 +220,6 @@ describe('foldSurface tool-result rewrites', () => {
   ] as const)('rejects a replacement that changes the result block %s', (_field, patch) => {
     const original = toolResultEvent(SessionSeq(0), 'original')
     const data = original.data as Extract<SessionEvent, { type: 'tool/result' }>['data']
-    const result = data.message.content[0]
     const replacement = {
       ...original,
       seq: SessionSeq(1),
@@ -213,7 +228,7 @@ describe('foldSurface tool-result rewrites', () => {
         ...data,
         message: freezeMessage({
           ...data.message,
-          content: [{ ...result, ...patch }] as [typeof result],
+          ...patch,
         }),
       },
       surfaceOp: surfaceOp({ op: 'replace', startSeq: 0, endSeq: 0 }),
@@ -267,10 +282,10 @@ describe('SurfaceManager', () => {
   it('folds a contiguous window without materializing earlier event sequences', () => {
     const baseSeq = 400_000
     const events = [
-      provenanceEvent(SessionSeq(baseSeq), undefined),
-      provenanceEvent(SessionSeq(baseSeq + 1), undefined),
+      sourceEventReferenceEvent(SessionSeq(baseSeq), undefined),
+      sourceEventReferenceEvent(SessionSeq(baseSeq + 1), undefined),
       {
-        ...provenanceEvent(SessionSeq(baseSeq + 2), [baseSeq]),
+        ...sourceEventReferenceEvent(SessionSeq(baseSeq + 2), [baseSeq]),
         surfaceOp: surfaceOp({ op: 'replace', startSeq: baseSeq, endSeq: baseSeq }),
       },
     ] as SessionEvent[]
@@ -300,9 +315,9 @@ describe('SurfaceManager', () => {
   it('rejects a replacement that crosses a loaded window head', () => {
     const baseSeq = 400_000
     const events = [
-      provenanceEvent(SessionSeq(baseSeq), undefined),
+      sourceEventReferenceEvent(SessionSeq(baseSeq), undefined),
       {
-        ...provenanceEvent(SessionSeq(baseSeq + 1), [baseSeq - 1, baseSeq]),
+        ...sourceEventReferenceEvent(SessionSeq(baseSeq + 1), [baseSeq - 1, baseSeq]),
         surfaceOp: surfaceOp({ op: 'replace', startSeq: baseSeq - 1, endSeq: baseSeq }),
       },
     ] as SessionEvent[]
@@ -361,9 +376,9 @@ describe('SurfaceManager', () => {
 
   it('foldSurface reports the same invalid replacement failures as the incremental manager', () => {
     const events = [
-      provenanceEvent(SessionSeq(0), undefined),
+      sourceEventReferenceEvent(SessionSeq(0), undefined),
       { type: 'turn/start', seq: SessionSeq(1), time: 1, data: { turn: 1 } },
-      { ...provenanceEvent(SessionSeq(2), [0]), surfaceOp: { op: 'replace', startSeq: 1, endSeq: 0 } },
+      { ...sourceEventReferenceEvent(SessionSeq(2), [0]), surfaceOp: { op: 'replace', startSeq: 1, endSeq: 0 } },
     ] as SessionEvent[]
 
     expect(() => foldSurface(events)).toThrow(/start seq 1 not found/)
@@ -373,7 +388,7 @@ describe('SurfaceManager', () => {
 
   it('rejects negative-zero replacement event sequences', () => {
     const event = {
-      ...provenanceEvent(SessionSeq(0), [0]),
+      ...sourceEventReferenceEvent(SessionSeq(0), [0]),
       surfaceOp: { op: 'replace', startSeq: -0, endSeq: -0 },
     } as SessionEvent
 
@@ -690,7 +705,7 @@ describe('deriveMessages with surface', () => {
   it('injected-context and user messages appear on surface', () => {
     const s = Session.create(SessionId('ctx'))
     s.append('user/message', createUserMessage({
-      content: [{ type: 'text', text: 'file changed' }], source: { kind: 'plugin', plugin: 'watcher' },
+      content: [{ type: 'text', text: 'file changed' }], source: { kind: 'watcher' },
     }), { surfaceOp: 'append' })
     s.append('user/message', createUserMessage({
       content: [{ type: 'text', text: 'focus' }],
@@ -712,7 +727,7 @@ describe('Session.append surface opts', () => {
       'user/message',
       createUserMessage({
         content: [{ type: 'text', text: 'h' }],
-        source: { kind: 'plugin', plugin: 'test' },
+        source: { kind: 'test' },
       }),
       { surfaceOp: 'append', sourceEventSeqs: sourceSeqs(0, 1) },
     )
@@ -833,7 +848,7 @@ describe('surface type guards', () => {
   it('splits surface events into append-origin and replacement by their marker', () => {
     const s = surfaceSession()
     s.append('user/message', createUserMessage({
-      content: [{ type: 'text', text: 'checkpoint' }], source: { kind: 'plugin', plugin: 'compact' },
+      content: [{ type: 'text', text: 'checkpoint' }], source: checkpointSource('surface-compaction-1'),
     }), { surfaceOp: surfaceOp({ op: 'replace', startSeq: 1, endSeq: 2 }), sourceEventSeqs: sourceSeqs(1, 2) })
     const appended = s.snapshotEvents().find(e => e.type === 'user/message')!
     const replacement = s.snapshotEvents().at(-1)!
@@ -881,7 +896,7 @@ describe('SurfaceManager.replaceGeneration', () => {
 
     const nodes = s.surface.nodes
     s.append('user/message', createUserMessage({
-      content: [{ type: 'text', text: 'summary' }], source: { kind: 'plugin', plugin: 'compact' },
+      content: [{ type: 'text', text: 'summary' }], source: checkpointSource('surface-compaction-2'),
     }), { surfaceOp: { op: 'replace', startSeq: nodes[0]!, endSeq: nodes[1]! }, sourceEventSeqs: [nodes[0]!, nodes[1]!] })
     expect(s.surface.replaceGeneration).toBe(1)
   })
@@ -893,7 +908,7 @@ describe('system/message surface node', () => {
       type: 'system/message',
       seq: SessionSeq(seq),
       time: seq,
-      data: { turn: 1, step: 1, message: createSystemMessage(text, 'test-plugin') },
+      data: { turn: 1, step: 1, message: createSystemMessage(text) },
       surfaceOp: surfaceOp(op),
       ...sources === undefined ? {} : { sourceEventSeqs: sourceSeqs(...sources) },
     }
@@ -913,13 +928,13 @@ describe('system/message surface node', () => {
     const s = Session.create(SessionId('sys'))
     s.append('turn/start', { turn: 1 })
     s.append('step/start', { turn: 1, step: 1 })
-    s.append('system/message', { turn: 1, step: 1, message: createSystemMessage('be brief', 'p') }, { surfaceOp: 'append' })
+    s.append('system/message', { turn: 1, step: 1, message: createSystemMessage('be brief') }, { surfaceOp: 'append' })
     s.append('user/message', createUserMessage({ content: [{ type: 'text', text: 'hi' }], source: { kind: 'user' } }), { surfaceOp: 'append' })
     expect(s.deriveMessages().map(message => message.role)).toEqual(['system', 'user'])
     expect(s.deriveMessages()[0]?.content).toEqual([{ type: 'text', text: 'be brief' }])
 
     const head = s.surface.nodes[0] as SessionSeq
-    s.append('system/message', { turn: 1, step: 1, message: createSystemMessage('', 'p') }, {
+    s.append('system/message', { turn: 1, step: 1, message: createSystemMessage('') }, {
       surfaceOp: { op: 'replace', startSeq: head, endSeq: head },
       sourceEventSeqs: [head],
     })
@@ -955,11 +970,55 @@ describe('system/message surface node', () => {
     expect(plainHead.nodes).toEqual(sourceSeqs(2))
   })
 
-  it('rejects a seeded system/message with a non-system role or non-plugin source', () => {
+  it('rejects a seeded system/message with a non-system role or non-system-prompt source', () => {
     const good = systemEvent(0, 'v1')
     const badRole = { ...good, data: { ...good.data, message: { ...(good.data as { message: object }).message, role: 'user' } } }
     expect(() => Session.create(SessionId('bad-role'), [badRole as SessionEvent])).toThrow(/role "system"/)
     const badSource = { ...good, data: { ...good.data, message: { ...(good.data as { message: object }).message, source: { kind: 'user' } } } }
-    expect(() => Session.create(SessionId('bad-source'), [badSource as SessionEvent])).toThrow(/plugin source/)
+    expect(() => Session.create(SessionId('bad-source'), [badSource as SessionEvent])).toThrow(/system-prompt source/)
+  })
+})
+
+
+describe('developer message history', () => {
+  it.each(['user/message', 'developer/message'] as const)('rejects a mismatched developer role in %s at event admission', (type) => {
+    const message = createDeveloperMessage({ source: { kind: 'test' }, content: [] })
+    const event = {
+      type, seq: SessionSeq(0), time: 0, surfaceOp: 'append',
+      data: type === 'user/message' ? message : { turn: 1, step: 1, message: { ...message, role: 'user' } },
+    } as unknown as SessionEvent
+    expect(() => snapshotSessionEvent(event)).toThrow('must occur together')
+  })
+
+  it('retains an empty developer node while projecting no message', () => {
+    const session = Session.create(SessionId('empty-developer'))
+    const message = createDeveloperMessage({ source: { kind: 'test' }, content: [] })
+    const event = session.append('developer/message', { turn: 1, step: 1, message }, { surfaceOp: 'append' })
+    expect(session.snapshotEvents()).toContain(event)
+    expect(session.deriveMessages()).toEqual([])
+    const restored = Session.fromRestore(session.id, session.snapshotEvents(), session.header, SessionLogOffset(0), 'shared-frozen')
+    expect(restored.deriveMessages()).toEqual([])
+  })
+
+  it.each(['tool-addition', 'tool-removal'] as const)('rejects %s in user messages at Session admission', (type) => {
+    const session = Session.create(SessionId('invalid-tool-change'))
+    const message = createUserMessage({ source: { kind: 'test' }, content: [{ type, toolName: 'search' }] })
+    expect(() => session.append('user/message', message, { surfaceOp: 'append' })).toThrow('developer role')
+  })
+
+  it('retains developer blocks through append, replacement, and restoration', () => {
+    const session = Session.create(SessionId('developer'))
+    const message = createDeveloperMessage({ source: { kind: 'test' }, content: [{ type: 'tool-addition', toolName: 'search' }] })
+    const headerSeq = session.append('request/header', { reason: 'initial', header: { config: { provider: 'test', model: 'test' }, tools: [{ name: 'search', description: 'Search', parameters: {} }] } }).seq
+    const first = session.append('developer/message', { turn: 1, step: 1, headerSeq, message }, { surfaceOp: 'append' })
+    expect(session.deriveMessages()).toEqual([message])
+    const replacement = createDeveloperMessage({ source: { kind: 'test' }, content: [{ type: 'tool-removal', toolName: 'search' }] })
+    session.append('developer/message', { turn: 1, step: 1, message: replacement }, {
+      surfaceOp: { op: 'replace', startSeq: first.seq, endSeq: first.seq }, sourceEventSeqs: [first.seq],
+    })
+    expect(session.deriveMessages()).toEqual([replacement])
+    expect(isSurfaceEligibleType('developer/message')).toBe(true)
+    const restored = Session.fromRestore(session.id, session.snapshotEvents(), session.header, SessionLogOffset(0), 'shared-frozen')
+    expect(restored.deriveMessages()).toEqual([replacement])
   })
 })

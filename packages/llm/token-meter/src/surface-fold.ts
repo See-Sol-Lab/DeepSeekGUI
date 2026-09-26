@@ -16,8 +16,7 @@
 
 import { deriveEventMessage } from '@deepseek-ai/dsh-session'
 import type { SessionSeq, SurfaceEvent } from '@deepseek-ai/dsh-session'
-import type { ContentBlock, Message } from '@deepseek-ai/dsh-llm'
-import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
+import type { ContentBlock, ImageBlock, Message } from '@deepseek-ai/dsh-llm'
 import { estimateMessage, estimateStructuralBlock } from './estimate.ts'
 
 type FileAttachmentRef = Extract<ContentBlock, { type: 'file' }>['attachment']
@@ -32,8 +31,8 @@ export interface MeterSurfaceNode {
   readonly imageStructuralTokens: number
   /** Structural JSON price replaced when request assembly projects files to text. */
   readonly fileStructuralTokens: number
-  /** Durable image occurrences in message order; empty for image-free nodes. */
-  readonly images: readonly ImageAttachmentRef[]
+  /** Durable image blocks in message order, `offloaded` marks included; empty for image-free nodes. */
+  readonly images: readonly ImageBlock[]
   /** Durable file occurrences in message order; empty for file-free nodes. */
   readonly files: readonly FileAttachmentRef[]
 }
@@ -53,22 +52,18 @@ export interface SurfaceTokenPlan<Node = MeterSurfaceNode> {
 /** Collect projected attachment occurrences and their structural prices. */
 function collectProjectedAttachments(
   blocks: readonly ContentBlock[],
-  images: ImageAttachmentRef[],
+  images: ImageBlock[],
   files: FileAttachmentRef[],
 ): { readonly imageTokens: number; readonly fileTokens: number } {
   let imageTokens = 0
   let fileTokens = 0
   for (const block of blocks) {
     if (block.type === 'image') {
-      images.push(block.attachment)
+      images.push(block)
       imageTokens += estimateStructuralBlock(block)
     } else if (block.type === 'file') {
       files.push(block.attachment)
       fileTokens += estimateStructuralBlock(block)
-    } else if (block.type === 'tool-result') {
-      const nested = collectProjectedAttachments(block.content, images, files)
-      imageTokens += nested.imageTokens
-      fileTokens += nested.fileTokens
     }
   }
   return { imageTokens, fileTokens }
@@ -87,7 +82,7 @@ function analyzeNode(seq: SessionSeq, message: Message | null): MeterSurfaceNode
     }
   }
   const heuristicTokens = estimateMessage(message)
-  const images: ImageAttachmentRef[] = []
+  const images: ImageBlock[] = []
   const files: FileAttachmentRef[] = []
   const structural = collectProjectedAttachments(message.content, images, files)
   return {

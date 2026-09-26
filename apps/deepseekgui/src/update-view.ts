@@ -31,8 +31,8 @@ let installStampCache: string | null = null
  */
 export function updateViewOf(overrides: Partial<UpdateView> = {}): UpdateView {
   return {
-    channel: null, state: 'idle', result: null, latestVersion: null, releaseNotes: null,
-    progressBytes: null, progressTotal: null, message: null, autoDownload: true,
+    channel: null, state: 'idle', result: null, latestVersion: null, releaseNotes: null, releasePageUrl: null,
+    progressBytes: null, progressTotal: null, message: null, autoDownload: true, viaFallback: false,
     ...overrides,
   }
 }

@@ -29,7 +29,7 @@ Mount a subprocess provider in any composition that must run child processes, an
 
 ### Mounting the service
 
-One provider registers `ctx.subprocess` per composition; load it beside the consumers that spawn through it — the bash executors, the LSP host, the PTY shell backend, or an out-of-process subagent backend. Loading a second provider fails loudly (one service per context, cordis standard).
+One provider registers `ctx.subprocess` per composition; load it beside the consumers that spawn through it — the bash executors, the LSP host, the PTY shell backend, or an out-of-process subagent backend. Loading a second provider fails loudly (one service per context, Cordis standard).
 
 ```yaml
 - name: '@deepseek-ai/dsh-subprocess-local'
@@ -60,6 +60,11 @@ const output = handle.collected.stdout?.readFrom(0)
 
 Reads are offset-based and non-consuming: a background reader and a final batch read can share one stream without stealing each other's bytes.
 
+<a id="using-a-control-pipe"></a>
+### Using a control pipe
+
+Set `stdio.control: 'pipe'` to receive a separate raw `Duplex` in `handle.control`. The Node child opens fd 7 with `openInheritedControlChannel()` from `@deepseek-ai/dsh-subprocess/control`; this helper consumes the provider-owned `DSH_SUBPROCESS_CONTROL=pipe` marker. Callers cannot supply that marker through `env`. Control bytes never enter stdout/stderr collectors. The consumer owns framing, validation, backpressure, and closing its endpoint; provider disposal destroys any endpoint remaining after process teardown. Omitting the request returns `control: undefined`. This channel is available only for ordinary processes, and carries no authority to bypass tool approval.
+
 ### Managing process lifetime
 
 Termination and waiting use one provider-managed range. `terminate()` starts the provider's documented procedure, is idempotent, and becomes a no-op after that range is empty; the request's abort signal starts the same procedure. `waitForExit()` observes the same range and resolves only after the provider proves it quiescent, so direct command completion does not hide a surviving descendant. It rejects when the selected owner can no longer prove quiescence. Providers document their native owners and weaker fallbacks; callers own deadlines, teardown ladders, and cause classification.
@@ -68,13 +73,15 @@ Termination and waiting use one provider-managed range. `terminate()` starts the
 
 For interactive programs, `spawnTerminal` allocates a real PTY: write text, read UTF-8 output, inspect and signal the current foreground process group, and await one `terminate()` that settles every session member the provider can still observe. Readiness, scrollback, and prompt policy stay with the PTY consumer.
 
+A terminal request can opt into `shellActivity`. `inspectActivity()` combines supported shell lifecycle evidence with owned-job observations and returns `idle`, `busy` or `unknown`, plus a handle-scoped revision. Unsupported or incomplete observations never imply idle; input invalidates existing prompt evidence. Opted-in terminals keep remaining work owned after the root shell exits instead of using that exit as permission to terminate descendants. Consumers own retention and cleanup deadlines.
+
 ### Environment every child starts from
 
 Children never inherit the harness's ambient secrets: credential-shaped names and ambient `DSH_*` facts are scrubbed, and the caller's explicit `env` merges after that scrub. A deliberately forwarded credential or a current `DSH_*` deployment fact still reaches the child; an explicit `undefined` tombstone removes an ordinary ambient entry.
 
 ### What can go wrong
 
-An executable that cannot be resolved fails loud with a stable error. A spawn that never starts rejects `done`; there is no buffered output for a process that never ran. `waitForExit()` also rejects when the provider cannot prove its selected range is empty, and a provider fallback may not own descendants that escape its process group or observed session. When a transport owns its own spawn (the SDK client, MCP), route around the service and import `scrubbedParentEnv` directly so environment policy stays single-sourced.
+An executable that cannot be resolved fails loudly with a stable error. A spawn that never starts rejects `done`; there is no buffered output for a process that never ran. `waitForExit()` also rejects when the provider cannot prove its selected range is empty, and a provider fallback may not own descendants that escape its process group or observed session. When a transport owns its own spawn (the SDK client, MCP), route around the service and import `scrubbedParentEnv` directly so environment policy stays single-sourced.
 
 -----
 
@@ -104,7 +111,7 @@ A spawn returns a live handle immediately without exposing target identity. `don
 
 ### Lifecycle and invariants
 
-One implementation registers per context; loading a second throws (cordis standard). Disposal of the service terminates every still-running managed process and awaits its exit, so process lifetime survives consumer reloads. `argv` is never shell-interpreted; a consumer that wants a shell passes `['bash', '-c', command]` itself. Terminal allocation cancellation (the spec signal) is separate from the published handle's lifetime.
+One implementation registers per context; loading a second throws (Cordis standard). Disposal of the service terminates every still-running managed process and awaits its exit, so process lifetime survives consumer reloads. `argv` is never shell-interpreted; a consumer that wants a shell passes `['bash', '-c', command]` itself. Terminal allocation cancellation (the spec signal) is separate from the published handle's lifetime.
 
 </details>
 
@@ -117,11 +124,12 @@ Read these pages when the package-level contract is not enough. They move from t
 
 - [Subprocess subsystem](../../../docs/subsystems/subprocess.md) — spawn specs, output readers, outcomes, and the `DSH_*` environment in full.
 - [dsh-subprocess-local](../subprocess-local/README.md) — the local host provider that implements this contract.
-- [dsh-subprocess-e2b](../../e2b/subprocess-e2b/README.md) — the remote E2B provider for the same seam.
 - [dsh-bash-local](../../shell/bash-local/README.md) — the largest consumer: bash commands over this service.
 - [Subprocess seam Agent Note](../../../.agents/notes/archived/architecture/2026-07-26-subprocess-seam.md) — why the process half became its own seam and what moved with it.
 
 -----
+
+Terminal consumers use `terminalEnvironment()` to read the provider platform and preferred shell, and `resolveExecutable()` to verify candidates. A completed lookup miss throws `SubprocessExecutableNotFoundError`; transport failures remain distinct. `spawnTerminal` requires `terminalType` and initial dimensions, and its handle supports `resize(cols, rows)` without reallocating the process.
 
 <a id="model-experience"></a>
 ## Model Experience

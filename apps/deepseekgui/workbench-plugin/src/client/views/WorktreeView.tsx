@@ -33,7 +33,7 @@ export function WorktreeSection({ worktrees, t }: { worktrees: WorkbenchOverview
         <div key={path} role="alert" style={{ color: 'var(--dsw-alias-state-error-primary)' }}>{t('worktree.overlap', { path })}</div>
       ))}
       {trees.length > 1 && trees.map(tree => (
-        <div key={tree.path} style={{ border: '1px solid var(--dsw-alias-label-caption)', borderRadius: 8, padding: '6px 10px' }}>
+        <div key={tree.path} style={{ border: '1px solid var(--dsw-alias-border-l2)', borderRadius: 10, padding: '6px 10px', background: 'var(--dsw-alias-bg-module-platform)' }}>
           <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
             <span style={mono}>{tree.path}</span>
             {tree.current && <span style={{ ...caption, color: 'var(--dsw-alias-state-info-primary)' }}>{t('worktree.current')}</span>}

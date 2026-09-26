@@ -18,6 +18,7 @@ export function terminalBlockLabels(t: TranslateNS<'conversation'>): TerminalBlo
   return {
     signal: signal => t('terminal.signal', { signal }),
     exitCode: code => t('terminal.exitCode', { code }),
+    noExitCode: t('terminal.noExitCode'),
     running: t('terminal.running'),
     failed: t('terminal.failed'),
     done: t('terminal.done'),
@@ -272,7 +273,7 @@ function parseExitStatus(text: string): { output: string; exitCode?: number; sig
 
 /**
  * Derive terminal props for supported shell and terminal-send calls, including
- * nested Code Dispatch calls. Standard shell results parse their final status
+ * nested PTC dispatch calls. Standard shell results parse their final status
  * marker; persistent shell results, spill previews, background calls, errors,
  * and malformed input use the generic path. {@link isSettledPersistentShellCall} lets that generic
  * persistent result remain expandable without inventing one process status.

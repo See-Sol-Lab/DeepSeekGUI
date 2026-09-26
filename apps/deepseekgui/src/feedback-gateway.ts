@@ -38,17 +38,17 @@ export const FEEDBACK_GATEWAY_ALLOW_HTTP_ENV = 'DEEPSEEKGUI_FEEDBACK_GATEWAY_ALL
  * @param allowInsecure - 是否允许 http（仅开发开关打开时）。
  * @returns 拒绝原因；null = 可用。
  */
-export function gatewayUrlRejection(raw: string, allowInsecure: boolean): string | null {
+export function gatewayUrlRejection(raw: string, allowInsecure: boolean, zh = true): string | null {
   let parsed: URL
   try {
     parsed = new URL(raw)
   } catch {
-    return '不是合法的地址'
+    return zh ? '不是合法的地址' : 'Not a valid URL'
   }
-  if (parsed.username !== '' || parsed.password !== '') return '地址里不能带账号密码'
+  if (parsed.username !== '' || parsed.password !== '') return zh ? '地址里不能带账号密码' : 'The URL must not carry credentials'
   if (parsed.protocol === 'https:') return null
   if (parsed.protocol === 'http:' && allowInsecure) return null
-  return `只接受 https 地址（当前是 ${parsed.protocol}//）`
+  return zh ? `只接受 https 地址（当前是 ${parsed.protocol}//）` : `Only https URLs are accepted (got ${parsed.protocol}//)`
 }
 
 /**
@@ -70,12 +70,14 @@ export function resolveFeedbackGatewayUrl(env: Readonly<Record<string, string | 
  * @param env - 进程环境。
  * @returns 配置有问题时的说明；null = 没问题（含"根本没配"）。
  */
-export function feedbackGatewayConfigWarning(env: Readonly<Record<string, string | undefined>>): string | null {
+export function feedbackGatewayConfigWarning(env: Readonly<Record<string, string | undefined>>, zh = true): string | null {
   const override = env[FEEDBACK_GATEWAY_URL_ENV]
   const raw = override !== undefined && override.trim() !== '' ? override.trim() : DEFAULT_FEEDBACK_GATEWAY_URL
   if (raw === '') return null
-  const rejection = gatewayUrlRejection(raw, env[FEEDBACK_GATEWAY_ALLOW_HTTP_ENV] === '1')
-  return rejection === null ? null : `反馈网关地址不可用（${rejection}），已降级为本地导出`
+  const rejection = gatewayUrlRejection(raw, env[FEEDBACK_GATEWAY_ALLOW_HTTP_ENV] === '1', zh)
+  return rejection === null
+    ? null
+    : zh ? `反馈网关地址不可用（${rejection}），已降级为本地导出` : `The feedback gateway URL is unusable (${rejection}); falling back to local export`
 }
 
 /** 网关 payload（wire 契约 v1；网关侧按 schemaVersion 兼容演进）。 */

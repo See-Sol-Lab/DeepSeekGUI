@@ -47,9 +47,6 @@
     - id: subagent-model-selection-settings
       name: '@deepseek-ai/dsh-tool-subagent/model-selection-settings'
 
-    - id: code-runtime
-      name: '@deepseek-ai/dsh-code-runtime-worker-thread'
-
     - id: message-feedback
       name: '@deepseek-ai/dsh-message-feedback'
       config:
@@ -116,13 +113,38 @@
     - id: session-controller
       name: '@deepseek-ai/dsh-api-session-controller'
 
+    # One background job's observation record streamed over Typert Remote;
+    # the roster rides the session control stream above.
+    - id: job-controller
+      name: '@deepseek-ai/dsh-api-job-controller'
     # Workspace file service: bounded read, directory listing, and the
     # agent-write change feed inside the session workspace root.
+    - id: terminal-controller
+      name: '@deepseek-ai/dsh-api-terminal-controller'
     - id: workspace-files
       name: '@deepseek-ai/dsh-api-workspace-files'
 
+    # Durable Host-wide reminders. The Schedule service owns the task store and
+    # delivers each due occurrence as a follow-up in its original Session;
+    # `time-context` supplies the current time, browser zone, and elapsed time
+    # the model needs to resolve an unqualified date or time. The browser half
+    # is the `ui-schedule` row below.
+    - id: time-context
+      name: '@deepseek-ai/dsh-time-context'
+      disabled: true
+
+    - id: schedule
+      name: '@deepseek-ai/dsh-schedule'
+      disabled: true
+
     # Configuration-surface reads and writes over Typert Remote. Each method
     # reports an actionable error when its settings-domain provider is absent.
+    - id: ui-settings-account
+      name: '@deepseek-ai/dsh-client-ui-settings-account'
+
+    - id: account-controller
+      name: '@deepseek-ai/dsh-api-account-controller'
+
     - id: settings-controller
       name: '@deepseek-ai/dsh-api-settings-controller'
 
@@ -132,6 +154,12 @@
 
     - id: cordis-host-runner
       name: '@deepseek-ai/dsh-cordis-host-runner'
+
+    # The Host inspect providers are process-global: the registry rejects a
+    # duplicate id, so they register here once and every preset's `tool-cordis`
+    # row reads them.
+    - id: cordis-inspect-providers
+      name: '@deepseek-ai/dsh-tool-cordis/host'
 
     # Ordinary provider for the parsed Web flags. Its plugin-level injection
     # waits for cmdlineArgs; no launcher metadata or special row kind is needed.
@@ -157,8 +185,9 @@
     # assembly fact of dsh-web-app, never user config), mounts the
     # frontend-static fallback owner, registers the web-surface prompt
     # section and the bash runtime variable, prints the URL line, and opens the
-    # canonical local URL after the full tree settles. The webStartup provider
-    # supplies invocation-only values; after the server binds, this row samples
+    # canonical local URL after the full Loader tree settles and the required-
+    # entry audit passes. The
+    # webStartup provider supplies invocation-only values; after the server binds, this row samples
     # LAN trust once and provides `webRuntime`. A complete agent-preset persona
     # suppresses the prompt section for that agent while retaining the host-owned
     # shell variable.
@@ -215,6 +244,12 @@
     - id: locale
       name: '@deepseek-ai/dsh-client-locale'
 
+    - id: shortcuts
+      name: '@deepseek-ai/dsh-client-shortcuts'
+
+    - id: ui-shortcuts
+      name: '@deepseek-ai/dsh-client-ui-shortcuts'
+
     - id: ui-layout
       name: '@deepseek-ai/dsh-client-ui-layout'
 
@@ -236,11 +271,21 @@
       name: '@deepseek-ai/dsh-client-ui-sidebar-right'
 
 
+    - id: office-to-pdf
+      name: '@deepseek-ai/dsh-office-to-pdf'
+
     # The right Sidebar's document tab: bounded file reads with selectable
-    # Markdown, code, HTML, PDF, and plain-text renderers.
+    # Markdown, code, HTML, PDF, Office, and plain-text renderers.
     - id: ui-sidebar-documentpreview
       name: '@deepseek-ai/dsh-client-ui-sidebar-documentpreview'
 
+    # Web profiles opt in; Desktop retains sandboxed HTTP(S) Browser tabs.
+    - id: ui-sidebar-browser
+      name: '@deepseek-ai/dsh-client-ui-sidebar-browser'
+      disabled: !!js "ctx.get('profileContext')?.name !== 'desktop'"
+
+    - id: ui-sidebar-terminal
+      name: '@deepseek-ai/dsh-client-ui-sidebar-terminal'
     # The right Sidebar's workspace file tree tab type.
     - id: ui-sidebar-files
       name: '@deepseek-ai/dsh-client-ui-sidebar-files'
@@ -254,6 +299,14 @@
     - id: ui-settings-models
       name: '@deepseek-ai/dsh-client-ui-settings-models'
 
+    # Plugin management: the sidebar Plugins page installs, enables, disables,
+    # and removes the profile's bundles through the `pluginManager` Remote.
+    # Without a profile-backed Host it reports itself unavailable.
+    - id: ui-plugin-manager
+      name: '@deepseek-ai/dsh-client-ui-plugin-manager'
+
+    # Read-only Plugin list tab in the Settings Plugins section; the built-in
+    # bundles the sidebar page leaves out are inspected here.
     - id: ui-settings-plugin-inventory
       name: '@deepseek-ai/dsh-client-ui-settings-plugin-inventory'
 
@@ -280,19 +333,25 @@
     - id: ui-cordis
       name: '@deepseek-ai/dsh-client-ui-cordis'
 
-    # Durable workflow lifecycle as an independent Chat node after the
-    # existing generic workflow tool row.
-    - id: ui-workflow-run
-      name: '@deepseek-ai/dsh-client-ui-workflow-run'
-
-    # Turn tail: the produced-files row under each closing assistant message.
-    # Remove this entry to turn the surface off; the tail hole renders empty.
+    # Turn tail: the changed-files card and delivery cards under each closing
+    # assistant message. Remove this entry to turn the surface off; the tail
+    # hole renders empty.
     - id: ui-deliverables
       name: '@deepseek-ai/dsh-client-ui-deliverables'
+
+    # Records each top-level turn's changed files from git working-tree
+    # snapshots; the changed-files card above renders its events.
+    - id: workspace-changes
+      name: '@deepseek-ai/dsh-workspace-changes'
 
 
     - id: ui-workspace
       name: '@deepseek-ai/dsh-client-ui-workspace'
+
+    # Durable workflow lifecycle as an independent Chat node after the
+    # existing generic workflow tool row.
+    - id: ui-workflow-run
+      name: '@deepseek-ai/dsh-client-ui-workflow-run'
 
     # Input triggers: the '/' | '@' pipeline (ui-input-trigger), the command surface over
     # it (ui-commands), and the reference sources (ui-skill / ui-reference).
@@ -311,16 +370,17 @@
     - id: ui-reference
       name: '@deepseek-ai/dsh-client-ui-reference'
 
-    # Read-only active Schedule catalog. The shipped Web graph resolves the
-    # client package but leaves it disabled; the explicit Schedule overlay
-    # enables this same row together with the host Schedule services.
+
+    # Background jobs: the session-header roster with on-demand streaming
+    # record panels over the session job-output service.
+    - id: ui-jobs
+      name: '@deepseek-ai/dsh-client-ui-jobs'
+
+    # Task management and Session reminder catalog over the Host Schedule
+    # service mounted above.
     - id: ui-schedule
       name: '@deepseek-ai/dsh-client-ui-schedule'
       disabled: true
-
-    # Background jobs: the session-header list over the jobsBySession mirror.
-    - id: ui-jobs
-      name: '@deepseek-ai/dsh-client-ui-jobs'
 
     # Goal surface: GoalBar in the input dock over the goal session projection.
     - id: ui-goal
@@ -344,10 +404,26 @@
     - id: ui-agent-preset
       name: '@deepseek-ai/dsh-client-ui-agent-preset'
 
-    # Plugin configuration: the host-plane sections a user owns, as expandable
-    # cards. A namespace this deployment does not expose renders nothing.
+    # The Built-in plugins settings section: the navigation entry and the tab
+    # row the inventory tab registers into. The official configuration pages
+    # are the companion rows below.
     - id: ui-settings-plugins
       name: '@deepseek-ai/dsh-client-ui-settings-plugins'
+
+    # The official settings pages: one companion package per host-plane
+    # namespace, each registering its page into the Plugins page while the
+    # Host serves the namespace.
+    - id: ui-settings-shell
+      name: '@deepseek-ai/dsh-client-ui-settings-shell'
+
+    - id: ui-settings-agent-loop
+      name: '@deepseek-ai/dsh-client-ui-settings-agent-loop'
+
+    - id: ui-settings-subagent
+      name: '@deepseek-ai/dsh-client-ui-settings-subagent'
+
+    - id: ui-settings-web-search
+      name: '@deepseek-ai/dsh-client-ui-settings-web-search'
 
     # Plan control: the composer plan seat over the plan projection + /plan channel.
     - id: ui-plan
@@ -376,6 +452,9 @@
 # exists, so there is no agent to key by. Behind a preset realm those variables
 # would never reach the model's shell at all.
 
+- id: tool-plugin-manager
+  disabled: true
+
 - id: tool-bash
   disabled: true
 
@@ -398,6 +477,24 @@
 - insert:
     - id: deepseekgui-inspector
       name: '@deepseek-ai/dsh-workbench-inspector'
+
+# DeepSeekGUI's skill library service (B7-P4). Host plane, beside the
+# inspector: it reads and writes `<DSH_HOME>/deepseekgui/skills` and is not a
+# skill provider — the library is deliberately outside the official roots, so
+# an install is visible to no Session until the project selection says so.
+- insert:
+    - id: deepseekgui-skill-manager
+      name: '@deepseek-ai/dsh-skill-manager'
+
+# DeepSeekGUI's engineering memory entries (B7-P6). Host plane, over the
+# storage domain facility: versioned entries per project folder or global,
+# corrected without losing their origin, forgotten without reviving through
+# any read, and the reviewed import of the legacy Markdown memory files. Data
+# only at this phase: the global slot keeps `injection: 'markdown'`, so the
+# legacy files stay the live memory and nothing here reaches a Session.
+- insert:
+    - id: deepseekgui-workbench-memory
+      name: '@deepseek-ai/dsh-workbench-memory'
 
 - id: tool-fs
   disabled: true
@@ -467,12 +564,15 @@
 - id: tool-subagent-fork
   disabled: true
 
-- id: workflow-worker-thread
+- id: workflow-ptc
   disabled: true
 
 - id: tool-workflow
   disabled: true
 
+# `base` ships this row disabled; the preset-plane gate reads declared row ids
+# without regard to `disabled`, so this row must stay to keep `tool-ralph` off
+# the host plane and out of collision with every preset's row.
 - id: tool-ralph
   disabled: true
 
@@ -485,15 +585,11 @@
 - id: tool-web
   disabled: true
 
-# The preset roster. The shipped presets are bundled inside
-# `dsh-agent-presets` itself and prepended as a read-only `system` root
-# (`includeShippedRoot`); `$DSH_HOME/.agent-presets` is where a person — or an
-# agent — authors their own, appended by the same package (`includeUserRoot`),
-# and carries the same trust as shell access because a preset IS a
-# composition. This row only names the default and any deployment-added
-# `roots`; no launcher patching is involved.
+# The preset selection registry. The shipped preset declarations follow as
+# separate patch files under `presets/`, listed after this file in
+# `package.json` `dsh.bundle.patch`.
 - insert:
-    - id: agent-presets
-      name: '@deepseek-ai/dsh-agent-presets'
+    - id: agent-preset-registry
+      name: '@deepseek-ai/dsh-agent-preset-registry'
       config:
         default: standard

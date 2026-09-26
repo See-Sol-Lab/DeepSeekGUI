@@ -1,6 +1,7 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for workbench-inspection.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/subsystems/workbench-inspection.md
-workbench-inspection.md: 64d88de7a0885ba63877616646c8a5279bf339eb
-workbench-inspection.zh.md: 128adfbc456ec37772c0b6e6f6f24378ae05fe12
+/workbench-inspection:
+  en: 0fe656c3ad659185
+  zh: bd81f919ec7f9c1c

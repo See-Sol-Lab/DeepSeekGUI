@@ -63,7 +63,7 @@ function readySource(
 }
 
 const claimOf = (token: string): CommandClaim =>
-  ({ token, submit: () => Promise.resolve({ kind: 'success' }) })
+  ({ name: token.slice(1).trim(), token, submit: () => Promise.resolve({ kind: 'success' }) })
 
 /** One microtask hop: lets settled candidate promises flow into the store. */
 const tick = () => Promise.resolve()
@@ -83,13 +83,22 @@ function controllerBench(sources: InputTriggerSource[] = [], key = 'a') {
 /** Real-service bench: a sessions face resolving scope tags to session ids. */
 async function serviceBench() {
   const root = new Context()
+  const bindings = new Map<SessionId, { sessionId: SessionId; session: { sessionId: SessionId }; ctx: Context }>()
   root.provide('sessions', {
     scopeOf: (c: Context) => scopeOf(c),
-  })
+    sessionOf: (ctx: Context) => [...bindings.values()].find(binding => binding.ctx === ctx)?.session,
+    binding: (id: SessionId) => bindings.get(id),
+  } as never)
   await root.plugin(InputTriggerService).await()
   const inputTriggers = root.get('inputTriggers') as InputTriggerService
   const mint = (key: string) => {
-    const scope = createScope(root, sid(key))
+    const id = sid(key)
+    const scope = createScope(root, id)
+    const binding = { sessionId: id, session: { sessionId: id }, ctx: scope.ctx }
+    bindings.set(id, binding)
+    scope.ctx.effect(() => () => {
+      if (bindings.get(id) === binding) bindings.delete(id)
+    })
     return { actx: scope.ctx, fiber: scope.fiber }
   }
   return { root, inputTriggers, mint }
@@ -174,7 +183,7 @@ describe('sessionOf', () => {
 
   it('throws off an unscoped context', async () => {
     const { root, inputTriggers } = await serviceBench()
-    expect(() => inputTriggers.sessionOf(root)).toThrow(/requires a session scope/)
+    expect(() => inputTriggers.sessionOf(root)).toThrow(/requires a retained Session scope/)
   })
 
   it('warms the roster once at controller birth with the session projection', async () => {
@@ -921,10 +930,85 @@ describe('arbitrate', () => {
     expect(controller.menu.getSnapshot().open).toBe(false)
   })
 
-  it('escape closes and consumes', async () => {
-    const { controller } = await menuBench()
+  it('escape and shift+tab leave without picking, and the exit sticks', async () => {
+    const { controller, cmd } = await menuBench()
     expect(controller.arbitrate('escape', false)).toBe('consumed')
+    expect(cmd.picks).toHaveLength(0)
     expect(controller.menu.getSnapshot().open).toBe(false)
+
+    // Restoring the caret re-tracks the same hit: the exit holds.
+    controller.track('/g', 2, { tier: 'plain' }, 1)
+    await tick()
+    expect(controller.menu.getSnapshot().open).toBe(false)
+    controller.track('/go', 3, { tier: 'plain' }, 2)
+    await tick()
+    expect(controller.menu.getSnapshot().open).toBe(true)
+
+    // Shift+Tab is the same exit.
+    expect(controller.arbitrate('tabBack', false)).toBe('consumed')
+    expect(cmd.picks).toHaveLength(0)
+    expect(controller.menu.getSnapshot().open).toBe(false)
+  })
+
+  it('escape and shift+tab do not drill a drillable highlight', async () => {
+    const drillable = readySource('/', 'command', [{ name: 'src', drill: true }], () => undefined)
+    const { controller } = controllerBench([drillable.source])
+    controller.track('/s', 2, { tier: 'plain' }, 1)
+    await tick()
+    expect(controller.arbitrate('escape', false)).toBe('consumed')
+    controller.track('/sr', 3, { tier: 'plain' }, 1)
+    await tick()
+    expect(controller.arbitrate('tabBack', false)).toBe('consumed')
+    expect(drillable.picks).toHaveLength(0)
+  })
+
+  it('a launcher-opened menu survives the track its own focus produces', async () => {
+    const { controller } = await menuBench()
+    controller.toggleSource('command', {
+      trigger: '/', query: '', quoted: false, position: 'leading',
+      span: { start: 0, end: 0, draftRev: 0 },
+    })
+    expect(controller.menu.getSnapshot().open).toBe(true)
+
+    // Driving the menu with the keyboard focuses the editor, and Lexical's
+    // deferred selection restore re-tracks an empty draft: the menu stays.
+    controller.track('', 0, { tier: 'plain' }, 0)
+    await tick()
+    expect(controller.menu.getSnapshot().open).toBe(true)
+
+    // Typing takes the ordinary path.
+    controller.track('/g', 2, { tier: 'plain' }, 1)
+    await tick()
+    expect(controller.menu.getSnapshot().open).toBe(true)
+    expect(controller.launcher.getSnapshot()).toBeNull()
+  })
+
+  it('a settled pick keeps its menu closed while the same hit re-tracks', async () => {
+    const { controller } = await menuBench()
+    expect(controller.arbitrate('enter', false)).toBe('pick-highlighted')
+
+    // A settled command may open a surface of its own; when that closes and the
+    // caret returns, the menu must not come back for the same token.
+    controller.track('/g', 2, { tier: 'plain' }, 1)
+    await tick()
+    expect(controller.menu.getSnapshot().open).toBe(false)
+
+    controller.track('/go', 3, { tier: 'plain' }, 2)
+    await tick()
+    expect(controller.menu.getSnapshot().open).toBe(true)
+  })
+
+  it('a pointer dismissal is sticky the same way, and leaving the token re-arms it', async () => {
+    const { controller } = await menuBench()
+    controller.dismiss()
+    controller.track('/g', 2, { tier: 'plain' }, 1)
+    await tick()
+    expect(controller.menu.getSnapshot().open).toBe(false)
+
+    controller.track('plain text', 10, { tier: 'plain' }, 2)
+    controller.track('/g', 2, { tier: 'plain' }, 3)
+    await tick()
+    expect(controller.menu.getSnapshot().open).toBe(true)
   })
 
   it('tab drills into a drillable highlight and picks a plain completion', async () => {
@@ -1161,5 +1245,28 @@ describe('adjudicate', () => {
     abort.abort(new Error('attempt released'))
     await expect(controller.adjudicate('/goal', abort.signal, { attachments: 0 })).rejects.toThrow('attempt released')
     expect(hook).not.toHaveBeenCalled()
+  })
+})
+
+describe('reference activation', () => {
+  it('routes chips by owner and text by the live lexicon without picking or serializing', () => {
+    const openReference = vi.fn(() => true)
+    const lexicon = vi.fn(() => ['review'])
+    const skill = deferredSource('/', 'skill', { lexicon, openReference }).source
+    const inert = deferredSource('/', 'inert', { lexicon }).source
+    const { controller, sources } = controllerBench([inert, skill])
+    expect(controller.openReference(undefined, { ref: '/unknown' })).toBe(false)
+    expect(controller.openReference('missing', { ref: '/review' })).toBe(false)
+    expect(controller.openReference(undefined, { ref: '/review' })).toBe(true)
+    expect(openReference).toHaveBeenCalledWith({ sessionId: sid('a') }, { ref: '/review' })
+    expect(controller.openReference('skill', { ref: 'opaque', appearance: 'file' })).toBe(true)
+    lexicon.mockReturnValue([])
+    expect(controller.openReference(undefined, { ref: '/review' })).toBe(false)
+    openReference.mockReturnValue(false)
+    expect(controller.openReference('skill', { ref: 'opaque' })).toBe(false)
+    sources.splice(0)
+    expect(controller.openReference('skill', { ref: '/review' })).toBe(false)
+    controller.dispose()
+    expect(controller.openReference('skill', { ref: '/review' })).toBe(false)
   })
 })

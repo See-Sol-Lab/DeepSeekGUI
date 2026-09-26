@@ -12,7 +12,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import Include from '@deepseek-ai/cordis-plugin-include'
@@ -205,7 +205,21 @@ describe('real Loader composition', () => {
     // and the disposer joins the backend's teardown — the service is gone the
     // moment dispose() settles, with no further loader await.
     const autoEntry = [...ctx.loader.entries()].find(entry => entry.options.name === AUTO)!
-    await autoEntry.fiber!.dispose()
+    const backendEntry = [...ctx.loader.entries()].find(entry => entry.options.name === NATIVE)!
+    const cleanupStarted = Promise.withResolvers<undefined>()
+    const releaseCleanup = Promise.withResolvers<undefined>()
+    onTestFinished(() => { releaseCleanup.resolve(undefined) })
+    backendEntry.fiber!.ctx.effect(() => async () => {
+      cleanupStarted.resolve(undefined)
+      await releaseCleanup.promise
+    })
+    let disposed = false
+    const disposal = autoEntry.fiber!.dispose().then(() => { disposed = true })
+    await cleanupStarted.promise
+    await Promise.resolve()
+    expect(disposed).toBe(false)
+    releaseCleanup.resolve(undefined)
+    await disposal
     expect(entryNames(ctx)).not.toContain(NATIVE)
     expect(entryNames(ctx)).not.toContain(NATIVE_SURFACE)
     expect(ctx.get('directoryPicker')).toBeUndefined()
@@ -245,7 +259,9 @@ describe('real Loader composition', () => {
 
   it('unmounts the backend when the surface entry fails to load', { timeout: 60_000 }, async () => {
     stubAttendedHost()
-    await expect(loadComposition('127.0.0.1', { failSurface: true })).rejects.toThrow(/surface import failed/)
+    const { ctx } = await loadComposition('127.0.0.1', { failSurface: true })
+    const chooser = [...ctx.loader.entries()].find(entry => entry.options.name === AUTO)!
+    await expect(chooser.fiber!.await()).rejects.toThrow(/directory-picker-auto: failed to load/)
 
     // Setup owns both entries until it returns its disposer, so a failed surface
     // must take the mounted backend with it: otherwise a retry collides with the
@@ -259,7 +275,7 @@ describe('real Loader composition', () => {
     const { ctx, configPath } = await loadComposition('127.0.0.1')
 
     const backendEntry = [...ctx.loader.entries()].find(entry => entry.options.name === NATIVE)!
-    await ctx.loader.remove(backendEntry.id)
+    ctx.loader.remove(backendEntry.id)
     const autoEntry = [...ctx.loader.entries()].find(entry => entry.options.name === AUTO)!
     renameControl.remainingFailures = 1
     await expect(autoEntry.fiber!.dispose()).resolves.not.toThrow()

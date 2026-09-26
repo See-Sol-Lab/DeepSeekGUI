@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "GitHub pull requests",
+    "description": "Creates pull requests through the locally signed-in gh command, without reading tokens."
+  }
+}

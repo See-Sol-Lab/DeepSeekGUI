@@ -39,6 +39,8 @@ const el = {
   updateBack: document.getElementById('update-back') as HTMLButtonElement,
   updateInfo: document.getElementById('update-info') as HTMLElement,
   updateStatus: document.getElementById('update-status') as HTMLElement,
+  updateActions: document.getElementById('update-actions') as HTMLElement,
+  updateHint: document.getElementById('update-hint') as HTMLButtonElement,
   dataPanel: document.getElementById('data-panel') as HTMLElement,
   dataBack: document.getElementById('data-back') as HTMLButtonElement,
   dataInfo: document.getElementById('data-info') as HTMLElement,
@@ -115,6 +117,14 @@ function closeMenu(): void {
   void api.setChromeExpanded(false)
   opener?.focus()
   opener = null
+}
+
+/** 更新提示是否该出现：通道已配置，且有可用或已验证的更新。 */
+function hintVisible(current: DesktopControlModel): boolean {
+  const update = current.update
+  return update.channel !== null
+    && update.latestVersion !== null
+    && (update.state === 'available' || update.state === 'verified' || update.state === 'downloading')
 }
 
 /** 构建一个 menu-item 按钮（label + 右侧括注/勾选）。 */
@@ -202,35 +212,6 @@ function render(): void {  if (model === null) return
     if (key !== undefined) node.setAttribute('aria-label', tr(key))
   }
 
-  // 插件恢复入口（2026-08-27 人工验收暴露的发布阻断项）。
-  //
-  // 插件把 Harness 搞坏之后，官方设置页随 3080 一起不可达，那个「恢复上次插件
-  // 变更」的按钮就住在里面——用户看得见故障、够不着解药。B3-15 当时只补了
-  // 「重启 Harness」，而坏插件还在时重启只会再失败一次，是个闭环。实测下来唯一
-  // 的活路是 DSH 终端敲 `dsh plugin --profile <p> remove <pkg>`，对不会敲命令的
-  // 人等于没有。
-  //
-  // 恢复动作本身一直在我们自己的控制层里（control-dispatch），不经过 3080，所以
-  // 这里只是把够不着的能力接出来。两种状态给两种出口：recovery-needed 直接恢复；
-  // drift（事务后文件被外部改过）绝不代用户覆盖，只把 Profile 文件夹打开。
-  const pluginRecoveryItem = document.getElementById('menu-plugin-recovery')
-  if (pluginRecoveryItem !== null) {
-    const pluginRecovery = model.pluginManager.recovery
-    const actionable = pluginRecovery !== null
-      && (pluginRecovery.state === 'recovery-needed' || pluginRecovery.state === 'drift')
-    pluginRecoveryItem.hidden = !actionable
-    if (actionable) {
-      const drift = pluginRecovery.state === 'drift'
-      pluginRecoveryItem.textContent = tr(drift
-        ? 'menu.plugin-recovery.open-profile'
-        : 'menu.plugin-recovery.restore')
-      // onclick 而非 addEventListener：render 每次广播都跑，累加监听器会让
-      // 一次点击发出多条命令。
-      pluginRecoveryItem.onclick = (): void => {
-        run({ type: drift ? 'plugin-recovery-open-profile' : 'plugin-recovery-restore' })
-      }
-    }
-  }
   // 视图切换项（D3，莉莉丝 2026-09-05）：Workbench 下写「官方原生界面」，
   // 官方原生界面下同一项变成「切回 DeepSeekGUI 界面」——与托盘那条同一对
   // 命令，用户不用知道托盘的存在。
@@ -248,6 +229,27 @@ function render(): void {  if (model === null) return
   }
   // 地球开关在官方会话头部（settings-plugin 注册,B3-11 返工二审）;
   // 壳侧只剩汉堡菜单里的后备文字项（上面那段）。
+
+  // 更新气泡（R10，Codex 式）：检测到新版本冒出来，随下载/就绪换文案；
+  // 点击打开更新面板。下载在后台自动进行，安装时机永远由用户定。
+  const showHint = hintVisible(model)
+  el.updateHint.hidden = !showHint
+  if (showHint) {
+    const latest = model.update.latestVersion ?? ''
+    el.updateHint.textContent = model.update.state === 'verified'
+      ? tr('update.hint.ready')
+      : model.update.state === 'downloading'
+        ? tr('update.hint.downloading').replace('{version}', latest)
+        : tr('update.hint').replace('{version}', latest)
+    el.updateHint.title = tr('update.hint.title')
+  }
+  // 菜单行的状态小图标（R10）：下载中 ⬇ / 已就绪 🎁——用户点开汉堡就能看到
+  // 更新走到哪一步；文字本体刚被 data-i18n 循环写过，这里只追加图标。
+  const checkUpdatesItem = document.getElementById('menu-check-updates')
+  if (checkUpdatesItem !== null && model.update.channel !== null) {
+    if (model.update.state === 'downloading') checkUpdatesItem.textContent = tr('menu.update') + ' \u2B07\uFE0F'
+    else if (model.update.state === 'verified') checkUpdatesItem.textContent = tr('menu.update') + ' \uD83C\uDF81'
+  }
 
   el.overlay.hidden = openPanel === 'none'
   el.mainMenu.hidden = openPanel !== 'main'
@@ -339,12 +341,25 @@ function renderUpdateView(current: DesktopControlModel): void {
   el.updateInfo.replaceChildren()
   el.updateInfo.append(sectionTitle(tr('update.title')))
   // 版本简行：普通用户关心的两行；全表仍在诊断面板的 Build Info。
+  // R1（2026-09-14 人工验收）：这里只说官方版本，source/commit 是排查信息，
+  // 留在诊断面板——长哈希会把面板横向撑开。
   for (const row of current.diagnostics.buildInfo.slice(0, 2)) {
-    el.updateInfo.append(infoRow({ label: row.label, value: row.value, title: row.value }))
+    const value = row.value.replace(/\s*\(source [^)]*\)\s*$/u, '')
+    el.updateInfo.append(infoRow({ label: row.label, value, title: row.value }))
   }
 
+  // B7-P2：状态区（版本行 + 更新说明 + 短提示）可独立滚动；动作区另置，
+  // 钉在面板底部——说明再长，下载 / 安装 / 取消也始终在可见区。
   el.updateStatus.replaceChildren()
+  el.updateActions.replaceChildren()
   el.updateStatus.append(sectionTitle(tr('diag.update')))
+  const note = (text: string, testId?: string): HTMLElement => {
+    const div = document.createElement('div')
+    div.className = 'update-note'
+    div.textContent = text
+    if (testId !== undefined) div.id = testId
+    return div
+  }
   // 未配置公开 feed：Manual Check 明确显示（语义来自 model.result，
   // 文案全部走字典——绝不把中文硬编码进模型或状态判定）。
   if (update.channel === null) {
@@ -356,21 +371,15 @@ function renderUpdateView(current: DesktopControlModel): void {
   } else if (update.state === 'checking') {
     el.updateStatus.append(menuItem({ label: tr('diag.update.checking'), disabled: true }))
   } else if (update.state === 'available' && update.latestVersion !== null) {
-    const block = document.createElement('div')
-    block.className = 'recovery-block'
-    block.textContent = [
-      tr('diag.update.available').replace('{version}', update.latestVersion),
-      ...update.releaseNotes === null || update.releaseNotes === '' ? [] : [update.releaseNotes],
-      tr('diag.update.smart-screen'),
-      ...update.message === null ? [] : [update.message],
-    ].join('\n')
-    el.updateStatus.append(block)
-    el.updateStatus.append(menuItem({
+    el.updateStatus.append(note(tr('diag.update.available').replace('{version}', update.latestVersion), 'diag-update-version'))
+    el.updateStatus.append(note(tr('diag.update.smart-screen')))
+    if (update.message !== null) el.updateStatus.append(note(update.message, 'diag-update-message'))
+    el.updateActions.append(menuItem({
       label: tr('diag.update.download'),
       testId: 'diag-download-update',
       command: { type: 'update-download' },
     }))
-    el.updateStatus.append(menuItem({
+    el.updateActions.append(menuItem({
       label: tr('diag.update.dismiss'),
       testId: 'diag-dismiss-update',
       command: { type: 'update-dismiss' },
@@ -379,26 +388,21 @@ function renderUpdateView(current: DesktopControlModel): void {
     const progress = update.progressTotal === null || update.progressBytes === null
       ? ''
       : `（${String(Math.round(update.progressBytes / 1024 / 1024))}/${String(Math.round(update.progressTotal / 1024 / 1024))} MB）`
-    el.updateStatus.append(menuItem({
-      label: tr('diag.update.downloading').replace('{version}', update.latestVersion) + progress,
-      disabled: true,
-    }))
-    el.updateStatus.append(menuItem({
+    el.updateStatus.append(note(tr('diag.update.downloading').replace('{version}', update.latestVersion) + progress, 'diag-update-version'))
+    el.updateActions.append(menuItem({
       label: tr('diag.update.cancel-download'),
       testId: 'diag-cancel-download',
       command: { type: 'update-cancel-download' },
     }))
   } else if (update.state === 'verified' && update.latestVersion !== null) {
-    el.updateStatus.append(menuItem({
-      label: tr('diag.update.verified').replace('{version}', update.latestVersion),
-      disabled: true,
-    }))
-    el.updateStatus.append(menuItem({
-      label: tr('diag.update.install'),
+    el.updateStatus.append(note(tr('diag.update.verified').replace('{version}', update.latestVersion), 'diag-update-version'))
+    if (update.message !== null) el.updateStatus.append(note(update.message, 'diag-update-message'))
+    el.updateActions.append(menuItem({
+      label: '\uD83C\uDF81 ' + tr('diag.update.install'),
       testId: 'diag-install-update',
       command: { type: 'update-install' },
     }))
-    el.updateStatus.append(menuItem({
+    el.updateActions.append(menuItem({
       label: tr('diag.update.dismiss'),
       testId: 'diag-dismiss-update',
       command: { type: 'update-dismiss' },
@@ -427,8 +431,17 @@ function renderUpdateView(current: DesktopControlModel): void {
     // 就是同一个命令的第二个入口。更新的**状态与后续动作**（下载 / 安装 / 取消 /
     // SmartScreen 提示）全部保留——那些是一级菜单给不了的东西。
   }
+  // 「查看完整 Release」：只有 main 算得出已知发布页时才给入口（私有 feed 没有）。
+  if (update.releasePageUrl !== null && hintVisible(current)) {
+    const releasePage = update.releasePageUrl
+    el.updateActions.append(menuItem({
+      label: tr('update.notes.release-page'),
+      testId: 'diag-release-page',
+      command: { type: 'open-external-link', url: releasePage },
+    }))
+  }
   // B6-P6：自动下载开关与状态无关，任何状态都显示当前值。
-  el.updateStatus.append(menuItem({
+  el.updateActions.append(menuItem({
     label: tr(update.autoDownload ? 'diag.update.auto-download.on' : 'diag.update.auto-download.off'),
     testId: 'diag-toggle-auto-download',
     command: { type: 'update-toggle-auto-download' },
@@ -441,6 +454,13 @@ el.hamburger.addEventListener('click', () => {
   // 在途也算"开着"：连点两下的第二下是关，不是再开一次。
   if (openPanel === 'none' && pendingOpen === null) void openMenu('main', el.hamburger)
   else closeMenu()
+})
+
+// 更新气泡（R10）：点击打开更新面板。气泡本身从不发出下载/安装命令——
+// 那些动作只在面板里、经原有确认。
+el.updateHint.addEventListener('click', () => {
+  if (openPanel === 'update') return
+  void openMenu('update', el.updateHint)
 })
 
 // 状态胶囊不再是入口（P8-D19）：它只显示 Harness 在不在跑，点不动。

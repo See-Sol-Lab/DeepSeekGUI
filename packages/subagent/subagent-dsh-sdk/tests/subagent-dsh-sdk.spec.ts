@@ -6,7 +6,7 @@
  * quiescent disposal are all exercised end to end. No model, no key.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -102,7 +102,7 @@ async function setup(fakeEnv: Record<string, string> = {}, config: Partial<sdk.C
   return ctx
 }
 
-function text(blocks: { type: string; text?: string }[]): string {
+function text(blocks: readonly { type: string; text?: string }[]): string {
   return blocks.filter(b => b.type === 'text').map(b => b.text).join('')
 }
 
@@ -751,19 +751,17 @@ describe('dsh-subagent-dsh-sdk provider', () => {
       cwd: process.cwd(),
       provider: 'p',
       model: 'm',
-      // The fake dies as soon as the prompt arrives: FAKE_HANG_PROMPT plus a
-      // short-lived process is simulated by killing via dispose below instead;
-      // here use FAKE_MALFORMED to make the prompt reply violate the protocol.
       env: { FAKE_MALFORMED_PROMPT: '1' },
-      shutdownTimeoutMs: 100,
-      disposeEofGraceMs: 200,
-      disposeGraceMs: 200,
+      shutdownTimeoutMs: DEFAULT_SHUTDOWN_TIMEOUT_MS,
+      disposeEofGraceMs: DEFAULT_DISPOSE_EOF_GRACE_MS,
+      disposeGraceMs: DEFAULT_DISPOSE_GRACE_MS,
       onError: (error) => {
         seen.push(error.message)
         throw new Error('sink failure must be contained')
       },
     }
     const run = await startSdkRun(request(), spec)
+    onTestFinished(() => run.dispose())
     const result = await run.result
     expect(result.stopReason).toBe('error')
     expect(result.diagnostic).toBe(

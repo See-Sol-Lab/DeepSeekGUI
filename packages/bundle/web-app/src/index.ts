@@ -18,7 +18,7 @@ import { networkInterfaces } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { addHarnessSourceSection } from '@deepseek-ai/dsh-app-boot'
+import { addHarnessSourceSection, auditStartupEntries } from '@deepseek-ai/dsh-app-boot'
 import type {} from '@deepseek-ai/dsh-client-connection'
 import * as FrontendStatic from '@deepseek-ai/dsh-host-frontend-static'
 import { launchedThroughSsh, launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment'
@@ -284,15 +284,17 @@ export function apply(ctx: Context, config: Config): void {
       const settled = connectionCtx.get('loader')?.await()
       if (settled === undefined) announceReady()
       else {
-        void settled.then(() => {
+        void settled.then(async () => {
+          await auditStartupEntries(connectionCtx.root, 'dsh web', () => {})
           // The tree can be disposed while the boot was in flight (early
           // SIGTERM); a URL line or browser tab for a dead server would only
           // mislead, and reading torn-down services would turn a clean shutdown
           // into a crash.
           if (connectionCtx.get('webServer') !== undefined
             && connectionCtx.get('connection') !== undefined) announceReady()
-        // Loader reports a failed boot; this row only stays quiet.
-        }, () => {})
+        }).catch(() => {
+          // Boot owns the failure diagnostic; readiness remains unpublished.
+        })
       }
     })
   }

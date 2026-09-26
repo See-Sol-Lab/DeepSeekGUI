@@ -11,11 +11,11 @@
     "build:native": "tsx ./scripts/build.ts",
     "build:test-oracle": "node ./scripts/build-test-oracle.mjs",
     "typecheck": "tsc --noEmit && tsc -b --dry",
-    "test": "node ./test/entry.test.js && node ./test/launcher.test.js && node --test ./test/flock.test.js ./test/package-matrix.test.js",
+    "test": "node ./test/entry.test.js && node ./test/launcher.test.js && node --test ./test/flock.test.js ./test/package-matrix.test.js ./test/release-packing.test.js",
     "test:entry": "node ./test/entry.test.js",
     "test:launcher": "node ./test/launcher.test.js",
     "test:flock": "node --test ./test/flock.test.js",
-    "test:packaging": "node --test ./test/package-matrix.test.js",
+    "test:packaging": "node --test ./test/package-matrix.test.js ./test/release-packing.test.js",
     "gha:matrix": "node ./scripts/github-matrix.mjs",
     "release:bump": "node ./scripts/bump-release.mjs",
     "release:commit": "node ./scripts/commit-release.mjs",
@@ -26,7 +26,7 @@
     "release:verify-packed-install": "node ./scripts/verify-packed-install.mjs"
   },
   "devDependencies": {
-    "@deepseek-ai/node-addon-system": "workspace:*",
+    "@deepseek-ai/node-addon-system": "workspace:~",
     "@types/node": "^26.0.1",
     "tsx": "^4.20.6",
     "typescript": "^6.0.3"

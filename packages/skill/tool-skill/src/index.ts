@@ -80,7 +80,7 @@ export function apply(ctx: Context, config: Config = {}): void {
 
   const skillTool = defineTool({
     name: 'skill',
-    description: 'Load the full instructions for an available skill. Call this with the exact skill name from the session skill catalog before acting on a task that names or clearly matches that skill.',
+    description: 'Load the full instructions for a skill. Call it before acting on a task that names or clearly matches a skill in the session skill catalog.',
     parameters: {
       name: { type: 'string', required: true, description: 'The exact skill name from the available skills list.' },
     },
@@ -362,6 +362,7 @@ function catalogHistory(agent: Agent): { visibleDigest?: string; published: bool
   const visible = new Set(agent.session.surface.nodes)
   let published = false
   for (let index = agent.session.seq - 1; index >= 0; index -= 1) {
+    // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
     const event = agent.session.eventAt(SessionSeq(index))
     if (event === undefined) {
       throw new Error(`skill catalog cannot read seq ${String(index)} below the current Session length`)

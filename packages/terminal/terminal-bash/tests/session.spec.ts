@@ -86,10 +86,14 @@ class FakeTerminal implements SubprocessTerminalHandle {
     })
   }
 
+  async resize(_cols: number, _rows: number): Promise<void> {}
+
   async write(data: string): Promise<void> {
     if (this.throwWrite) throw new Error('write failed')
     this.writes.push(data)
   }
+
+  async inspectActivity() { return { state: 'unknown' as const, revision: 0 } }
 
   async inspectForeground() {
     const processGroupId = this.inspector.foregroundPgid()
@@ -153,6 +157,27 @@ async function initialize(session: LocalPtySession, terminal: FakeTerminal): Pro
 }
 
 describe('LocalPtySession readiness and output', () => {
+  it('polls startup and settles sends without assembling scrollback for status checks', async () => {
+    vi.useFakeTimers()
+    const terminal = new FakeTerminal()
+    const session = new LocalPtySession(terminal, config())
+    const snapshot = vi.spyOn(session['scrollback'], 'snapshot')
+    try {
+      const pending = session.initialize()
+      await vi.advanceTimersByTimeAsync(20)
+      expect(snapshot).not.toHaveBeenCalled()
+      terminal.emitData('x'.repeat(200) + '\x1b]133;D;0\x07dsh> ')
+      await vi.advanceTimersByTimeAsync(20)
+      await pending
+      expect(snapshot).not.toHaveBeenCalled()
+      expect(session.read({})).toMatchObject({ text: 'x'.repeat(59) + 'dsh> ', truncated: true })
+      expect(snapshot).toHaveBeenCalledTimes(1)
+    } finally {
+      snapshot.mockRestore()
+      await session.close('status check cleanup')
+    }
+  })
+
   it('answers split cursor-position queries before publishing prompt readiness', async () => {
     vi.useFakeTimers()
     const terminal = new FakeTerminal()

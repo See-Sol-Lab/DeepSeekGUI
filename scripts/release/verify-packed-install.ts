@@ -24,6 +24,7 @@ import { parseArgs } from 'node:util'
 import { releaseFamily } from './families.ts'
 import { capture, isEntry } from './process.ts'
 import { packedIdentity } from './tarball.ts'
+import { verifyInstalledProductIsolation } from './installed-product-isolation.ts'
 
 /**
  * Environment for the installed artifact: no host Node hooks, no host DeepSeek
@@ -107,6 +108,9 @@ function main(): void {
     capture('npm', ['install', '--no-audit', '--no-fund', '--package-lock=false', '--omit=optional', '--loglevel=http'],
       { cwd: consumerRoot, env: environment })
 
+    const installedEntry = join(consumerRoot, 'node_modules', entry.packageName)
+    const packageCount = verifyInstalledProductIsolation(installedEntry)
+    console.log(`release verify-packed-install: ${String(packageCount)} default-product packages exclude experimental packages`)
     const bin = join(consumerRoot, 'node_modules', ...entry.packageName.split('/'), entry.binPath)
     const version = capture(process.execPath, [bin, '--version'], { cwd: consumerRoot, env: environment })
     if (version !== expected.version) {

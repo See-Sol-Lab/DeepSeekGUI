@@ -14,6 +14,13 @@ import z from '@deepseek-ai/schemastery'
 import type { Agent, PreStepDecision, TurnBoundaryProjection } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-session-projection'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import type { ContextFormed } from '@deepseek-ai/dsh-llm'
+declare module '@deepseek-ai/dsh-llm' {
+  interface MessageSourceMap {
+    'hooks-claude-code': { kind: 'hooks-claude-code' } & ContextFormed
+  }
+}
+
 import type { ContentBlock, MessageSource } from '@deepseek-ai/dsh-llm'
 import type { UserMessage } from '@deepseek-ai/dsh-session'
 import type { PostToolDecision, PreToolDecision, ToolExecution, ToolExecutionResult } from '@deepseek-ai/dsh-tools'
@@ -82,8 +89,8 @@ function nextHandlerId(point: string): string {
   return `claude-code:${point}:${++handlerCounter}`
 }
 
-/** The `{kind:'plugin'}` source stamped on every context this bridge injects. */
-const PLUGIN_SOURCE: MessageSource = { kind: 'plugin', plugin: 'hooks-claude-code' }
+/** The `{kind:'hooks-claude-code'}` producer source stamped on every context this bridge injects. */
+const CONTEXT_SOURCE: MessageSource = { kind: 'hooks-claude-code' }
 
 /** The summary cap bounds a persisted event field — a positive integer or the slice misbehaves silently. */
 function assertPositiveInteger(name: string, value: number): void {
@@ -191,7 +198,7 @@ export function apply(ctx: Context, config: Config): void {
   function contextFrom(merged: MergedHookOutcome): UserMessage | undefined {
     if (merged.additionalContext.length === 0) return undefined
     const content: ContentBlock[] = merged.additionalContext.map(text => ({ type: 'text', text }))
-    return createUserMessage({ content, source: PLUGIN_SOURCE })
+    return createUserMessage({ content, source: CONTEXT_SOURCE })
   }
 
   /** Prepend one context without flattening source fields or other downstream metadata. */
@@ -199,18 +206,18 @@ export function apply(ctx: Context, config: Config): void {
     return [ours, ...theirs ?? []]
   }
 
-  // SessionStart injects context when its detached hook resolves; a slow hook
-  // may miss the first request.
-  // TODO(session-start-gating): add a startup gate before promising first-turn delivery.
-  ctx.on('agent/session-start', ({ agent, source }) => {
-    detached.track(runPoint('SessionStart', source, sessionStartPayload(agent, source), { agent, signal: detached.signal })
+  ctx.on('agent/created', async ({ agent, source, signal }) => {
+    const ownerSignal = signal === undefined ? detached.signal : AbortSignal.any([signal, detached.signal])
+    const run = runPoint('SessionStart', source, sessionStartPayload(agent, source), { agent, signal: ownerSignal })
       .then((merged) => {
         const context = contextFrom(merged)
         if (context) agent.inject(context)
       })
       .catch((error: unknown) => {
         ctx.logger.warn(`hooks-claude-code: SessionStart hook failed: ${String(error)}`)
-      }))
+      })
+    detached.track(run)
+    await run
   })
 
   // --- UserPromptSubmit → PreStepDecision. The prompt text is the payload; no
@@ -271,7 +278,7 @@ export function apply(ctx: Context, config: Config): void {
     if (merged.decision === 'deny') {
       // A blocking Stop hook forces continuation.
       const text = merged.reason ?? 'continue: blocked by Stop hook'
-      agent.steer(createUserMessage({ content: [{ type: 'text', text }], source: PLUGIN_SOURCE }))
+      agent.steer(createUserMessage({ content: [{ type: 'text', text }], source: CONTEXT_SOURCE }))
     }
   })
 

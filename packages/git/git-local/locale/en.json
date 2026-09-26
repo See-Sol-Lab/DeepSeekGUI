@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Local Git",
+    "description": "Reads repository facts through the local git command."
+  }
+}

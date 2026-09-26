@@ -1,4 +1,9 @@
-/** Workbench client registration: brand, cards, official Session messages, and the four DeepSeekGUI conversation views. */
+/**
+ * Workbench client registration: brand, cards, official Session messages,
+ * the DeepSeekGUI conversation views, and (B7-P9) the memory pages — the
+ * Memory view over the entry store and the Settings → Global memory section
+ * that replaces the JS settings plugin's section of the same id.
+ */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).
 import type {} from '@deepseek-ai/dsh-client-locale/client'
@@ -13,6 +18,10 @@ import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-ui-tool/client'
 // Type-only: pulls the session-controller's Client Session merge (ctx.sessions).
 import type {} from '@deepseek-ai/dsh-api-session-controller/client'
+import type {} from '@deepseek-ai/dsh-api-job-controller/client'
+import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
+// Type-only: the `settings.section` slot contract (B7-P9 memory section).
+import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 // Type-only: ctx.layout (frame panel face) and ctx.sidebarRight (right Sidebar
 // controller) for the #13 exclusion.
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
@@ -20,25 +29,33 @@ import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import { DeepSeekGUIBrandName } from './Brand.tsx'
 import { WorkbenchBadge } from './WorkbenchBadge.tsx'
 import { DesktopActions } from './DesktopActions.tsx'
-import { FirstRunGuide } from './FirstRunGuide.tsx'
-import { FirstRunWorkspaceGuide } from './FirstRunWorkspaceGuide.tsx'
+import { WelcomeOverlay } from './welcome/WelcomeOverlay.tsx'
+import { createWelcomeController, type OnboardingCarrier } from './welcome/welcome-controller.ts'
 import { NotificationWatcher } from './NotificationWatcher.tsx'
 import { ChangesView } from './views/ChangesView.tsx'
 import { GitView } from './views/GitView.tsx'
 import { MemoryView } from './views/MemoryView.tsx'
 import { instructionSender } from './instructions.ts'
 import { readBridge } from './bridge.ts'
+import { DeleteSessionDialog, DeleteSessionMenuItem, readSessionDeleter } from './session-delete.tsx'
+import { ArchivedSessionsSection } from './ArchivedSessionsSection.tsx'
 import { installSkinStyles } from './skin.ts'
 import { installTextDisplay } from './text-display.ts'
 import inspectorRemote from '@deepseek-ai/dsh-workbench-inspector/remote'
-// Type-only: pulls the ctx.remote merge (the typed Client Remote mount).
+import memoryRemote from '@deepseek-ai/dsh-workbench-memory/remote'
+// Type-only: pulls the ctx.remote merge (the typed Client Remote mount) and
+// the forwarded `workbench-memory/change` event declaration.
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
+import { MemorySettingsSection } from './memory/MemorySettingsSection.tsx'
 import { BrowserToolRow, GitPrToolRow } from './cards/tool-rows.tsx'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { en as workbenchEn, zh as workbenchZh, type WorkbenchKey } from './locales.ts'
 import { NS_TOOLS, en as toolsEn, zh as toolsZh, type ToolsKey } from './locales-tools.ts'
 import { NS_INSPECTOR, en as inspectorEn, zh as inspectorZh, type InspectorKey } from './locales-inspector.ts'
 import { NS_NOTIFY, en as notifyEn, zh as notifyZh, type NotifyKey } from './locales-notify.ts'
+import { NS_MEMORY, en as memoryEn, zh as memoryZh, type MemoryKey } from './locales-memory.ts'
+import { en as welcomeEn, zh as welcomeZh, type WelcomeKey } from './locales-welcome.ts'
+import type { AccountView } from '@deepseek-ai/dsh-deepseek-account/types'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -50,8 +67,17 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     'deepseekgui.inspector': InspectorKey
     /** B5-P6 desktop-notification copy. */
     'deepseekgui.notify': NotifyKey
+    /** B7-P9 memory pages copy. */
+    'deepseekgui.memory': MemoryKey
+    /** The welcome overlay ported from the official Desktop (2026-09-25). */
+    'deepseekgui.welcome': WelcomeKey
   }
 }
+
+/** Settings nav position of the memory section: the JS settings plugin's former slot (40–44 are DeepSeekGUI's). */
+export const MEMORY_SECTION_ORDER = 43
+/** Settings order of the archived-sessions page: after the official sections, ahead of ours. */
+export const ARCHIVED_SECTION_ORDER = 30
 
 /** Wire names the git/pr cards own (keys of the generic-row takeover). */
 const GIT_PR_TOOL_KEYS = [
@@ -67,19 +93,22 @@ const BROWSER_TOOL_KEYS = [
   'browser_keyboard', 'browser_hover', 'browser_submit',
 ] as const
 
-/** The DeepSeekGUI views beside the official 对话 / 轨迹 tabs, in tab order. */
+/** The inspector-only DeepSeekGUI views beside the official 对话 / 轨迹 tabs, in tab order. */
 const VIEWS = [
   { id: 'deepseekgui-changes', order: 20, label: 'view.changes', component: ChangesView },
   { id: 'deepseekgui-git', order: 21, label: 'view.git', component: GitView },
   // Parallel work trees live inside the Git view since 2026-09-11 (#5).
-  { id: 'deepseekgui-memory', order: 23, label: 'view.memory', component: MemoryView },
 ] as const
 
-/** The official credential reference the first-run key step is about. */
-const DEEPSEEK_KEY_REF = 'DEEPSEEK_API_KEY'
+/** Tab position of the Memory view: after Project management (22). */
+const MEMORY_VIEW_ORDER = 23
 
-/** Required services: the UI slot registry and the locale registry. */
-export const inject = ['slots', 'locale', 'sessions', 'conversation', 'remote', 'layout', 'sidebarRight']
+/**
+ * Required services. Cordis 4.0.4 (dsh 0.1.7-alpha.2) throws on reading an
+ * undeclared one, so `jobs` (notification watcher) and `uiWorkspace`
+ * (notification-click navigation) must be listed here too.
+ */
+export const inject = ['slots', 'locale', 'sessions', 'conversation', 'remote', 'layout', 'sidebarRight', 'jobs', 'uiWorkspace']
 
 /**
  * Register the DeepSeekGUI brand, the Workbench marker, the desktop poll,
@@ -93,6 +122,10 @@ export async function apply(ctx: ClientContext): Promise<void> {
   // so the views call typed methods instead of shaping HTTP themselves.
   const unmountInspector = await ctx.remote.$mount(inspectorRemote)
   ctx.effect(() => () => { void unmountInspector() }, 'deepseekgui: inspector remote')
+  // B7-P9: the memory pages read and write the entry store through its
+  // generated namespace — the same store the session tools write.
+  const unmountMemory = await ctx.remote.$mount(memoryRemote)
+  ctx.effect(() => () => { void unmountMemory() }, 'deepseekgui: memory remote')
   const bridge = readBridge()
   const instructions = (sessionId: SessionId) => ({ submitInstruction: instructionSender(ctx, sessionId) })
   ctx.effect(
@@ -111,7 +144,33 @@ export async function apply(ctx: ClientContext): Promise<void> {
     () => ctx.locale.register(NS_NOTIFY, { zh: notifyZh, en: notifyEn }),
     'deepseekgui: notify dictionaries',
   )
+  ctx.effect(
+    () => ctx.locale.register(NS_MEMORY, { zh: memoryZh, en: memoryEn }),
+    'deepseekgui: memory dictionaries',
+  )
+  ctx.effect(
+    () => ctx.locale.register('deepseekgui.welcome', { zh: welcomeZh, en: welcomeEn }),
+    'deepseekgui: welcome dictionaries',
+  )
   const t = ctx.locale.bind(NS_INSPECTOR)
+  const tm = ctx.locale.bind(NS_MEMORY)
+  // One Host subscription to store changes fans out to every mounted memory
+  // page, so a write in any window (a tool, a page, a deletion) re-reads here.
+  const memoryListeners = new Set<() => void>()
+  const onMemoryChange = (listener: () => void): () => void => {
+    memoryListeners.add(listener)
+    return () => { memoryListeners.delete(listener) }
+  }
+  ctx.effect(
+    () => ctx.remote.$on('workbench-memory/change', () => { for (const listener of [...memoryListeners]) listener() }),
+    'deepseekgui: memory change fan-out',
+  )
+  // Whether a source session is still on the list; unknown until the list arrived.
+  const sessionPresent = (sessionId: string): boolean | undefined => {
+    const list = ctx.sessions.list.getSnapshot()
+    if (list.phase !== 'ready') return undefined
+    return Object.hasOwn(list.byId, sessionId)
+  }
   // The official whale mark stays (2026-09-06 ruling: DeepSeekGUI is a
   // non-commercial open-source DSH plugin set, so it keeps the official
   // mark); only the brand name reads DeepSeekGUI.
@@ -136,7 +195,7 @@ export async function apply(ctx: ClientContext): Promise<void> {
       order: 10,
       inject: () => ({
         openSession: (sessionId: SessionId): void => {
-          ctx.sessions.open(sessionId)
+          ctx.uiWorkspace.openSession(sessionId) // 0.1.7: uiWorkspace owns opening, Sessions only retain
         },
         // #13: the pane just slid out on the desktop side; give the right
         // Sidebar back its column by collapsing it (only when expanded).
@@ -181,43 +240,114 @@ export async function apply(ctx: ClientContext): Promise<void> {
       id: 'deepseekgui-notifier',
       locale: NS_NOTIFY,
       order: 20,
+      inject: () => ({ jobs: ctx.jobs.state }),
     }, NotificationWatcher))
-  // B6-P5 first-run guide, workspace step (P11): the first step must render
-  // before any Session exists, so it lives in the Hero column. It renders only
-  // while the desktop reports a pending first run and no workspace is chosen.
-  ctx.slots.inject('conversation.hero.dock', () =>
-    ctx.slots.register({
-      name: 'conversation.hero.dock',
-      id: 'deepseekgui-first-run-workspace',
-      locale: 'deepseekgui.workbench',
-      order: 5,
-      inject: () => ({ bridge }),
-    }, FirstRunWorkspaceGuide))
-  // B6-P5 first-run guide, session steps (P11): the API-key step only appears
-  // while the official credential domain reports the key missing, so the entry
-  // waits for `remote.credentials` instead of making it a hard dependency of
-  // the whole plugin (a profile without the credentials domain keeps the rest
-  // of the Workbench and simply shows no key step).
-  await ctx.inject(['remote.credentials'], (scoped) => {
-    const credentialConfigured = async (): Promise<boolean> => {
-      try {
-        const response = await scoped.remote.credentials.describe([DEEPSEEK_KEY_REF])
-        // An unreadable or refused answer reports "not configured": never claim
-        // a key the user may still need to add.
-        return response.ok && response.value[DEEPSEEK_KEY_REF]?.configured === true
-      } catch {
-        return false
-      }
-    }
-    scoped.slots.inject('conversation.input.dock', () =>
-      scoped.slots.register({
-        name: 'conversation.input.dock',
-        id: 'deepseekgui-first-run',
+  // Delete session (住户 2026-09-22): upstream 0.1.7 moved the archive back
+  // into the sidebar and its row menu has no delete, so the entry lands in
+  // that official menu — one row for archived sessions only, plus the
+  // confirmation it raises. Both are no-ops outside a DeepSeekGUI window,
+  // where the control bridge (the only thing that can erase Home files)
+  // does not exist. See session-delete.tsx.
+  {
+    const deleteSession = readSessionDeleter()
+    ctx.slots.inject('sidebar.workspaces.session.menu.item', () =>
+      ctx.slots.register({
+        name: 'sidebar.workspaces.session.menu.item',
+        id: 'deepseekgui-delete',
         locale: 'deepseekgui.workbench',
-        order: 5,
-        inject: () => ({ bridge, credentialConfigured }),
-      }, FirstRunGuide))
-  })
+        // After the shipped archive row (400), which this one follows in meaning.
+        order: 500,
+        inject: () => ({ deleteSession }),
+      }, DeleteSessionMenuItem))
+    // The dialog outlives the menu the row sat in, so it hangs in the
+    // frame-wide layer rather than in the menu.
+    ctx.slots.inject('shell.overlay', () =>
+      ctx.slots.register({
+        name: 'shell.overlay',
+        id: 'deepseekgui-session-delete',
+        locale: 'deepseekgui.workbench',
+        inject: () => ({ deleteSession }),
+      }, DeleteSessionDialog))
+    // Settings → Archived sessions (住户 2026-09-23): the sidebar's "Show
+    // archived" is hard to find, so the B6-P11 page comes back — now in our
+    // plugin, out of the official ui-workspace package's way.
+    ctx.slots.inject('settings.section', () =>
+      ctx.slots.register({
+        name: 'settings.section',
+        id: 'deepseekgui-archived',
+        order: ARCHIVED_SECTION_ORDER,
+        locale: 'deepseekgui.workbench',
+        label: () => ctx.locale.bind('deepseekgui.workbench')('archived.nav'),
+        inject: () => ({
+          restore: (sessionId: SessionId) => ctx.uiWorkspace.unarchiveSession(sessionId),
+          open: (sessionId: SessionId): void => { ctx.uiWorkspace.openSession(sessionId) },
+          deleteSession,
+        }),
+      }, ArchivedSessionsSection))
+  }
+  // Welcome overlay (住户 2026-09-25: 首次引导全换官方的). The official Desktop
+  // shows a native welcome window — sign in, add an API key, or set up later —
+  // while neither a DeepSeek account nor any key is configured, then its in-page
+  // onboarding takes over after sign-in. That window lives in the official
+  // Desktop app, which DeepSeekGUI does not ship, so it is ported into this
+  // page's frame-wide layer. It exists only in a DeepSeekGUI window, where the
+  // Host shim installed `dshDesktop` and `dshOnboarding`; the account calls wait
+  // for the official account Remote instead of making it a hard dependency.
+  const onboarding = (globalThis as { dshOnboarding?: OnboardingCarrier }).dshOnboarding
+  if (bridge !== null && 'dshDesktop' in globalThis && onboarding !== undefined) {
+    await ctx.inject(['slots', 'remote.account'], (scoped) => {
+      const storage = ((): Storage | null => { try { return window.sessionStorage } catch { return null } })()
+      const controller = createWelcomeController(onboarding, storage)
+      const stream = scoped.remote.$stream<AccountView>({
+        name: 'deepseekgui-welcome-account',
+        open: signal => scoped.remote.account.watch(signal),
+        ended: () => new Error('account stream ended'),
+      })
+      scoped.effect(() => () => stream.dispose(), 'deepseekgui: welcome account stream')
+      void (async () => {
+        for await (const frame of stream) {
+          controller.setView(frame.value)
+          frame.accept()
+        }
+      })().catch(() => { /* A dropped stream leaves the page as it was; the official account UI reports it. */ })
+      scoped.effect(() => {
+        const invalidate = (): void => { controller.invalidateKey() }
+        const disposers = [
+          scoped.remote.$on('deepseek-account/session-expired', () => { controller.sessionExpired() }),
+          scoped.remote.$on('credentials/reference-updated', invalidate),
+          scoped.remote.$on('llm/adapters-updated', invalidate),
+        ]
+        return () => { for (const dispose of disposers) dispose() }
+      }, 'deepseekgui: welcome key readiness')
+      // The official account UI's client identity, read at call time.
+      const client = () => {
+        const version = process.env.DSH_CLIENT_VERSION
+        if (version === undefined || version === '') throw new Error('account: this client build carries no DSH_CLIENT_VERSION')
+        return { version, locale: ctx.locale.getSnapshot().active, timezoneOffsetSeconds: -new Date().getTimezoneOffset() * 60 }
+      }
+      const account = {
+        async start(): Promise<AccountView> {
+          const transport = (globalThis as { __DSH_TRANSPORT__?: { streamBaseUrl?: string } }).__DSH_TRANSPORT__
+          const origin = transport?.streamBaseUrl !== undefined ? new URL(transport.streamBaseUrl).origin : window.location.origin
+          const result = await scoped.remote.account.startSignIn(client(), origin, 'desktop')
+          if (!result.ok) throw new Error('account start failed')
+          return result.value
+        },
+        async cancel(id: NonNullable<AccountView['attempt']>['id']): Promise<AccountView> {
+          const result = await scoped.remote.account.cancelSignIn(id)
+          if (!result.ok) throw new Error('account cancel failed')
+          return result.value
+        },
+      }
+      scoped.slots.inject('shell.overlay', () =>
+        scoped.slots.register({
+          name: 'shell.overlay',
+          id: 'deepseekgui-welcome',
+          locale: 'deepseekgui.welcome',
+          inject: () => ({ controller, account }),
+        }, WelcomeOverlay))
+    })
+  }
   // Keyed tool-result cards (B5-P5): one registered row per owned wire key.
   ctx.slots.inject('tool.call.toolview', function* () {
     for (const key of GIT_PR_TOOL_KEYS) {
@@ -243,7 +373,7 @@ export async function apply(ctx: ClientContext): Promise<void> {
   // declares it — the declaration cannot sit on this plugin's own `inject`
   // because the mount happens inside apply(). Same shape as the official
   // Team UI mount (packages/experimental/client-ui-agent-team/src/client/mount.ts).
-  await ctx.inject(['slots', 'remote.workbenchInspector'], (scoped) => {
+  await ctx.inject(['slots', 'remote.workbenchInspector', 'remote.workbenchMemory'], (scoped) => {
     scoped.slots.inject('conversation.view', function* () {
       for (const entry of VIEWS) {
         yield scoped.slots.register({
@@ -259,6 +389,35 @@ export async function apply(ctx: ClientContext): Promise<void> {
           }),
         }, entry.component)
       }
+      // The Memory view (B7-P9) reads the entry store beside the inspector.
+      yield scoped.slots.register({
+        name: 'conversation.view',
+        id: 'deepseekgui-memory',
+        order: MEMORY_VIEW_ORDER,
+        locale: NS_INSPECTOR,
+        label: () => t('view.memory'),
+        inject: (sessionId: SessionId) => ({
+          ...instructions(sessionId),
+          inspector: scoped.remote.workbenchInspector,
+          bridge,
+          memory: scoped.remote.workbenchMemory,
+          onMemoryChange,
+          sessionPresent,
+          tm,
+        }),
+      }, MemoryView)
     })
+    // Settings → Global memory (B7-P9): the mode switch, the global entries,
+    // the legacy editor and the import — the JS settings plugin no longer
+    // registers this id.
+    scoped.slots.inject('settings.section', () =>
+      scoped.slots.register({
+        name: 'settings.section',
+        id: 'deepseekgui-memory',
+        order: MEMORY_SECTION_ORDER,
+        locale: NS_MEMORY,
+        label: () => tm('nav.memory'),
+        inject: () => ({ memory: scoped.remote.workbenchMemory, bridge, onChange: onMemoryChange, sessionPresent }),
+      }, MemorySettingsSection))
   })
 }

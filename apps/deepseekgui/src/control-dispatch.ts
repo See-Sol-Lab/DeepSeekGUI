@@ -13,7 +13,6 @@ import { redactSecrets } from './redact.ts'
 import { sameHarnessSelection } from './launcher-state.ts'
 import type { HarnessSelection, LauncherStateV1 } from './launcher-state.ts'
 import type { ProfileDiscoveryV1 } from './profile-discovery.ts'
-import type { PluginAction } from './plugin-service.ts'
 
 /** controller 暴露给调度器的最小端口（HarnessController 天然满足）。 */
 interface DispatchControllerPort {
@@ -73,20 +72,6 @@ export interface ControlDispatchDeps {
   showAbout: () => void
   /** DSH Terminal 出口（show-terminal 命令）。 */
   showTerminal: (sessionId?: string) => void | Promise<void>
-  /** Plugin Manager 写操作请求出口（确认 + 执行由 main 接线）。 */
-  requestPluginOperation: (request: { action: PluginAction; profile: string; spec: string | null }) => void | Promise<void>
-  /** 取消当前 plugin 操作（杀完整 child tree）。 */
-  cancelPluginOperation: () => void
-  /** restart handoff 的 Restart Now（复用 controller.restart 唯一路径）。 */
-  restartForPluginHandoff: () => void
-  /** restart handoff 的 Later（关闭提示，绝不伪造已加载）。 */
-  ackPluginHandoff: () => void
-  /** Plugin Mutation Recovery：执行恢复（确认与执行由 main 接线）。 */
-  pluginRecoveryRestore: () => void | Promise<void>
-  /** Plugin Mutation Recovery：放弃恢复（保留当前磁盘状态，清除事务）。 */
-  pluginRecoveryAbandon: () => void
-  /** Plugin Mutation Recovery：打开目标 Profile 文件夹（人工处理入口）。 */
-  pluginRecoveryOpenProfile: () => void
   /** Update service 出口（Manual Check；background 由 main 自行调度）。 */
   checkForUpdates: () => void
   /** 关闭 available/verified 面板状态。 */
@@ -267,27 +252,6 @@ export function createControlDispatcher(deps: ControlDispatchDeps): (command: De
       case 'show-terminal':
         await deps.showTerminal(typeof command.sessionId === 'string' && command.sessionId !== '' ? command.sessionId : undefined)
         return
-      case 'plugin-op-request':
-        await deps.requestPluginOperation({ action: command.action, profile: command.profile, spec: command.spec })
-        return
-      case 'plugin-op-cancel':
-        deps.cancelPluginOperation()
-        return
-      case 'plugin-handoff-restart':
-        deps.restartForPluginHandoff()
-        return
-      case 'plugin-handoff-later':
-        deps.ackPluginHandoff()
-        return
-      case 'plugin-recovery-restore':
-        await deps.pluginRecoveryRestore()
-        return
-      case 'plugin-recovery-abandon':
-        deps.pluginRecoveryAbandon()
-        return
-      case 'plugin-recovery-open-profile':
-        deps.pluginRecoveryOpenProfile()
-        return
       case 'check-for-updates':
         deps.checkForUpdates()
         return
@@ -351,15 +315,18 @@ export function createControlDispatcher(deps: ControlDispatchDeps): (command: De
       case 'save-global-memory':
       case 'create-project-agents':
       case 'reveal-path':
-      case 'first-run-dismiss':
       case 'update-toggle-auto-download':
       case 'migrate-managed-home':
       case 'migration-cleanup':
       case 'session-delete':
-        // B5-P7 / D6-D7 / B6-P5 / B6-P6 / B6-P7 / 归档删除：记忆管理、文件
-        // 管理器定位、首启引导完成、自动下载开关、数据迁移/清理与归档会话
-        // 删除由 main 的 runCommand 直接处理（需要 DSH home、shell、UI state
-        // 与官方 session.list）；dispatch 不服务它们，只保持联合穷尽。
+      case 'open-external-link':
+      case 'usage-refresh':
+      case 'skill-pick-source':
+        // B5-P7 / D6-D7 / B6-P5 / B6-P6 / B6-P7 / 归档删除 / B7-P2 外链 / B7-P3
+        // 用量页 / B7-P4 技能导入选择：记忆管理、文件管理器定位、首启引导完成、自动下载开关、数据
+        // 迁移/清理、归档会话删除、系统浏览器打开链接、用量刷新/登录与技能来源选择由 main 的 runCommand 直接处理
+        // （需要 DSH home、shell、UI state 与官方 session.list）；dispatch 不
+        // 服务它们，只保持联合穷尽。
         return
       default:
         command satisfies never

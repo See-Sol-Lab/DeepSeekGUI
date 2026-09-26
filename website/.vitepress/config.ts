@@ -1,12 +1,14 @@
 /** VitePress configuration for the locally projected documentation site. */
 
-import { writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import type { DefaultTheme, PageData, SiteConfig } from 'vitepress'
 import type { ViteDevServer } from 'vite'
 import { withMermaid } from 'vitepress-plugin-mermaid'
+import { codeGroupFallbackHead, isolateCodeGroupRadios } from './code-groups.ts'
 import { landingLink, localeCollections, orderedPages, routeLink, sectionSpec, type DocsLocale, type DocsPage, type DocsSidebar } from '../docs.ts'
-import { docsSourceFiles, emitRawMarkdownPages, llmsTxt, projectDocs, rawMarkdownRoute } from '../../scripts/project-doc-site.ts'
+import { docsSourceFiles, emitRawMarkdownPages, llmsTxt, projectDocs } from '../../scripts/project-doc-site.ts'
+import { rawMarkdownMiddleware } from '../raw-markdown.ts'
 
 projectDocs()
 
@@ -59,13 +61,13 @@ interface GuideModules {
 const guideModules = {
   root: {
     guide: localeCollections.root[0],
-    develop: { label: 'Harness 开发', collection: localeCollections.root[1] },
-    reference: { label: 'Harness 参考', collection: localeCollections.root[2] },
+    develop: { label: '开发', collection: localeCollections.root[1] },
+    reference: { label: '参考', collection: localeCollections.root[2] },
   },
   en: {
     guide: localeCollections.en[0],
-    develop: { label: 'Harness Development', collection: localeCollections.en[1] },
-    reference: { label: 'Harness Reference', collection: localeCollections.en[2] },
+    develop: { label: 'Development', collection: localeCollections.en[1] },
+    reference: { label: 'Reference', collection: localeCollections.en[2] },
   },
 } satisfies Record<DocsLocale, GuideModules>
 
@@ -117,38 +119,7 @@ function watchCanonicalDocs(server: ViteDevServer): void {
  * their canonical sources per request, so an edit shows without a rebuild.
  */
 function serveRawMarkdown(server: ViteDevServer): void {
-  server.middlewares.use((req, res, next) => {
-    if (req.url === undefined || (req.method !== 'GET' && req.method !== 'HEAD')) {
-      next()
-      return
-    }
-    // The dev client imports page modules at these same `.md` URLs, and a
-    // module script must reach Vite's transform. Browsers declare the purpose:
-    // `script` for module imports, `document` for address-bar navigation.
-    // Header-less clients (curl, agents) read the raw twin. In-page fetch()
-    // (`empty`) also passes to Vite — a deliberate dev-only divergence that
-    // keeps Vite's own requests unbroken, while production static hosting
-    // answers such a fetch with the raw file.
-    const fetchDest = req.headers['sec-fetch-dest']
-    if (fetchDest !== undefined && fetchDest !== 'document') {
-      next()
-      return
-    }
-    const pathname = req.url.split(/[?#]/, 1)[0] ?? ''
-    const sitePath = pathname.startsWith(base) ? pathname.slice(base.length) : pathname.replace(/^\//, '')
-    if (sitePath === 'llms.txt') {
-      res.setHeader('Content-Type', 'text/plain; charset=utf-8')
-      res.end(llmsTxt({ base, ...siteIdentity }))
-      return
-    }
-    const content = sitePath.endsWith('.md') ? rawMarkdownRoute(sitePath) : undefined
-    if (content === undefined) {
-      next()
-      return
-    }
-    res.setHeader('Content-Type', 'text/markdown; charset=utf-8')
-    res.end(content)
-  })
+  server.middlewares.use(rawMarkdownMiddleware(base, () => llmsTxt({ base, ...siteIdentity })))
 }
 
 function escapeVueInterpolation(html: string): string {
@@ -187,14 +158,14 @@ const sharedTheme: Pick<DefaultTheme.Config, 'search' | 'socialLinks' | 'editLin
     },
   },
   socialLinks: [
-    { icon: 'github', link: 'https://github.com/See-Sol-Lab/DeepSeekGUI' },
+    { icon: 'github', link: 'https://github.com/deepseek-ai/deepseek-harness' },
   ],
   editLink: {
     pattern: ({ frontmatter }: PageData) => {
       const data: unknown = frontmatter
       const editSource: unknown = typeof data === 'object' && data !== null ? Reflect.get(data, 'editSource') : undefined
       if (typeof editSource !== 'string') throw new Error('Projected documentation page has no editSource frontmatter.')
-      return `https://github.com/See-Sol-Lab/DeepSeekGUI/edit/main/${editSource}`
+      return `https://github.com/deepseek-ai/deepseek-harness/edit/master/${editSource}`
     },
     text: '在 GitHub 上编辑此页',
   },
@@ -205,13 +176,20 @@ const base = process.env.DOCS_BASE ?? '/'
 
 /** Site identity shared by the VitePress configuration and the llms.txt index. */
 const siteIdentity = {
-  title: 'DeepSeekGUI',
-  description: 'A DeepSeek-native Agent Workbench for Windows, powered by DeepSeek Harness.',
+  title: 'DeepSeek Harness',
+  description: '用于构建 Agent Harness 的插件化 SDK',
 }
 
 /**
- * Styles the default theme does not provide, carried inline because the site
- * runs the stock theme with no theme directory of its own.
+ * The DeepSeek wordmark, inlined so its `currentColor` fills follow the active
+ * theme. An `<img>` would freeze the mark at the colors the file declares.
+ */
+const wordmark = readFileSync(resolve(import.meta.dirname, '../public/wordmark.svg'), 'utf8')
+  .trim()
+  .replace('<svg ', '<svg class="dsh-wordmark" ')
+
+/**
+ * Head-injected styles for the site identity and sidebar scrollbar.
  *
  * The navigation-bar lockup pairs with `siteTitle`. The scrollbar rules replace
  * the sidebar's platform bar, which reserves 15px of a 265px column and draws a
@@ -221,9 +199,9 @@ const siteIdentity = {
  * stay behind a query only Firefox answers.
  */
 const siteStyle = `
-.deepseekgui-lockup { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
-.deepseekgui-name { color: var(--vp-c-text-1); font-size: 17px; font-weight: 700; letter-spacing: -0.02em; }
-.deepseekgui-tag {
+.dsh-lockup { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.dsh-wordmark { display: block; height: 22px; width: auto; color: var(--vp-c-text-1); }
+.dsh-tag {
   display: inline-flex;
   align-items: center;
   border: 1px solid var(--vp-c-brand-soft);
@@ -274,27 +252,29 @@ const scrollbarScript = `
 `
 
 /**
- * Navigation-bar title: the DeepSeekGUI product name and release tag. VitePress
- * renders `siteTitle` as HTML; the text lockup keeps the site independent of
- * theme-specific image assets and the upstream DeepSeek wordmark.
+ * Navigation-bar title: the DeepSeek wordmark and the release-stage tag.
+ * VitePress renders `siteTitle` as HTML.
  *
- * @param releaseTag - Localized release label.
+ * @param previewTag - Localized release-stage label.
  * @returns Markup placed beside the navigation-bar home link.
  */
-function siteTitle(releaseTag: string): string {
-  return `<span class="deepseekgui-lockup"><span class="deepseekgui-name">DeepSeekGUI</span><span class="deepseekgui-tag">${releaseTag}</span></span>`
+function siteTitle(previewTag: string): string {
+  return `<span class="dsh-lockup">${wordmark}<span class="dsh-tag">${previewTag}</span></span>`
 }
 
 export default withMermaid({
   title: siteIdentity.title,
   description: siteIdentity.description,
   base,
+  transformHead: ({ siteConfig }) => codeGroupFallbackHead(siteConfig.mpa),
   /** Emit the raw-Markdown twin of every route plus llms.txt beside the rendered site. */
   buildEnd(siteConfig: SiteConfig) {
     emitRawMarkdownPages(siteConfig.outDir)
     writeFileSync(resolve(siteConfig.outDir, 'llms.txt'), llmsTxt({ base, ...siteIdentity }))
   },
   head: [
+    // VitePress leaves head hrefs untouched, so the base belongs here explicitly.
+    ['link', { rel: 'icon', type: 'image/svg+xml', href: `${base}favicon.svg` }],
     ['style', {}, siteStyle],
     ['script', {}, scrollbarScript],
   ],
@@ -307,9 +287,9 @@ export default withMermaid({
       label: '简体中文',
       lang: 'zh-CN',
       themeConfig: {
-        siteTitle: siteTitle('V1'),
+        siteTitle: siteTitle('技术预览'),
         nav: [
-          { text: '使用指南', link: landingLink('root', guideModules.root.guide), activeMatch: '^/guide/' },
+          { text: '入门', link: landingLink('root', guideModules.root.guide), activeMatch: '^/guide/' },
           ...moduleNav('root'),
         ],
         sidebar: {
@@ -333,7 +313,7 @@ export default withMermaid({
       lang: 'en-US',
       link: '/en/',
       themeConfig: {
-        siteTitle: siteTitle('V1'),
+        siteTitle: siteTitle('Preview'),
         nav: [
           { text: 'Guide', link: landingLink('en', guideModules.en.guide), activeMatch: '^/en/guide/' },
           ...moduleNav('en'),
@@ -348,7 +328,7 @@ export default withMermaid({
             const data: unknown = frontmatter
             const editSource: unknown = typeof data === 'object' && data !== null ? Reflect.get(data, 'editSource') : undefined
             if (typeof editSource !== 'string') throw new Error('Projected documentation page has no editSource frontmatter.')
-            return `https://github.com/See-Sol-Lab/DeepSeekGUI/edit/main/${editSource}`
+            return `https://github.com/deepseek-ai/deepseek-harness/edit/master/${editSource}`
           },
           text: 'Edit this page on GitHub',
         },
@@ -373,6 +353,7 @@ export default withMermaid({
   },
   markdown: {
     config(md) {
+      isolateCodeGroupRadios(md)
       const renderText = md.renderer.rules.text
       const renderCode = md.renderer.rules.code_inline
       const renderFence = md.renderer.rules.fence

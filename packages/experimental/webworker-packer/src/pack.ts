@@ -20,12 +20,11 @@ import {
   lowerModuleSource, MemoryVfs, packTar, WorkerModuleLoader,
   DEFAULT_ROOT, IMAGE_CONFIG_PATH, IMAGE_EMPTY_DIRECTORIES, IMAGE_MANIFEST_PATH,
   IMAGE_OVERLAY_DIRECTORIES,
+  MODULE_PROXIES, MODULE_PROXY_PREFIXES, REPLACED_EXTERNAL_PACKAGES,
 } from '@deepseek-ai/dsh-experimental-webworker-runtime'
 import picomatch from 'picomatch'
 import yaml from 'js-yaml'
 import { entryListSchema } from '@deepseek-ai/cordis-plugin-include'
-import { REPLACED_EXTERNAL_PACKAGES } from '@deepseek-ai/dsh-experimental-webworker-runtime/src/node/external_packages/replaced-externals.ts'
-import { MODULE_PROXIES, MODULE_PROXY_PREFIXES } from '@deepseek-ai/dsh-experimental-webworker-runtime/src/module-proxies.ts'
 import { WRAPPER_CONTRACT, type ImageFiles, type TransformOutcome } from './transform-image.ts'
 import { EXCLUDE, EXCLUDE_WORKSPACE, IMAGE_ENTRY_SEEDS, PAGE_ASSETS } from './rules.ts'
 
@@ -350,6 +349,15 @@ function debuggerNamer(workspaces: ReadonlyMap<string, string>, resolveFrom: str
   }
 }
 
+/** Declaration-only condition trees add no runtime roots; explicit imports still resolve normally. */
+function isDeclarationOnlyExport(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null) return false
+  if (Array.isArray(value)) return value.length > 0 && value.every(isDeclarationOnlyExport)
+  const conditions = Object.entries(value)
+  return conditions.length > 0 && conditions.every(([condition, target]) =>
+    condition === 'types' || condition.startsWith('types@') || isDeclarationOnlyExport(target))
+}
+
 function sweepImage(
   files: ImageFiles,
   options: PackOptions,
@@ -384,11 +392,13 @@ function sweepImage(
     } catch {
       continue
     }
-    // Every non-wildcard face is a root; a face resolving onto a page asset is
-    // kept untransformed below rather than excluded here.
+    // Every non-wildcard runtime face is a root; a face resolving onto a page
+    // asset is kept untransformed below rather than excluded here.
     const subpaths = manifest.exports === undefined
       ? ['.']
-      : Object.keys(manifest.exports).filter(key => key.startsWith('.') && !key.includes('*'))
+      : Object.entries(manifest.exports)
+        .filter(([key, target]) => key.startsWith('.') && !key.includes('*') && !isDeclarationOnlyExport(target))
+        .map(([key]) => key)
     for (const subpath of subpaths) {
       queue.push({ specifier: subpath === '.' ? name : `${name}/${subpath.slice(2)}`, from: root, importer: `workspace face ${name}` })
     }

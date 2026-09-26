@@ -1,6 +1,25 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for profiles-plugins.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/user/deepseekgui/profiles-plugins.md
-profiles-plugins.md: b92af18577c3697d5e77daf3b1f3db36a4daef55
-profiles-plugins.zh.md: 563028a6bb5a8eeaa693ca784a25ce7bdb91f7b1
+/profiles-and-plugins:
+  en: afa0dd3dea19c087
+  zh: c82b2c9924521bdd
+/profiles-and-plugins/managed-and-existing-homes:
+  en: 2ac53bb3613b70bb
+  zh: a307c8dfde047f21
+/profiles-and-plugins/choose-a-profile:
+  en: 6524730110b3b3cc
+  zh: 60f58e27e919eb7c
+/profiles-and-plugins/the-plugins-page:
+  en: 82f6b2fcddfb1fe1
+  zh: 644ee0f35b1240d2
+/profiles-and-plugins/version-compatibility-check:
+  en: 447ee41e155a4e0a
+  zh: 21e6f04fbe77fb16
+/profiles-and-plugins/when-a-plugin-stops-harness-from-starting:
+  en: f549185d37610245
+  zh: 483b25ce0b315eb9
+/profiles-and-plugins/related-guides:
+  en: 62f57504a95bc824
+  zh: 926c30eb0f070830

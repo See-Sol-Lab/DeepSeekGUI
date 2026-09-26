@@ -73,7 +73,7 @@ kind: "package-reference"
 | 文件 | 职责 |
 |---|---|
 | [`src/index.ts`](src/index.ts) | 插件入口：`Config` schema、人设段落注册、runtime-context 抑制 |
-| — | 不发布运行时不变式伴生入口；身份、完整提示词执行与资源释放归提示词注册表。 |
+| — | 不发布运行时不变式伴生入口；本行不拥有事件流或可变运行时数据，而是注册提示词段落；身份、完整提示词强制执行、遮蔽与资源释放均归提示词注册表。 |
 
 </details>
 
@@ -84,7 +84,7 @@ kind: "package-reference"
 
 当包级约定不够用时阅读以下页面；它们从 preset 组装逐步进入本行所供给的提示词注册表。
 
-- [agent-presets 包](../agent-presets/README.zh.md)——本行挂载进的 preset 组装。
+- [agent-presets 包](../agent-preset-registry/README.zh.md)——本行挂载进的 preset 组装。
 - [系统提示词子系统](../../../docs/subsystems/system-prompt.zh.md)——段落、组装，以及本行所遮蔽的人设槽位。
 - [生成的配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-persona)——每个受支持配置字段及其源声明。
 

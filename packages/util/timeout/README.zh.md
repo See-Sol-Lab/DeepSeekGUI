@@ -1,5 +1,5 @@
 ---
-description: "共享超时运算、截止时间融合与超时/取消分类，供需要限制调用方提示、启动 deadline 并在之后区分二者的能力使用。"
+description: "共享超时运算、截止时间融合与超时和取消分类，供需要限制调用方超时提示、启动 deadline 并在之后区分二者的能力使用。"
 kind: "package-library"
 ---
 
@@ -71,7 +71,7 @@ using watchdog = idleWatchdog(upstream, idleMs, 'LLM_STREAM_IDLE_TIMEOUT')
 const next = await watchdog.next(providerIterator)    // timer runs only while this read is outstanding
 ```
 
-timer 只在某个迭代器 `next()` 尚未完成时启动，并会因不产生值的传输活动通过 `pulse()` 重新启动，因此读取之间的消费方思考时间绝不计入空闲。间隔必须为正有限数，且不得大于 `MAX_TIMER_DELAY_MS`。
+timer 只在某个迭代器 `next()` 尚未完成时启动，并会因不产生值的传输活动通过 `pulse()` 重新启动，因此读取之间的消费方处理时间绝不计入空闲。间隔必须为正有限数，且不得大于 `MAX_TIMER_DELAY_MS`。
 
 ### 哪些操作不设置超时
 
@@ -92,7 +92,7 @@ timer 只在某个迭代器 `next()` 尚未完成时启动，并会因不产生�
 | 文件 | 职责 |
 |---|---|
 | [`src/index.ts`](src/index.ts) | `clampTimeout`、`deadline`、`idleWatchdog`、`timeoutOf`、`TimeoutReason`、`MAX_TIMER_DELAY_MS` |
-| — | 不发布运行时不变式伴生入口；时序运算由单元测试覆盖。 |
+| — | 不发布运行时不变式伴生入口；这个纯工具不拥有事件流或可变运行时数据；其值代数约束由单元测试保障。 |
 
 ### deadline 如何融合来源
 
@@ -141,7 +141,7 @@ timer 只在某个迭代器 `next()` 尚未完成时启动，并会因不产生�
 - **只发出通知**——deadline 无法停止忽略其信号的工作；每项能力仍需要自己的 socket、进程或任务终止路径。
 - **`timeoutMs <= 0` 是内部词汇**——只有在所属后端已解析策略后，它才会禁用本地 timer；绝不会作为面向模型或插件的公开开关。
 - **第一个中止原因决定分类**——当上游取消早于本地 timer 发生时，即使自己的超时之后也会到期，该层也无法再报告。
-- **空闲 watchdog 不是总 deadline**——它针对每个尚未完成的迭代器需求重新启动，并刻意排除消费方的思考时间。
+- **空闲 watchdog 不是总 deadline**——它针对每个尚未完成的迭代器需求重新启动，并刻意排除消费方的处理时间。
 
 <a id="dev-note"></a>
 ### 开发备注

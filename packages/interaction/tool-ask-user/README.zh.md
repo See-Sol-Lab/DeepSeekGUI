@@ -1,5 +1,5 @@
 ---
-description: "基于用户交互 seam 的模型侧 ask_user_question 工具；供组合或排查交互式 agent 表面的用户与维护者阅读。"
+description: "基于 user-questions seam 的模型侧 ask_user_question 工具；供组合或排查交互式 agent（智能体）表面的用户与维护者阅读。"
 kind: "package-reference"
 ---
 
@@ -74,11 +74,11 @@ kind: "package-reference"
 | 文件 | 职责 |
 |---|---|
 | [`src/index.ts`](src/index.ts) | 工具注册：`ask_user_question` schema、执行路径、结果渲染 |
-| — | 不发布运行时不变式伴生入口；执行关系由 seam 拥有。 |
+| — | 不发布运行时不变式伴生入口；此模型侧适配器没有独立的生命周期流；执行关系由其调用的能力 seam 负责。 |
 
-### Consumer 角色
+### 消费方角色
 
-该插件以 `['tools', 'userQuestions']` 注入，在 `ctx.tools` 上注册一个 `defineTool` 条目。`execute` 把模型参数映射为 `AskUserQuestionRequest`，转发确切的调用 agent 与当前轮次的信号，并把接受的回答映射回规范的 `answers` 数组。身份检查、意图校验、waterfall 分派与错误分类由 seam 拥有；本包只做转换。
+该插件以 `['tools', 'userQuestions']` 注入，在 `ctx.tools` 上注册一个 `defineTool` 条目。`execute` 把模型参数映射为 `AskUserQuestionRequest`，转发确切的调用 agent 与当前轮次的信号，并把接受的回答映射回规范的 `answers` 数组。身份检查、意图校验、waterfall（瀑布式事件）分派与错误分类由 seam 拥有；本包只做转换。
 
 ### 结果渲染
 

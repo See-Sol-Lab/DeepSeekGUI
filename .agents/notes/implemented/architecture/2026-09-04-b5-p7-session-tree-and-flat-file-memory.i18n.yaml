@@ -1,6 +1,22 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-09-04-b5-p7-session-tree-and-flat-file-memory.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-09-04-b5-p7-session-tree-and-flat-file-memory.md
-2026-09-04-b5-p7-session-tree-and-flat-file-memory.md: 61601c19c4139e12d17a397340e56b4e3e465ef0
-2026-09-04-b5-p7-session-tree-and-flat-file-memory.zh.md: 649c692d8dea5f2f2814b28ee99af9ea08eadaf5
+/agent-note-b5-p7-session-record-tree-and-flat-file-memory:
+  en: 38aff34d7435e6e9
+  zh: c97e50e6987ad13b
+/agent-note-b5-p7-session-record-tree-and-flat-file-memory/problem:
+  en: e7c2de9d1fc2a886
+  zh: 3c3a5ab493963576
+/agent-note-b5-p7-session-record-tree-and-flat-file-memory/decision:
+  en: ae6174b871a67b33
+  zh: 21be480c935577dc
+/agent-note-b5-p7-session-record-tree-and-flat-file-memory/alternatives-considered:
+  en: 75a4d46a7070241e
+  zh: a6c3a7c80baf1805
+/agent-note-b5-p7-session-record-tree-and-flat-file-memory/verification:
+  en: 249142441e84725e
+  zh: 3640d03e56c4ff1e
+/agent-note-b5-p7-session-record-tree-and-flat-file-memory/consequences:
+  en: d9317eb8332aa0d4
+  zh: eff0d3556fca09ca

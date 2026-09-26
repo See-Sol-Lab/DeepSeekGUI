@@ -11,6 +11,8 @@
     { "path": "../../session/session-persistence" },
     { "path": "../../fs/fs" },
     { "path": "../../git/git" },
-    { "path": "../../typert/protocol" }
+    { "path": "../../typert/protocol" },
+    { "path": "../../credentials/deepseek-account" },
+    { "path": "../../host/webserver" }
   ]
 }

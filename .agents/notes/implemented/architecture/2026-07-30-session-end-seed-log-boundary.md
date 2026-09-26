@@ -8,7 +8,7 @@ English | [中文](2026-07-30-session-end-seed-log-boundary.zh.md)
 
 A plugin that owns a standalone open/close bracket in the session log cannot tell a dead marker from a live one. `compaction/start` … `compaction/end` is the shipped case: on picking up a log whose last compaction event is an unmatched `compaction/start`, "the previous writer died mid-compaction" and "a compaction is running right now" are byte-identical stored history. The owner must either refuse to compact a log that is actually free (wedging the session) or proceed over one that is genuinely busy.
 
-Nothing in the log marked where inherited history ended. `session/created`, `session/disposed`, and `session/flush` are cordis runtime signals, not log events; `agent/session-start` is emit-only. `Session.firstLiveSeq` already held the answer exactly — the seq of this lifecycle's first own write — but only in memory, so a consumer reading stored bytes could not see it.
+Nothing in the log marked where inherited history ended. `session/created`, `session/disposed`, and `session/flush` are cordis runtime signals, not log events; `agent/created` is also a non-durable runtime event. `Session.firstLiveSeq` already held the answer exactly — the seq of this lifecycle's first own write — but only in memory, so a consumer reading stored bytes could not see it.
 
 Crash repair does not close the gap and must not: `interruptedTurnClosers` synthesizes turn, step, and tool boundaries because core owns that vocabulary, and `compaction/*` belongs to the compaction seam. A core repair pass that closed plugin brackets would put every plugin's bracket semantics in core.
 

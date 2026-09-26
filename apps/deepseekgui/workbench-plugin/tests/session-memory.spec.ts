@@ -14,8 +14,10 @@ import { SystemPrompt, renderContextSections } from '@deepseek-ai/dsh-system-pro
 import * as memoryPlugin from '../src/index.ts'
 import {
   buildMemorySectionText,
+  injectionModeOf,
   memoryContract,
   memoryFilesOf,
+  productGuide,
   readMemoryFile,
 } from '../src/session-memory.ts'
 
@@ -44,11 +46,50 @@ it('keeps literal memory stable for a loaded session and disposes its contributi
   try {
     const before = await assemble()
     expect(before.find(s => s.name === 'deepseekgui:memory')?.text).toContain('{{customer_name}}')
+    // The product guide is its own section, ahead of the memory one, without the two-file contract.
+    const guide = before.find(s => s.name === 'deepseekgui:guide')?.text ?? ''
+    expect(guide).toContain('# DeepSeekGUI: where you are running')
+    expect(guide).not.toContain('# Memory')
+    expect(before.findIndex(s => s.name === 'deepseekgui:guide')).toBeLessThan(before.findIndex(s => s.name === 'deepseekgui:memory'))
     writeFileSync(join(home, 'memory.md'), 'edited after assembly', 'utf8')
     expect(await assemble()).toEqual(before)
     expect((await assemble({ header: { cwd: project } })).find(s => s.name === 'deepseekgui:memory')?.text).toContain('edited after assembly')
     await memoryFiber.dispose()
     expect((await assemble()).some(s => s.name === 'deepseekgui:memory')).toBe(false)
+    expect((await assemble()).some(s => s.name === 'deepseekgui:guide')).toBe(false)
+  } finally {
+    await memoryFiber.dispose()
+    await promptFiber.dispose()
+  }
+})
+
+it('yields no legacy memory while the memory service reports the entries path or off, and follows a switch back', async () => {
+  const home = tempHome()
+  const project = tempHome()
+  vi.stubEnv('DSH_HOME', home)
+  writeFileSync(join(home, 'memory.md'), 'legacy text', 'utf8')
+  const ctx = new Context()
+  let mode = 'entries'
+  ctx.provide('workbenchMemory', { injectionMode: () => mode } as never)
+  const promptFiber = await ctx.plugin(SystemPrompt, {})
+  const memoryFiber = await ctx.plugin(memoryPlugin)
+  const assemble = async () => renderContextSections(await ctx.get('systemPrompt').assemble({ agent: { session: { header: { cwd: project } } } } as never))
+  try {
+    expect(injectionModeOf(ctx)).toBe('entries')
+    const sections = await assemble()
+    expect(sections.some(s => s.name === 'deepseekgui:memory')).toBe(false)
+    expect(sections.some(s => s.name === 'deepseekgui:guide')).toBe(true)
+    mode = 'markdown'
+    expect(injectionModeOf(ctx)).toBe('markdown')
+    expect((await assemble()).find(s => s.name === 'deepseekgui:memory')?.text).toContain('legacy text')
+    // Enhanced memory switched off: nothing, and no fallback to the files.
+    mode = 'off'
+    expect(injectionModeOf(ctx)).toBe('off')
+    expect((await assemble()).some(s => s.name === 'deepseekgui:memory')).toBe(false)
+    expect((await assemble()).some(s => s.name === 'deepseekgui:guide')).toBe(true)
+    mode = 'something-else'
+    expect(injectionModeOf(ctx)).toBe('markdown')
+    expect(injectionModeOf(new Context())).toBe('markdown')
   } finally {
     await memoryFiber.dispose()
     await promptFiber.dispose()
@@ -91,6 +132,8 @@ describe('buildMemorySectionText', () => {
     expect(text).toContain(files.globalPath)
     expect(text).toContain(files.projectPath)
     expect(text).toContain(memoryContract().split('\n')[0] ?? '')
+    expect(memoryContract()).toContain('# Memory')
+    expect(productGuide()).not.toContain('# Memory')
   })
 
   it('reports absent and empty files explicitly and never throws', () => {

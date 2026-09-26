@@ -44,7 +44,7 @@ Each child receives only the immutable objective, its current round and cap, a s
 | `maxHandoffChars` | `16384` | Maximum serialized characters in one round report. |
 | `maxResultChars` | `16384` | Maximum characters in the complete successful parent result. |
 
-The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-tool-ralph) is the exhaustive source for every accepted field. The configured provider must exist, support structured output, and report `inheritsParentContext: false`; a call against a provider that violates this fails loud before any round starts.
+The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-tool-ralph) is the exhaustive source for every accepted field. The configured provider must exist, support structured output, and report `inheritsParentContext: false`; a call against a provider that violates this fails loudly before any round starts.
 
 -----
 
@@ -70,7 +70,7 @@ Status-specific semantics and the serialized `maxHandoffChars` ceiling are valid
 
 ### Lifecycle and cancellation
 
-The caller's agent is the parent of every fresh child, preserving cwd and lineage without copying its conversation. `exec.signal` enters the workflow engine and is also bridged to `run.cancel()` for implementation independence. The tool awaits `run.result` and calls `run.dispose()` in `finally`, so a cancelled parent step waits for the engine's bounded termination and child quiescence before returning.
+The caller's agent is the parent of every fresh child, preserving cwd and lineage without copying its conversation. `exec.signal` enters the workflow engine and is also bridged to `run.cancel()` for implementation independence. The tool awaits `run.result` and calls `run.dispose()` in `finally`, so a cancelled parent step waits for process and child cleanup before returning. The PTC engine sets no overall workflow elapsed deadline; caller cancellation still applies.
 
 ### Render intent
 
@@ -94,7 +94,7 @@ Read these pages when the tool-level contract is not enough. They move from the 
 
 - [Workflow subsystem](../../../docs/subsystems/workflow.md) — the seam contract behind the fixed loop.
 - [Workflow seam](../workflow/README.md) — the run and result vocabulary.
-- [Worker-thread engine](../workflow-worker-thread/README.md) — the engine that executes the fixed script.
+- [PTC workflow engine](../workflow-ptc/README.md) — the engine that executes the fixed script.
 - [subagent seam](../../subagent/subagent/README.md) — the fresh-child provider contract.
 - [Goal group](../../goal/goal/README.md) — same-session goal tools for ordinary long-running objectives.
 - [Harness-level goal-based execution Agent Note](../../../.agents/notes/implemented/feature/2026-07-16-harness-level-loop.md) — the policy, provider requirements, and deferred work.
