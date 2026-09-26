@@ -22,7 +22,7 @@
   <a href="https://github.com/See-Sol-Lab/DeepSeekGUI/releases/latest"><img alt="最新版本" src="https://img.shields.io/github/v/release/See-Sol-Lab/DeepSeekGUI?style=flat-square&label=release" /></a>
   <a href="https://github.com/See-Sol-Lab/DeepSeekGUI/releases"><img alt="下载量" src="https://img.shields.io/github/downloads/See-Sol-Lab/DeepSeekGUI/total?style=flat-square" /></a>
   <img alt="Windows 10 与 11 x64" src="https://img.shields.io/badge/Windows-10%20%7C%2011%20x64-0078D4?style=flat-square&logo=windows" />
-  <a href="https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.1.1-linux.1"><img alt="Linux x64 AppImage" src="https://img.shields.io/badge/Linux-x64%20AppImage-FCC624?style=flat-square&logo=linux&logoColor=black" /></a>
+  <a href="https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.1.2-linux.1"><img alt="Linux x64 AppImage" src="https://img.shields.io/badge/Linux-x64%20AppImage-FCC624?style=flat-square&logo=linux&logoColor=black" /></a>
   <a href="apps/deepseekgui/LICENSE"><img alt="DeepSeekGUI 产品层：PolyForm Perimeter 1.0.1" src="https://img.shields.io/badge/DeepSeekGUI-PolyForm%20Perimeter%201.0.1-6f42c1?style=flat-square" /></a>
   <a href="LICENSE-MIT-UPSTREAM"><img alt="上游 DeepSeek Harness：MIT" src="https://img.shields.io/badge/Upstream%20Harness-MIT-2ea44f?style=flat-square" /></a>
   <a href="https://doi.org/10.5281/zenodo.22205160"><img alt="DOI" src="https://zenodo.org/badge/DOI/10.5281/zenodo.22205160.svg" /></a>
@@ -56,9 +56,9 @@ DeepSeekGUI 是基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek
 | 平台 | 下载 | 要求 |
 | --- | --- | --- |
 | Windows | [下载安装包](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.1.2/DeepSeekGUI-Setup-1.1.2.exe) | Windows 10/11，x64 |
-| Linux | [下载 AppImage](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.1.1-linux.1/DeepSeekGUI-1.1.1-x86_64.AppImage) | x64，AppImage；实验性支持 |
+| Linux | [下载 AppImage](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.1.2-linux.1/DeepSeekGUI-1.1.2-x86_64.AppImage) | x64，AppImage；实验性支持 |
 
-Windows 安装包安装到当前用户目录，自带运行时。Linux 使用独立的 AppImage 发行文件，下载与校验信息见 [v1.1.1-linux.1](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.1.1-linux.1) 发布页。
+Windows 安装包安装到当前用户目录，自带运行时。Linux 使用独立的 AppImage 发行文件，下载与校验信息见 [v1.1.2-linux.1](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.1.2-linux.1) 发布页。
 
 > **Windows 安装提示：** 安装包尚未进行代码签名，SmartScreen 可能提示发布者未知。核对下载来源和 SHA256 后，可通过 **“更多信息” → “仍要运行”** 继续安装。
 
