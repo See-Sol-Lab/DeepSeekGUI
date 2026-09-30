@@ -28,9 +28,11 @@ describe('mergePlatformCookies', () => {
 })
 
 describe('platformClientHeaders', () => {
-  it('报 web（不冒充官方桌面）与内嵌 DSH 版本', () => {
+  it('按系统报桌面客户端身份（与 Host 账号插件一致），没有对应桌面身份的系统报 web', () => {
+    expect(platformClientHeaders('0.1.7-rc.2', 'zh_CN', 'win32')['x-client-platform']).toBe('desktop-win')
+    expect(platformClientHeaders('0.1.7-rc.2', 'zh_CN', 'darwin')['x-client-platform']).toBe('desktop-mac')
+    expect(platformClientHeaders('0.1.7-rc.2', 'zh_CN', 'linux')['x-client-platform']).toBe('web')
     const headers = platformClientHeaders('0.1.7-rc.2', 'zh_CN')
-    expect(headers['x-client-platform']).toBe('web')
     expect(headers['x-client-version']).toBe('0.1.7-rc.2')
     expect(headers['x-client-locale']).toBe('zh_CN')
     expect(Number(headers['x-client-timezone-offset'])).toBe(-new Date().getTimezoneOffset() * 60)

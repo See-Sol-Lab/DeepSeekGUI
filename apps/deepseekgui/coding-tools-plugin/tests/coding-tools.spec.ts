@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it, vi } from 'vitest'
-import { apply, cwdOf } from '../src/index.ts'
+import { apply, cwdOf, requireApproval } from '../src/index.ts'
 
 // The tools refuse a working directory that does not exist; the fake repos
 // here are synthetic paths, so the probe answers for them.
@@ -170,6 +170,29 @@ describe('write gates', () => {
     await def('git_stage').execute({ cwd: 'C:\\repo', path: 'a.ts' }, execWith())
     expect(git.stageFile).toHaveBeenCalledWith('C:\\repo', 'a.ts')
     expect(approval.request).not.toHaveBeenCalled()
+  })
+
+  it('commit, push, and pr_create run without an ask under full access (DeepSeekGUI 2026-09-29)', async () => {
+    const { def, git, pullRequest, approval, sandboxPolicy } = makeCtx()
+    sandboxPolicy.resolve.mockReturnValue({ mode: 'danger-full-access', workspaceRoot: 'C:\\repo' })
+    // The preset's `never` policy would reject any ask that reached it.
+    approval.request.mockResolvedValue('rejected')
+    await def('git_commit').execute({ cwd: 'C:\\repo', message: 'fix: full access' }, execWith())
+    await def('git_push').execute({ cwd: 'C:\\repo', remote: 'origin', localBranch: 'main', remoteBranch: 'main' }, execWith())
+    await def('pr_create').execute({ cwd: 'C:\\repo', title: 'P', body: 'b', base: 'main', head: 'p' }, execWith())
+    expect(git.commit).toHaveBeenCalled()
+    expect(git.push).toHaveBeenCalled()
+    expect(pullRequest.create).toHaveBeenCalled()
+    expect(approval.request).not.toHaveBeenCalled()
+  })
+
+  it('a red-warning concern is still asked under full access', async () => {
+    const { approval, sandboxPolicy, git, pullRequest } = makeCtx()
+    sandboxPolicy.resolve.mockReturnValue({ mode: 'danger-full-access', workspaceRoot: 'C:\\repo' })
+    const ctx = { git, pullRequest, approval, sandboxPolicy }
+    const exec = execWith({ agent: { session: { header: { cwd: 'C:\\repo' } } } }) as never
+    await requireApproval(ctx as never, exec, 'git_commit', 'commit in the DeepSeekGUI source', 'C:\\repo', ['gui', 'git'])
+    expect(approval.request).toHaveBeenCalledWith(expect.objectContaining({ toolName: 'git_commit', danger: ['gui', 'git'] }))
   })
 
   it('stage refuses in a read-only session', async () => {

@@ -64,7 +64,7 @@ export const zh = {
   // D20 copy (莉莉丝 2026-09-06): what to record and what the person can do, first.
   'memory.title': '项目记忆',
   'memory.guide1': '记录这个项目的背景、已确认的决定和需要延续的信息，方便后续对话接着工作。',
-  'memory.guide2': '你可以打开文件手动修改，也可以让助手整理。',
+  'memory.guide2': '可以直接在下面编辑，也可以让助手整理。每个新会话开始时读入一次。',
   'memory.empty': '当前项目还没有记忆',
   'memory.emptyHint': '助手在对话中遇到值得延续的信息时，会在项目文件夹里创建 {file}。',
   'memory.missingHint': '请恢复该目录后点“刷新”，或切换到其他工作区。',
@@ -141,7 +141,7 @@ export const en = {
   'worktree.scope': 'Shows which parallel work trees exist, their branches, and what changed. Creating, merging, and removing go through the conversation.',
   'memory.title': 'Project memory',
   'memory.guide1': 'Records this project\'s background, confirmed decisions, and anything later conversations should carry forward.',
-  'memory.guide2': 'You can open the file and edit it yourself, or ask the assistant to tidy it.',
+  'memory.guide2': 'Edit it right here, or ask the assistant to tidy it. Every new session reads it once at its start.',
   'memory.empty': 'This project has no memory yet',
   'memory.emptyHint': 'When something worth carrying forward comes up in a conversation, the assistant creates {file} in the project folder.',
   'memory.missingHint': 'Restore the folder and refresh, or switch to another workspace.',

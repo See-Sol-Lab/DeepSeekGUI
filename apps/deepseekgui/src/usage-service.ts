@@ -103,8 +103,11 @@ export interface UsageData {
   readonly heatmap: readonly UsageHeatmapDay[]
 }
 
-/** 取不到数据时的原因（面板按原因给不同提示，都不显示旧值）。 */
-export type UsageUnavailableReason = 'network' | 'timeout' | 'format' | 'no-session'
+/**
+ * 取不到数据时的原因（面板按原因给不同提示，都不显示旧值）。blocked：平台前面的防护
+ * 暂时拒绝了请求（202 / 403 / 429 或回来一页 HTML），过几分钟会自己好，不是改版。
+ */
+export type UsageUnavailableReason = 'network' | 'timeout' | 'format' | 'no-session' | 'blocked'
 
 /** 一次刷新的结论。 */
 export type UsageOutcome =
@@ -221,20 +224,29 @@ export type UsageResponseVerdict =
   | { readonly kind: 'ok'; readonly bizData: unknown }
   | { readonly kind: 'signed-out' }
   | { readonly kind: 'format' }
+  | { readonly kind: 'blocked' }
   | { readonly kind: 'missing' }
+
+/**
+ * 平台防护拦请求时回的状态码。2026-09-26 实测：一次登录连发十几个请求后，接口一律回
+ * 202、正文不是 JSON，几分钟后自己恢复（上游讨论 deepseek-harness#7931）。
+ */
+const BLOCKED_STATUS = new Set([202, 403, 429])
 
 /** 官方「缺 token / token 失效」业务码。 */
 const CODE_MISSING_TOKEN = 40002
 
 /**
  * 判定一个原始响应：401 或业务码 40002 → 未登录；HTTP 200 + code 0 且
- * `data.biz_data` 存在 → 成功；其余（含 INVALID_PARAM、非 JSON、改版）→ format。
+ * `data.biz_data` 存在 → 成功；202 / 403 / 429 或回来一页 HTML → blocked（防护暂时拦下）；
+ * 其余（含 INVALID_PARAM、非 JSON、改版）→ format。
  * @param raw - 页内带回的响应；缺省表示网络层失败。
  * @returns 判定。
  */
 export function judgeUsageResponse(raw: UsageRawResponse | undefined): UsageResponseVerdict {
   if (raw === undefined) return { kind: 'missing' }
   if (raw.status === 401) return { kind: 'signed-out' }
+  if (BLOCKED_STATUS.has(raw.status) || raw.body?.trimStart().startsWith('<') === true) return { kind: 'blocked' }
   if (raw.body === null) return { kind: 'format' }
   let parsed: unknown
   try {
@@ -448,6 +460,7 @@ export function interpretUsageResult(plan: UsageFetchPlan, result: UsageScriptRe
   if (Object.values(verdicts).some(verdict => verdict.kind === 'signed-out')) return { kind: 'signed-out' }
   const required = [verdicts.summary, verdicts.amount30, verdicts.cost30, verdicts.amountPrev]
   if (required.some(verdict => verdict.kind === 'missing')) return { kind: 'unavailable', reason: 'network' }
+  if (required.some(verdict => verdict.kind === 'blocked')) return { kind: 'unavailable', reason: 'blocked' }
   if (required.some(verdict => verdict.kind === 'format')) return { kind: 'unavailable', reason: 'format' }
   try {
     const summary = summaryOf(bizDataOf(verdicts.summary))

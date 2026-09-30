@@ -82,36 +82,13 @@ DeepSeekGUI 使用应用内的浏览器面板，首次浏览器操作时启动�
 
 已安装版本已经是最新发布版本。这不会改变已安装应用。你也可以从 GitHub 手动下载 Release。
 
-## Sandbox 模式用过的项目里，自己运行程序出错（已知问题）
+## Sandbox 模式用过的项目里，自己运行程序出错
 
-在 Sandbox 模式下，Windows 沙箱第一次给某个项目文件夹写权限时，会在这个文件夹上永久留下三样设置：一条给沙箱的写入授权、一条“禁止删除子项”，以及**低完整性标签**。这是上游 DSH 0.1.7 的设计，关掉 DeepSeekGUI 也不会撤销。
+在 Windows 上，旧版 DeepSeekGUI 可能在项目文件夹上留下 Sandbox 写入授权和低完整性标签。从这个文件夹启动的程序随后可能无法访问用户目录或缓存。Electron 程序可能以 `0x80000003` 退出；Python 或 `uv` 可能报告“拒绝访问”。
 
-标签带来的副作用是：之后**你自己**从这个文件夹里启动的程序也会以低权限运行，即使你是在普通终端里启动的。常见表现：
+DeepSeekGUI 1.2.0 会在项目空闲 30 秒、且没有 Sandbox 命令仍在运行时收回授权。要清理旧版留下的标记，打开**设置 → 通用 → 清理沙箱标记**并选择文件夹。如果该文件夹还有 Sandbox 命令在运行，应用会拒绝清理；如果标记来自上级目录，应用会找到并清理实际带标记的那一层。
 
-- 项目里的 Electron 程序启动即退出，退出码 `0x80000003`，没有任何输出；
-- 项目里的 Python 虚拟环境、`uv`、编译出来的程序写用户目录或缓存时报“拒绝访问”。
-
-同一个程序拷到别的文件夹能正常运行，基本就是这个原因。可以这样确认（把路径换成你的项目）：
-
-```powershell
-icacls "D:\my-project" | Select-String "Mandatory"
-```
-
-输出里有 `Low Mandatory Level` 就是被打了标签。确认没有 DeepSeekGUI 任务在这个项目里运行后，在自己的 PowerShell 里执行下面几行即可恢复（`S-1-4-…` 换成上一条命令输出里看到的那个编号）：
-
-```powershell
-$root = "D:\my-project"
-$acl = (Get-Item $root).GetAccessControl('Access')
-$acl.PurgeAccessRules([Security.Principal.SecurityIdentifier]'S-1-4-…')
-$everyone = [Security.Principal.SecurityIdentifier]'S-1-1-0'
-foreach ($r in @($acl.GetAccessRules($true, $false, [Security.Principal.SecurityIdentifier]))) {
-  if ($r.AccessControlType -eq 'Deny' -and $r.IdentityReference -eq $everyone) { [void]$acl.RemoveAccessRuleSpecific($r) }
-}
-(Get-Item $root).SetAccessControl($acl)
-icacls $root /setintegritylevel '(OI)(CI)M'
-```
-
-下次再以 Sandbox 模式在这个项目里执行命令时，这些设置会重新写上。经常要在项目里自己运行程序的，可以给这个项目用 Full Access。上游跟踪见 [deepseek-harness#7709](https://github.com/deepseek-ai/deepseek-harness/discussions/7709)。
+可以用 `icacls "D:\my-project"` 检查文件夹。清理后，输出里不应再有 `Mandatory Label\Low` 或 `S-1-4-…` 沙箱授权。清理失败时，保留错误信息并导出诊断供排查。
 
 ## GUI 无法使用时导出诊断
 

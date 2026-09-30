@@ -1,7 +1,7 @@
 /**
- * The legacy global memory editor (B7-P9, moved here from the JS settings
- * plugin): while the memory path is the Markdown files, the person edits
- * `<home>/memory.md` here. The text comes from the desktop control model
+ * The global memory editor (B7-P9, moved here from the JS settings plugin):
+ * the person edits `<home>/memory.md` here, and every new window reads it
+ * once at its start. The text comes from the desktop control model
  * (a bounded read of the file), the save goes through the closed
  * `save-global-memory` command with the text the edit started from, so a
  * file changed underneath is refused rather than overwritten; an unreadable
@@ -9,8 +9,7 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import type { ControlBridgeClient, ControlModelSnapshot } from '../bridge.ts'
-import type { Translate } from './MemoryEntries.tsx'
-import { errorMessage } from './model.ts'
+import { errorMessage, type Translate } from '../locales-memory.ts'
 import { button, BUTTON_CLASS, caption, column, errorText, intro, mono, primaryButton, row, textarea } from './styles.ts'
 
 /** Props of the editor. */
@@ -108,6 +107,7 @@ export function LegacyGlobalEditor({ bridge, t }: LegacyGlobalEditorProps) {
         <span style={{ flex: 1 }} />
         <button type="button" className={BUTTON_CLASS} style={button} onClick={() => { void bridge.run({ type: 'open-memory', which: 'global' }).catch(() => undefined) }}>{t('legacy.open')}</button>
       </div>
+      <p style={intro}>{t('legacy.kept')}</p>
       <p style={intro}>{t('legacy.projectNote')}</p>
       {home !== '' && <div style={{ ...caption, ...mono }}>{t('legacy.location', { path: `${home}${sep}memory.md` })}</div>}
       <p style={intro}>{t('legacy.agentsNote')}</p>

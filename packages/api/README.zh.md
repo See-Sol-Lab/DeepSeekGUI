@@ -28,7 +28,6 @@ kind: "package-group"
 |---|---|---|
 | [`workbench-inspector/`](workbench-inspector/README.zh.md) | 不调用模型，读取 DeepSeekGUI 当前工作区文件与 Git 差异。 | `ctx.workbenchInspector` |
 | [`skill-manager/`](skill-manager/README.zh.md) | 导入、列出与卸载 DeepSeekGUI 本机技能库里的技能包，保存每个项目文件夹的选择，并注册唯一一个为会话列出已选安装的 provider。 | `ctx.skillManager` |
-| [`workbench-memory/`](workbench-memory/README.zh.md) | 按项目文件夹或全局存储 DeepSeekGUI 的工程记忆条目：带版本的纠正、留墓碑的遗忘、一层撤销、显式恢复，以及旧 Markdown 记忆文件的审阅式导入。 | `ctx.workbenchMemory` |
 | [`remotes/`](remotes/README.zh.md) | 决定 Client 可以消费哪些 Host 能力与事件。 | — |
 | [`gateway/`](gateway/README.zh.md) | 承载类型化一元调用、带 Client 上行的多路复用流，以及转发的 Host 事件。 | `ctx.typertGateway` / `ctx.remote` |
 | [`job-controller/`](job-controller/README.zh.md) | 把一个后台任务的观测 record 流式送到 Client。 | `ctx.jobController` / `ctx.remote.job` |

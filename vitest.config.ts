@@ -5,7 +5,7 @@ import { resolvePwshPath } from './packages/shell/pwsh-local/src/resolve.ts'
 import { defineConfig } from 'vitest/config'
 import { standardDecoratorPlugin, vitestExecArgv } from './vitest.shared.ts'
 import { COVERAGE_EXEMPT_ENV, coverageExemptHeavySuites } from './scripts/coverage-exempt.ts'
-import { COVERAGE_PARTITION_MODE_ENV } from './scripts/coverage-partitions.ts'
+import { COVERAGE_PARTITION_MODE_ENV, COVERAGE_TEST_TIMEOUT_ENV, coverageTestTimeoutOptions } from './scripts/coverage-partitions.ts'
 
 // Prints exact `path:line:col` records for every uncovered statement, branch
 // path, and function when a file misses the per-file 100% gate — the built-in
@@ -153,6 +153,12 @@ if (coveragePartitionRaw !== undefined && coveragePartitionRaw !== '' && coverag
 }
 const coveragePartitionMode = coveragePartitionRaw === '1'
 
+// Lanes on shared hosts raise the per-test, hook, and expect.poll defaults
+// together through DSH_COVERAGE_TEST_TIMEOUT_MS; it lands in each inline
+// project below because CLI flags do not reach them (coverageTestTimeoutOptions
+// owns the rule and its reach).
+const laneTestBudget = coverageTestTimeoutOptions(process.env[COVERAGE_TEST_TIMEOUT_ENV])
+
 // These suites exercise process-global state, process APIs, or timing-sensitive process I/O
 // that worker threads cannot isolate reliably under aggregate gate contention.
 // Keep the narrow exception in forks while the rest of the inventory avoids per-file processes.
@@ -197,6 +203,7 @@ export default defineConfig({
           // Projects do not inherit the root timeouts; both carry the ceiling.
           testTimeout: 30_000,
           hookTimeout: 30_000,
+          ...laneTestBudget,
           include: testIncludes,
           exclude: [
             ...platformUnsupportedTests,
@@ -215,6 +222,7 @@ export default defineConfig({
           // Projects do not inherit the root timeouts; both carry the ceiling.
           testTimeout: 30_000,
           hookTimeout: 30_000,
+          ...laneTestBudget,
           include: processBoundTests,
           exclude: [
             ...platformUnsupportedTests,

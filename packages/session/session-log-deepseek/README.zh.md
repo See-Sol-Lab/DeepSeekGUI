@@ -27,10 +27,12 @@ kind: "package-reference"
 
 | 配置键 | 默认值 | 含义 |
 |---|---:|---|
-| `enabled` | `false` | 注册 `dsh_session_log` 贡献。将其设为 `true` 可主动开启会话日志上传。 |
+| `enabled` | `false` | 发送 `dsh_session_log` 贡献。DeepSeekGUI 默认关闭（上游默认 `true`）。修改从下一次请求生效；设为 `false` 可停止会话日志上传。 |
 | `maxBytes` | 8 MiB | 单次请求携带的 `dsh_session_log` 字段序列化后的最大 UTF-8 字节数。 |
 
-随附 profile 会挂载该插件，但 DeepSeekGUI 默认关闭它（上游自 0.1.6-alpha.1 起默认开启）：除非 overlay 用 `enabled: true` 主动开启，会话内容只留在本地；开启后才会注册请求字段并追加接受水位。
+随附 profile 会挂载该插件，DeepSeekGUI 的基础组合把 `enabled` 绑定到开发者模式：只有用户打开开发者模式时，桌面才以 `DEEPSEEKGUI_DEVELOPER_MODE=1` 启动 Harness，因此默认没有任何请求携带该字段。home patch 和命令行 overlay 保持更高优先级。
+
+DeepSeekGUI 不挂载官方 Web **设置 → 通用 → 在使用官方模型 API 时上传 Session Log** 开关，由 **设置 → 通用 → 开发者模式** 取代，切换会重启 Harness；OpenTelemetry 反馈上传也由这同一个开关控制。进行中的请求保留已准备的载荷。重新开启后继续上传尚未确认的后缀，包括关闭期间记录的事件，因此打开开发者模式后在已有会话里继续对话，会把之前的记录一并上传。
 
 <a id="request-field"></a>
 ## 请求字段

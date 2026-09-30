@@ -28,7 +28,7 @@ kind: "package-reference"
 |---|---:|---|
 | `enabled` | `false` | 注册 `dsh_plugin_packages` 贡献。DeepSeekGUI 默认关闭；设为 `true` 可主动开启包元数据。 |
 
-随附 profile 使用该默认值，因此只要准备成功，每个 DeepSeek 官方请求都会携带包清单。
+DeepSeekGUI 的基础组合把 `enabled` 绑定到开发者模式：只有用户在「设置 → 通用」里打开开发者模式时，桌面才以 `DEEPSEEKGUI_DEVELOPER_MODE=1` 启动 Harness，此时只要准备成功，每个 DeepSeek 官方请求都会携带包清单。其他任何值或不设置，请求都不带它。
 
 <a id="collection"></a>
 ## 收集

@@ -14,11 +14,10 @@ The product layer includes [`apps/deepseekgui/`](apps/deepseekgui/) and these or
 
 - [Workbench inspector](packages/api/workbench-inspector/LICENSE)
 - [Local Skill manager](packages/api/skill-manager/LICENSE)
-- [Engineering memory](packages/api/workbench-memory/LICENSE)
 
 New original See-Sol-Lab product components use the same license and must declare it in their package metadata and include the license text in their distributed files. Upstream-derived code and third-party material retain their respective licenses; a directory location or package name does not change their ownership. This notice does not revoke rights already granted in earlier releases.
 
-**中文范围说明：** See-Sol-Lab 自研的 DeepSeekGUI 产品代码、文档和原创资源统一采用 PolyForm Perimeter License 1.0.1，包括桌面层及上述三个宿主包。后续新增自研组件同样适用，并须同步声明包许可、随包携带协议全文。上游及上游派生代码、第三方材料保留各自许可；本说明不撤销先前版本已经授予的权利。
+**中文范围说明：** See-Sol-Lab 自研的 DeepSeekGUI 产品代码、文档和原创资源统一采用 PolyForm Perimeter License 1.0.1，包括桌面层及上述宿主包。后续新增自研组件同样适用，并须同步声明包许可、随包携带协议全文。上游及上游派生代码、第三方材料保留各自许可；本说明不撤销先前版本已经授予的权利。
 
 ## Permitted use and competition boundary
 

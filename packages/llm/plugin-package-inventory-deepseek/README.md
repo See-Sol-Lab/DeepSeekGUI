@@ -28,7 +28,7 @@ Complete active Loader-backed plugin package inventory for official DeepSeek LLM
 |---|---:|---|
 | `enabled` | `false` | Register the `dsh_plugin_packages` contribution. DeepSeekGUI leaves it off; set it to `true` to opt in to package metadata. |
 
-Shipped profiles use the default, so every official DeepSeek request carries the package inventory when preparation succeeds.
+The DeepSeekGUI base composition binds `enabled` to developer mode: the desktop starts the Harness with `DEEPSEEKGUI_DEVELOPER_MODE=1` only when the user turns developer mode on under Settings → General, and only then does every official DeepSeek request carry the package inventory when preparation succeeds. Any other value, or no value, leaves requests without it.
 
 <a id="collection"></a>
 ## Collection

@@ -22,6 +22,19 @@ Read-only workspace inspection plus desktop-authorized Session deletion.
 
 ```ts cordis-catalog
 /**
+ * Remove the Windows ACL sandbox's marks from a folder the desktop user
+ * chose (DeepSeekGUI 2026-09-29): its grant, the delete deny, and the Low
+ * label that make programs started there run at Low integrity. The sandbox
+ * provider picks the folder that actually carries them (the chosen one or
+ * the ancestor they are inherited from) and refuses while a confined
+ * command runs there.
+ * @param path - Absolute folder path from the desktop's folder dialog.
+ * @param signal - Request cancellation.
+ * @returns what was done, and on which folder.
+ */
+@Remote async cleanSandboxMarks(path: string, signal: AbortSignal): Promise<WorkbenchSandboxClean>
+
+/**
  * Read complete bounded text using provider-owned decoding and binary rejection.
  * @param sessionId - Session whose recorded cwd anchors the read.
  * @param path - File relative to the selected root.
@@ -69,6 +82,22 @@ Read-only workspace inspection plus desktop-authorized Session deletion.
  * @returns the reply text (text blocks joined) and its completeness.
  */
 @Remote async lastReply(sessionId: SessionId, signal: AbortSignal): Promise<WorkbenchLastReply>
+
+/**
+ * Render one Session as a human-readable Markdown document (B8-P1). The
+ * log is read through the query service — a running turn's newest events
+ * may not be on disk yet — and folded by the pure renderer; no model is
+ * called and nothing is sanitized. Compaction markers ride the raw log,
+ * so pre-compaction messages are quoted as they happened.
+ * @param sessionId - Session selected by the desktop user.
+ * @param includeDetails - Whether tool calls and reasoning blocks ride along.
+ * @param language - The desktop UI language for headings and labels.
+ * @param signal - Request cancellation.
+ * @returns the display title and the rendered document.
+ * @throws when the rendered document exceeds `maxExportBytes`; the message
+ * is the product's fixed user-facing sentence.
+ */
+@Remote async exportMarkdown( sessionId: SessionId, includeDetails: boolean, language: WorkbenchExportLanguage, signal: AbortSignal, ): Promise<WorkbenchExportMarkdown>
 
 /**
  * Delegate authorized deletion to the Session owner, waiting for active work.

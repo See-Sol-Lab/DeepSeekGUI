@@ -12,7 +12,8 @@ import type { DiffResult, DiffScope } from '@deepseek-ai/dsh-git/types'
 import Schema from '@deepseek-ai/schemastery'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { installDesktopAccountBridge } from './desktop-account.ts'
-import { projectMemoryFileName, type WorkbenchFileText, type WorkbenchLastReply, type WorkbenchMemory, type WorkbenchOverview, type WorkbenchRepository, type WorkbenchWorktree } from './types.ts'
+import { renderSessionMarkdown, untitledSessionTitle } from './session-markdown.ts'
+import { projectMemoryFileName, type WorkbenchExportLanguage, type WorkbenchExportMarkdown, type WorkbenchFileText, type WorkbenchLastReply, type WorkbenchMemory, type WorkbenchOverview, type WorkbenchRepository, type WorkbenchSandboxClean, type WorkbenchWorktree } from './types.ts'
 
 export type * from './types.ts'
 export { projectMemoryFileName } from './types.ts'
@@ -24,6 +25,8 @@ export interface Config {
   logLimit: number
   /** Inclusive UTF-8 byte limit for file text and Git patches. */
   maxTextBytes: number
+  /** Inclusive UTF-8 byte limit for a rendered Markdown export. */
+  maxExportBytes: number
 }
 
 /** Whether two git-reported paths name the same directory (git prints forward slashes; Windows is case-insensitive). */
@@ -48,6 +51,7 @@ export class WorkbenchInspector extends TypertRemoteService {
   static Config: Schema<Config> = Schema.object({
     logLimit: Schema.natural().min(1).default(30),
     maxTextBytes: Schema.natural().min(1).default(512 * 1024),
+    maxExportBytes: Schema.natural().min(1).default(20 * 1024 * 1024),
   })
 
   /**
@@ -64,6 +68,44 @@ export class WorkbenchInspector extends TypertRemoteService {
     })
     // Official account UI inside the DeepSeekGUI window (inert outside it).
     installDesktopAccountBridge(ctx)
+    // The sandbox provider is optional and read structurally: only the local
+    // provider on Windows can clean ACL marks (cleanSandboxMarks).
+    ctx.inject(['sandbox'], (sandboxCtx) => {
+      this.sandbox = sandboxCtx.get('sandbox')
+      sandboxCtx.effect(() => () => { this.sandbox = undefined })
+    })
+  }
+
+  /** The mounted sandbox provider, when there is one. */
+  private sandbox: unknown
+
+  /**
+   * Remove the Windows ACL sandbox's marks from a folder the desktop user
+   * chose (DeepSeekGUI 2026-09-29): its grant, the delete deny, and the Low
+   * label that make programs started there run at Low integrity. The sandbox
+   * provider picks the folder that actually carries them (the chosen one or
+   * the ancestor they are inherited from) and refuses while a confined
+   * command runs there.
+   * @param path - Absolute folder path from the desktop's folder dialog.
+   * @param signal - Request cancellation.
+   * @returns what was done, and on which folder.
+   */
+  @Remote
+  async cleanSandboxMarks(path: string, signal: AbortSignal): Promise<WorkbenchSandboxClean> {
+    signal.throwIfAborted()
+    const sandbox = this.sandbox
+    if (typeof sandbox !== 'object' || sandbox === null || !('cleanWorkspaceMarks' in sandbox) || typeof sandbox.cleanWorkspaceMarks !== 'function') {
+      return { status: 'unsupported', root: path }
+    }
+    const result: unknown = await Promise.resolve(Reflect.apply(sandbox.cleanWorkspaceMarks, sandbox, [path]))
+    if (typeof result !== 'object' || result === null || !('status' in result) || !('root' in result) || typeof result.root !== 'string') {
+      throw new Error('cleanSandboxMarks: the sandbox provider answered an unexpected shape')
+    }
+    const { status, root } = result
+    if (status !== 'cleaned' && status !== 'clean' && status !== 'busy' && status !== 'unsupported') {
+      throw new Error('cleanSandboxMarks: the sandbox provider answered an unexpected status')
+    }
+    return { status, root }
   }
 
   private async cwd(sessionId: SessionId, signal: AbortSignal): Promise<string> {
@@ -186,6 +228,49 @@ export class WorkbenchInspector extends TypertRemoteService {
       .join('\n')
       .trim()
     return { text: text === '' ? null : text, complete }
+  }
+
+  /**
+   * Render one Session as a human-readable Markdown document (B8-P1). The
+   * log is read through the query service — a running turn's newest events
+   * may not be on disk yet — and folded by the pure renderer; no model is
+   * called and nothing is sanitized. Compaction markers ride the raw log,
+   * so pre-compaction messages are quoted as they happened.
+   * @param sessionId - Session selected by the desktop user.
+   * @param includeDetails - Whether tool calls and reasoning blocks ride along.
+   * @param language - The desktop UI language for headings and labels.
+   * @param signal - Request cancellation.
+   * @returns the display title and the rendered document.
+   * @throws when the rendered document exceeds `maxExportBytes`; the message
+   * is the product's fixed user-facing sentence.
+   */
+  @Remote
+  async exportMarkdown(
+    sessionId: SessionId,
+    includeDetails: boolean,
+    language: WorkbenchExportLanguage,
+    signal: AbortSignal,
+  ): Promise<WorkbenchExportMarkdown> {
+    signal.throwIfAborted()
+    using observation = await this.ctx.sessionQuery.observeSession(sessionId, { signal, projectionMode: 'none' })
+    const snapshot = await this.ctx.sessionQuery.readTitle(sessionId, signal)
+    const title = snapshot?.title ?? untitledSessionTitle(language)
+    const markdown = renderSessionMarkdown({
+      title,
+      ...observation.header.cwd === undefined ? {} : { cwd: observation.header.cwd },
+      sessionId,
+      events: observation.events,
+      includeDetails,
+      language,
+      exportedAt: Date.now(),
+    })
+    if (Buffer.byteLength(markdown, 'utf8') > this.config.maxExportBytes) {
+      // The desktop shows this message verbatim, in the export's language.
+      throw new Error(language === 'zh'
+        ? '会话过大，暂不支持导出为 Markdown，可改用官方的会话日志导出'
+        : 'This session is too large to export as Markdown; use the official session log download instead')
+    }
+    return { title, markdown }
   }
 
   /**

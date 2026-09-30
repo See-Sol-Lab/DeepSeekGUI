@@ -143,6 +143,40 @@ export function safetyEnv(elevated: boolean, guiRoot: string): Record<string, st
 }
 
 /**
+ * 告诉 Harness「这是 DeepSeekGUI 桌面启动的」。基础组合里账号插件的
+ * `desktopPlatform` 认到它，就像官方桌面版一样按 Windows 桌面客户端
+ * （`x-client-platform: desktop-win`）标明请求身份，而不是报成网页版。
+ * 住户 2026-09-26 定：报网页版时，一次登录的连发请求被平台防护回 202 拦下，
+ * 余额一直显示「前往开放平台查看」（上游讨论 deepseek-harness#7931）。
+ * 不是秘密，智能体的命令看得到也无妨。
+ */
+export const DESKTOP_ENV = { DEEPSEEKGUI_DESKTOP: '1' } as const
+
+/**
+ * 官方上报的开关（住户 2026-09-29 定「开发者模式」）。
+ *
+ * - 会话日志：`session-log-deepseek` 随官方模型请求附带整段会话记录（含智能体
+ *   读过的文件内容与命令输出）。组合配置里它的 `enabled` 读
+ *   `DEEPSEEKGUI_DEVELOPER_MODE`，缺省为关。
+ * - 插件清单：`plugin-package-inventory-deepseek` 随官方模型请求附带已启用插件
+ *   的名称与版本，同样读 `DEEPSEEKGUI_DEVELOPER_MODE`。
+ * - 反馈上传：`session-telemetry-otel` 在用户反馈或打分时上传截至当时的会话
+ *   记录。官方约定 `DSH_TELEMETRY_DISABLED` 任意非空值都会在启动时禁用这一行。
+ *
+ * 关（默认）= 我们的版本，三项都不发；开 = 官方默认，三项都发。另一类「桌面
+ * 产品统计」只在 profile 名为 `desktop` 时装配，我们不用那个 profile，这里
+ * 不管它，也永远不接。
+ * @param developerMode - 是否开启开发者模式。
+ * @returns 注入 DSH 进程的环境变量。
+ */
+export function uploadEnv(developerMode: boolean): Record<string, string> {
+  // 关时显式写 '0'：宿主环境里若碰巧有同名变量，不能让它把会话日志悄悄打开。
+  return developerMode
+    ? { DEEPSEEKGUI_DEVELOPER_MODE: '1' }
+    : { DEEPSEEKGUI_DEVELOPER_MODE: '0', DSH_TELEMETRY_DISABLED: '1' }
+}
+
+/**
  * 组装运行任意 `@deepseek-ai/dsh` 入口命令的 spawn 参数。开发态与打包态
  * 共用同一个入口（源码入口 `apps/cli/src/bin.ts` 经 tsx，发行目录内已安装的
  * `@deepseek-ai/dsh/lib/bin.js` 由 Electron 可执行文件自身以
@@ -172,6 +206,8 @@ export function resolveDshCommand(options: {
   managedHome?: boolean
   /** 桌面是否以管理员身份运行（见 {@link safetyEnv}）。 */
   elevated?: boolean
+  /** 开发者模式：true 时官方上报与官方默认一致（见 {@link uploadEnv}）。 */
+  developerMode?: boolean
 }): { command: string; args: string[]; cwd: string; env: NodeJS.ProcessEnv } {
   if (options.packaged) {
     const entry = join(
@@ -192,9 +228,8 @@ export function resolveDshCommand(options: {
         // 决定的 DSH_HOME，不触碰全局 ~/.dsh。
         DSH_HOME: options.dshHome,
         ...safetyEnv(options.elevated === true, dirname(options.packagedExecutable ?? process.execPath)),
-        // 住户 2026-09-23：官方「点反馈即上传整段会话」（OTel FEEDBACK_ONLY）
-        // 默认关。官方开关：任意非空值都会在启动时禁用那一行。
-        DSH_TELEMETRY_DISABLED: '1',
+        ...DESKTOP_ENV,
+        ...uploadEnv(options.developerMode === true),
         // 内嵌 pnpm 的自我升级提示对用户毫无意义：那份 pnpm 是我们打包进
         // 去的，用户既升不了也不该管它的版本。而它会把「Update available!
         // 11.7.0 → 11.22.0」直接插进插件安装的输出里，让人以为那是插件操作
@@ -224,8 +259,9 @@ export function resolveDshCommand(options: {
       // 开发态与打包态同一语义：DSH_HOME 只由 launcher selection 决定。
       DSH_HOME: options.dshHome,
       ...safetyEnv(options.elevated === true, options.root ?? process.cwd()),
-      // 同打包态：反馈不上传会话。
-      DSH_TELEMETRY_DISABLED: '1',
+      ...DESKTOP_ENV,
+      // 同打包态：上报跟随开发者模式。
+      ...uploadEnv(options.developerMode === true),
       // 同打包态：不让 pnpm 把自己的升级提示混进插件操作输出。
       npm_config_update_notifier: 'false',
     },
@@ -518,6 +554,8 @@ export function resolveDshLaunch(options: {
   managedHome?: boolean
   /** 桌面是否以管理员身份运行（见 {@link safetyEnv}）。 */
   elevated?: boolean
+  /** 开发者模式：true 时官方上报与官方默认一致（见 {@link uploadEnv}）。 */
+  developerMode?: boolean
   /**
    * Compatibility View：true 时不带任何产品 overlay，跑的就是官方 profile
    * 自己的组合。
@@ -592,6 +630,7 @@ export function resolveDshLaunch(options: {
     ...options.nodeExecutable === undefined ? {} : { nodeExecutable: options.nodeExecutable },
     managedHome: options.managedHome === true,
     elevated: options.elevated === true,
+    developerMode: options.developerMode === true,
     dshHome: options.dshHome,
     args: [
       '--profile', options.profile,

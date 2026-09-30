@@ -54,6 +54,17 @@ export type { ApprovalDanger, ApprovalOutcome } from './types.ts'
 /** DeepSeekGUI: concerns that make an approval a red warning, which only a person may answer. */
 const RED_DANGER: ReadonlySet<ApprovalDanger> = new Set(['system', 'apps', 'gui', 'elevated'])
 
+/**
+ * DeepSeekGUI (2026-09-29): whether an ask carries a red-warning concern — the
+ * ones a person answers even under Full access. Tools that skip their own ask
+ * under Full access still ask for these.
+ * @param danger - the concerns of one ask.
+ * @returns whether any of them is red.
+ */
+export function hasRedDanger(danger: readonly ApprovalDanger[] | undefined): boolean {
+  return danger?.some(concern => RED_DANGER.has(concern)) === true
+}
+
 /** Every {@link ApprovalOutcome}, for runtime normalization of answerer returns. */
 const OUTCOMES: readonly ApprovalOutcome[] = ['allowed-once', 'rejected', 'cancelled', 'unavailable']
 
@@ -279,7 +290,7 @@ export class ApprovalService extends Service {
     // person's decision, even under 'never' — the Full access preset. Refusing
     // it silently would hide why the assistant stopped; with no answerer it
     // still fails closed through the 'unavailable' fallthrough below.
-    if (this.effectivePolicy(session) === 'never' && req.danger?.some(concern => RED_DANGER.has(concern)) !== true) return 'rejected'
+    if (this.effectivePolicy(session) === 'never' && !hasRedDanger(req.danger)) return 'rejected'
     // Enter the promise chain BEFORE dispatching: a listener that throws
     // SYNCHRONOUSLY (before its first await) must land in the same rejection
     // path as an async one — `Promise.resolve(call())` would let it escape

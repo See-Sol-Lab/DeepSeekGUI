@@ -69,13 +69,12 @@ const privateCommunityDirectories = new Set([
   'apps/deepseekgui',
   'packages/api/workbench-inspector',
   'packages/api/skill-manager',
-  'packages/api/workbench-memory',
 ])
 const localArtifactDirs = new Set(['node_modules'])
 const appPackageFiles: Readonly<Record<string, readonly string[]>> = {
   '@deepseek-ai/dsh': ['lib/*.js', 'lib/types/*.d.ts'],
   '@deepseek-ai/dsh-desktop-host': [
-    'lib/index.js',
+    'lib/index.js', 'lib/cli.js',
   ],
   // Sourcemaps stay out by payload policy; the worker-preview surface
   // (dist/preview.html and dist/preview/) backs opt-in experimental
@@ -222,11 +221,10 @@ const packageFileExtras: Readonly<Record<string, readonly string[]>> = {
   // The argv-prefix runner entry ships beside the lib as its own bundle;
   // sandbox-local resolves it through the package's ./runner export. tsdown
   // also shares its generated FFI code through a hashed runtime chunk.
-  '@deepseek-ai/dsh-sandbox-windows-acl': ['lib/runner.js', 'lib/types-*.js'],
+  // DeepSeekGUI: acl-helper is the out-of-process workspace grant/revoke/purge the seam spawns.
+  '@deepseek-ai/dsh-sandbox-windows-acl': ['lib/runner.js', 'lib/acl-helper.js', 'lib/*.js', 'assets'],
   '@deepseek-ai/dsh-skill-badge': ['assets'],
   '@deepseek-ai/dsh-skill-office': ['assets'],
-  // DeepSeekGUI: the memory guide the workbench-memory Host serves to the agent.
-  '@deepseek-ai/dsh-workbench-memory': ['assets'],
   '@deepseek-ai/dsh-subprocess': ['lib/control.js'],
   // SSH launches a private helper and shares wire definitions and TLS setup
   // between that helper and the connection owner.

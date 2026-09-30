@@ -18,7 +18,7 @@ afterEach(async () => {
   for (const ctx of contexts.splice(0)) await ctx.fiber.dispose()
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
 })
-async function setup(maxTextBytes = 1024) {
+async function setup(maxTextBytes = 1024, maxExportBytes = 20 * 1024 * 1024) {
   const temporary = mkdtempSync(join(tmpdir(), 'dsh-live-inspection-')); roots.push(temporary)
   const root = join(temporary, 'workspace'); mkdirSync(root)
   const ctx = new Context(); contexts.push(ctx)
@@ -27,14 +27,15 @@ async function setup(maxTextBytes = 1024) {
   await ctx.plugin(LocalGit)
   const dispose = vi.fn()
   const observe = vi.fn(async () => ({ header: { cwd: root }, [Symbol.dispose]: dispose }))
-  ctx.provide('sessionQuery', { observeSession: observe } as never)
+  const readTitle = vi.fn(async (): Promise<{ title: string } | undefined> => undefined)
+  ctx.provide('sessionQuery', { observeSession: observe, readTitle } as never)
   ctx.provide('typert', {} as never)
   const deleteSession = vi.fn(async () => {})
   ctx.provide('sessionController', { deleteSession } as never)
-  await ctx.plugin(WorkbenchInspector, { logLimit: 2, maxTextBytes })
+  await ctx.plugin(WorkbenchInspector, { logLimit: 2, maxTextBytes, maxExportBytes })
   const api = ctx.get('workbenchInspector')
   if (api === undefined) throw new Error('Workbench inspector did not mount')
-  return { api, ctx, root, temporary, observe, dispose, deleteSession, signal: new AbortController().signal }
+  return { api, ctx, root, temporary, observe, readTitle, dispose, deleteSession, signal: new AbortController().signal }
 }
 it('requires desktop authorization before delegating deletion to the Session owner', async () => {
   const { api, ctx, observe, deleteSession } = await setup()
@@ -82,6 +83,47 @@ it('reads the newest assistant reply and whether its turn has ended (#15 feedbac
     [Symbol.dispose]: () => {},
   } as never)
   expect(await api.lastReply(sid, signal)).toEqual({ text: 'second', complete: true })
+})
+it('renders the whole session as Markdown with the folded title (B8-P1)', async () => {
+  const { api, root, signal, observe, readTitle } = await setup()
+  const events = [
+    {
+      seq: 1, time: 0, type: 'user/message', surfaceOp: 'append',
+      data: { id: 'u1', role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text: '人说的' }] },
+    },
+    {
+      seq: 2, time: 0, type: 'assistant/message',
+      data: { turn: 1, step: 1, message: { id: 'a1', role: 'assistant', source: { kind: 'model', provider: 'p', model: 'm' }, content: [{ type: 'text', text: '助手说的' }] }, stream: [] },
+    },
+  ]
+  observe.mockResolvedValueOnce({ header: { cwd: root }, events, [Symbol.dispose]: () => {} } as never)
+  readTitle.mockResolvedValueOnce({ title: '调试导出' })
+  const result = await api.exportMarkdown(sid, false, 'zh', signal)
+  expect(result.title).toBe('调试导出')
+  expect(result.markdown).toContain('# 调试导出')
+  expect(result.markdown).toContain('- 工作目录：')
+  expect(result.markdown).toContain('## 用户 ·')
+  expect(result.markdown).toContain('人说的')
+  expect(result.markdown).toContain('## 助手 ·')
+  expect(result.markdown).toContain('助手说的')
+  // 勾选项与语言参数原样进渲染器：默认模式下工具与思考不出现。
+  expect(result.markdown).not.toContain('details')
+  // 没有折叠到标题的会话按语言回退。
+  observe.mockResolvedValueOnce({ header: { cwd: root }, events: [], [Symbol.dispose]: () => {} } as never)
+  const untitled = await api.exportMarkdown(sid, false, 'zh', signal)
+  expect(untitled.title).toBe('未命名会话')
+})
+it('rejects a Markdown export beyond the configured size instead of clipping', async () => {
+  const { api, root, signal, observe, readTitle } = await setup(1024, 1)
+  const events = [
+    {
+      seq: 1, time: 0, type: 'user/message', surfaceOp: 'append',
+      data: { id: 'u1', role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text: '随便什么内容，一行就足够超过 1 字节的上限' }] },
+    },
+  ]
+  observe.mockResolvedValueOnce({ header: { cwd: root }, events, [Symbol.dispose]: () => {} } as never)
+  readTitle.mockResolvedValueOnce({ title: '调试导出' })
+  await expect(api.exportMarkdown(sid, false, 'zh', signal)).rejects.toThrow('会话过大')
 })
 it('reads the project memory file by its folder-prefixed name and reports AGENTS.md presence', async () => {
   const { api, root, signal } = await setup()
@@ -158,4 +200,20 @@ it('reads the repository overview: status, remotes, newest commits, and work tre
   expect(main).toMatchObject({ branch: 'main', changedPaths: ['c.txt'] })
   const feature = overview.worktrees.find(tree => !tree.current)
   expect(feature).toMatchObject({ branch: 'feature', changedPaths: ['b.txt'] })
+})
+it('cleans sandbox marks through the local sandbox provider, and says so when there is none (DeepSeekGUI)', async () => {
+  const { api, ctx, root, signal } = await setup()
+  expect(await api.cleanSandboxMarks(root, signal)).toEqual({ status: 'unsupported', root })
+  const cleanWorkspaceMarks = vi.fn(async (path: string) => ({ status: 'cleaned', root: `${path}-parent` }))
+  const fiber = await ctx.plugin({ name: 'fake-sandbox', apply: (sub: Context) => { sub.provide('sandbox', { cleanWorkspaceMarks } as never) } })
+  await vi.waitFor(() => { expect(ctx.get('sandbox')).toBeDefined() })
+  expect(await api.cleanSandboxMarks(root, signal)).toEqual({ status: 'cleaned', root: `${root}-parent` })
+  expect(cleanWorkspaceMarks).toHaveBeenCalledWith(root)
+  cleanWorkspaceMarks.mockResolvedValueOnce({ status: 'gone', root })
+  await expect(api.cleanSandboxMarks(root, signal)).rejects.toThrow('unexpected status')
+  cleanWorkspaceMarks.mockResolvedValueOnce(null as never)
+  await expect(api.cleanSandboxMarks(root, signal)).rejects.toThrow('unexpected shape')
+  await fiber.dispose()
+  expect(await api.cleanSandboxMarks(root, signal)).toEqual({ status: 'unsupported', root })
+  await expect(api.cleanSandboxMarks(root, AbortSignal.abort(new Error('stop')))).rejects.toThrow('stop')
 })

@@ -313,18 +313,23 @@ export function createControlDispatcher(deps: ControlDispatchDeps): (command: De
         return
       case 'open-memory':
       case 'save-global-memory':
+      case 'save-project-memory':
       case 'create-project-agents':
       case 'reveal-path':
       case 'update-toggle-auto-download':
       case 'migrate-managed-home':
       case 'migration-cleanup':
       case 'session-delete':
+      case 'session-export-markdown':
+      case 'developer-mode-set':
       case 'open-external-link':
       case 'usage-refresh':
       case 'skill-pick-source':
-        // B5-P7 / D6-D7 / B6-P5 / B6-P6 / B6-P7 / 归档删除 / B7-P2 外链 / B7-P3
+      case 'sandbox-clean-marks':
+        // 清理沙箱标记（2026-09-29）同样由 main 直办（系统选文件夹框 + Harness RPC）。
+        // B5-P7 / D6-D7 / B6-P5 / B6-P6 / B6-P7 / 归档删除 / B8-P1 导出 / 开发者模式 / B7-P2 外链 / B7-P3
         // 用量页 / B7-P4 技能导入选择：记忆管理、文件管理器定位、首启引导完成、自动下载开关、数据
-        // 迁移/清理、归档会话删除、系统浏览器打开链接、用量刷新/登录与技能来源选择由 main 的 runCommand 直接处理
+        // 迁移/清理、归档会话删除、会话导出为 Markdown、系统浏览器打开链接、用量刷新/登录与技能来源选择由 main 的 runCommand 直接处理
         // （需要 DSH home、shell、UI state 与官方 session.list）；dispatch 不
         // 服务它们，只保持联合穷尽。
         return

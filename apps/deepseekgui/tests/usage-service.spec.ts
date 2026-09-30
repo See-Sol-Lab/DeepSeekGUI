@@ -135,9 +135,17 @@ describe('judgeUsageResponse（官方包裹判定）', () => {
     expect(judgeUsageResponse({ status: 200, body: JSON.stringify({ code: 40002, msg: 'Missing Token', data: null }) })).toEqual({ kind: 'signed-out' })
   })
 
+  it('平台防护拦下（202 / 403 / 429，或回来一页 HTML）→ blocked，不当成改版', () => {
+    expect(judgeUsageResponse({ status: 202, body: 'challenge' })).toEqual({ kind: 'blocked' })
+    expect(judgeUsageResponse({ status: 202, body: null })).toEqual({ kind: 'blocked' })
+    expect(judgeUsageResponse({ status: 403, body: '{"code":403}' })).toEqual({ kind: 'blocked' })
+    expect(judgeUsageResponse({ status: 429, body: '' })).toEqual({ kind: 'blocked' })
+    expect(judgeUsageResponse({ status: 200, body: '  <html>waf</html>' })).toEqual({ kind: 'blocked' })
+  })
+
   it('200 + code 0 + INVALID_PARAM（无 biz_data）→ format；非 JSON / 非对象 / 500 → format；缺响应 → missing', () => {
     expect(judgeUsageResponse({ status: 200, body: JSON.stringify({ code: 0, msg: 'INVALID_PARAM', data: { biz_code: 1, biz_msg: 'bad', biz_data: null } }) })).toEqual({ kind: 'format' })
-    expect(judgeUsageResponse({ status: 200, body: '<html>waf</html>' })).toEqual({ kind: 'format' })
+    expect(judgeUsageResponse({ status: 200, body: 'not json' })).toEqual({ kind: 'format' })
     expect(judgeUsageResponse({ status: 200, body: '[1,2]' })).toEqual({ kind: 'format' })
     expect(judgeUsageResponse({ status: 500, body: JSON.stringify({ code: 0, data: { biz_data: {} } }) })).toEqual({ kind: 'format' })
     expect(judgeUsageResponse({ status: 200, body: null })).toEqual({ kind: 'format' })
@@ -233,6 +241,15 @@ describe('interpretUsageResult（聚合）', () => {
       .toEqual({ kind: 'unavailable', reason: 'format' })
     expect(interpretUsageResult(plan(), { kind: 'responses', responses: normalResponses({ summary: ok(summaryBiz({ normal_wallets: [{ currency: 'CNY', balance: 9.88 }] })) }) }))
       .toEqual({ kind: 'unavailable', reason: 'format' })
+  })
+
+  it('任一必需接口被平台防护拦下 → blocked（优先于 format，提示过几分钟再刷新）', () => {
+    expect(interpretUsageResult(plan(), { kind: 'responses', responses: normalResponses({ summary: { status: 202, body: '<html></html>' } }) }))
+      .toEqual({ kind: 'unavailable', reason: 'blocked' })
+    expect(interpretUsageResult(plan(), {
+      kind: 'responses',
+      responses: normalResponses({ amount30: { status: 202, body: 'x' }, cost30: ok(costBiz({ CNY: { 0: '1e-3' } })) }),
+    })).toEqual({ kind: 'unavailable', reason: 'blocked' })
   })
 
   it('热力图 60 格、最早在前、两页在第 30/31 天边界处正确拼接，重叠日以 30 天页为准', () => {

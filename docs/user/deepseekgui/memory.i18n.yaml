@@ -3,23 +3,20 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/user/deepseekgui/memory.md
 /memory:
-  en: 13f9dd5dca621da4
-  zh: cf05649252928b16
+  en: dd00b671a5009089
+  zh: 3dea6c42af5f0ff0
 /memory/global-memory:
-  en: 1c42c0fb8bb24f8e
-  zh: 9a9d236dd6bd3774
+  en: a7d95b5185d6cfbf
+  zh: f83dab1264703dd2
 /memory/project-memory:
-  en: bf7104eebaf63a05
-  zh: 5a896558353197e4
-/memory/entry-memory-optional:
-  en: c598a1d6783c437e
-  zh: dbbb5655c5b0a40c
-/memory/rules-templates:
-  en: 8bd85e5b83bee12b
-  zh: 39a5cddca7d9a460
-/memory/how-memory-reaches-the-session:
-  en: 1d38e82770208d20
-  zh: 72e087e5b2386229
+  en: 32ba505f0b4736ca
+  zh: 955a7d66ff009213
+/memory/upgrading-from-enhanced-memory:
+  en: a47ebee4baa29aed
+  zh: e012af4e332672f3
+/memory/rules-and-session-context:
+  en: e6c0d016d7687856
+  zh: 5d70a1ac0d5d7637
 /memory/related-guides:
   en: aa2f09262756372c
   zh: fb0ac402f3ee4f0b

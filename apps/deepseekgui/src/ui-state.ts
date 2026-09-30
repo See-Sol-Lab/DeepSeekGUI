@@ -5,7 +5,7 @@
  * Harness 正常启动——UI 偏好绝不能成为启动阻断。
  * 白名单字段：windowBounds / maximized /
  * acknowledgedRecoveryHash / expertDetailsExpanded /
- * closeToTrayNoticeAcknowledged / terminalBounds / autoDownloadUpdate。
+ * closeToTrayNoticeAcknowledged / terminalBounds / autoDownloadUpdate / developerMode。
  * session、model、credential、Profile、active selection、plugin、Memory、
  * Compaction 或 Hook 事实一律禁存：严格解析拒绝一切未知字段，越界字段让
  * 文件整体失效回退默认，而不是部分采纳。
@@ -71,6 +71,12 @@ export interface DesktopUiStateV1 {
    * 关掉后不再自动启动新任务（已经在进行的下载不因此中断，用户可显式取消）。
    */
   readonly autoDownloadUpdate: boolean
+  /**
+   * 开发者模式（2026-09-29 住户定）。默认关：不上传会话日志
+   * （`session-log-deepseek`），也不在反馈时上传会话记录（OTel FEEDBACK_ONLY）。
+   * 开启后这两项与官方默认一致。启动 Harness 时读取，切换要重启 Harness。
+   */
+  readonly developerMode: boolean
 }
 
 /** UI state 解析或写入失败时的明确错误。 */
@@ -96,6 +102,7 @@ export function defaultUiState(): DesktopUiStateV1 {
     closeToTrayNoticeAcknowledged: false,
     terminalBounds: null,
     autoDownloadUpdate: true,
+    developerMode: false,
   }
 }
 
@@ -169,7 +176,7 @@ export function parseUiState(content: string, zh = true): DesktopUiStateV1 {
     // settings.yaml（P8-D16 起主进程盯它、菜单切换也写它），这个键从那以后
     // 没人读过、只被原样写回，所以值永远停在 "system"，跟 yaml 里对不上
     // （2026-09-11 人工测试 #18）。现在读到就忽略，写回不再带它。
-    ['schemaVersion', 'windowBounds', 'maximized', 'themePreference', 'acknowledgedRecoveryHash', 'expertDetailsExpanded', 'closeToTrayNoticeAcknowledged', 'terminalBounds', 'autoDownloadUpdate'],
+    ['schemaVersion', 'windowBounds', 'maximized', 'themePreference', 'acknowledgedRecoveryHash', 'expertDetailsExpanded', 'closeToTrayNoticeAcknowledged', 'terminalBounds', 'autoDownloadUpdate', 'developerMode'],
     zh ? '顶层' : 'top level',
     zh,
   )
@@ -191,6 +198,10 @@ export function parseUiState(content: string, zh = true): DesktopUiStateV1 {
   if (raw.autoDownloadUpdate !== undefined && typeof raw.autoDownloadUpdate !== 'boolean') {
     throw new UiStateError(zh ? 'autoDownloadUpdate: 必须是布尔值' : 'autoDownloadUpdate: must be a boolean')
   }
+  // developerMode 同样是版本 2 存续期内后加的：缺失按默认（关）。
+  if (raw.developerMode !== undefined && typeof raw.developerMode !== 'boolean') {
+    throw new UiStateError(zh ? 'developerMode: 必须是布尔值' : 'developerMode: must be a boolean')
+  }
   return {
     schemaVersion: 2,
     windowBounds: raw.windowBounds === null ? null : parseWindowBounds(raw.windowBounds, 'windowBounds', zh),
@@ -205,6 +216,7 @@ export function parseUiState(content: string, zh = true): DesktopUiStateV1 {
       ? null
       : parseWindowBounds(raw.terminalBounds, 'terminalBounds', zh),
     autoDownloadUpdate: raw.autoDownloadUpdate === undefined ? true : raw.autoDownloadUpdate,
+    developerMode: raw.developerMode === undefined ? false : raw.developerMode,
   }
 }
 
@@ -229,6 +241,7 @@ export function serializeUiState(state: DesktopUiStateV1): string {
     closeToTrayNoticeAcknowledged: state.closeToTrayNoticeAcknowledged,
     terminalBounds: state.terminalBounds === null ? null : boundsJson(state.terminalBounds),
     autoDownloadUpdate: state.autoDownloadUpdate,
+    developerMode: state.developerMode,
   }, null, 2)}\n`
 }
 

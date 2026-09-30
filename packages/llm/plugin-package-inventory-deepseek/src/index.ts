@@ -33,7 +33,7 @@ export interface Config {
   /**
    * Contribute `dsh_plugin_packages` to official DeepSeek requests. Defaults to
    * `false` in DeepSeekGUI: requests carry no package inventory unless the user
-   * opts in.
+   * turns on developer mode, which restarts the Harness with this set to `true`.
    */
   enabled?: boolean
 }

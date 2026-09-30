@@ -20,7 +20,6 @@ const DSH_PACKAGE_NAME = /^@deepseek-ai\/dsh(?:-|$)/
 const PRODUCT_LICENSED_PACKAGES: ReadonlyMap<string, string> = new Map([
   ['@deepseek-ai/dsh-skill-manager', 'SEE LICENSE IN LICENSE'],
   ['@deepseek-ai/dsh-workbench-inspector', 'SEE LICENSE IN LICENSE'],
-  ['@deepseek-ai/dsh-workbench-memory', 'SEE LICENSE IN LICENSE'],
 ])
 
 /** Result of checking every DSH package reachable through the root workspace list. */

@@ -59,8 +59,10 @@ export interface AccountSectionInjected {
    * @returns after both reads settle.
    */
   refreshAccount: () => Promise<void>
-  /** Open the external support questionnaire with the current build and browser environment. */
+  /** Open the external support questionnaire with the account, build and environment sampled by this click. */
   contactUs: () => void
+  /** Whether the account menu offers the questionnaire; absent means shown. */
+  contactVisible?: boolean
   /** Open or dismiss the login dialog. */
   showLogin: (visible: boolean) => void
   /** Claim dialog ownership for the onboarding step. */
@@ -83,7 +85,9 @@ export type AccountSectionProps =
   PropsRuntime<'settings.section'> & PropsLocale<'settings.account'> & InjectFace<AccountSectionInjected>
   & Partial<PropsRenderSlots<'settings.account.footer'>>
 /** @param props - localized actions, account subscription, and the shared Platform page channel. @returns account settings UI. */
-export function AccountSection({ t, useAccount, useTheme, start, cancel, openPlatformPage, renderSlot }: AccountSectionProps) {
+export function AccountSection({
+  t, useAccount, useTheme, start, cancel, openPlatformPage, refreshAccount, renderSlot,
+}: AccountSectionProps) {
   const { view: state, details, failed: streamFailed } = useAccount(value => value)
   const colorScheme = useTheme(snapshot => snapshot.active.colorScheme)
   // The shared host owns the native view; this page holds only its own request,
@@ -95,6 +99,7 @@ export function AccountSection({ t, useAccount, useTheme, start, cancel, openPla
   const wallets = details?.balance?.status === 'ready' ? details.balance.value : undefined
   const bonusWallets = details?.balance?.status === 'ready'
     ? details.balance.bonusWallets.filter(wallet => new Big(wallet.balance).gt(0)) : []
+  const showBonusRow = details?.balance?.status !== 'ready' || bonusWallets.length > 0
   const attempt = state?.attempt
   const active = attempt !== null && attempt !== undefined
     && ['initializing', 'waiting-browser', 'exchanging', 'committing'].includes(attempt.phase)
@@ -185,7 +190,7 @@ export function AccountSection({ t, useAccount, useTheme, start, cancel, openPla
               ? <span className={css.unavailable}>{t(!signedIn ? 'balanceSignedOut' : 'loading')}</span>
               : platformLink(t('balanceUnavailable'), css.unavailableLink)}
         </div>
-        {signedIn && <>
+        {signedIn && showBonusRow && <>
           <div className={css.divider} />
           <div className={css.row}>
             <span>{t('bonusBalance')}</span>
@@ -196,9 +201,7 @@ export function AccountSection({ t, useAccount, useTheme, start, cancel, openPla
                 </span>)}</span>
                 : details?.balance === undefined
                   ? <span className={css.unavailable}>{t('loading')}</span>
-                  : details.balance.status === 'failed'
-                    ? platformLink(t('balanceUnavailable'), css.unavailableLink)
-                    : <span className={css.unavailable}>{t('bonusEmpty')}</span>}
+                  : platformLink(t('balanceUnavailable'), css.unavailableLink)}
             </span>
           </div>
         </>}
@@ -213,7 +216,7 @@ export function AccountSection({ t, useAccount, useTheme, start, cancel, openPla
           </div>
         </div>
       </div>
-      {signedIn && renderSlot?.('settings.account.footer', {})}
+      {signedIn && renderSlot?.('settings.account.footer', { refreshAccount })}
     </section>
   )
 }

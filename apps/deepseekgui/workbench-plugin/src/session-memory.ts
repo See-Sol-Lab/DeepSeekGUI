@@ -1,19 +1,15 @@
 /**
- * DeepSeekGUI guide and legacy memory — host half (B5-P7 two flat files;
+ * DeepSeekGUI guide and memory — host half (B5-P7 two flat files;
  * B7-P7 split).
  *
  * Two contexts now:
  * - `deepseekgui:guide` — the product guide (where the model runs, tools,
  *   paths, diagnostics, language), always injected.
- * - `deepseekgui:memory` — the legacy memory: the two-file contract plus the
- *   files' text, `<DSH home>/memory.md` and `<project cwd>/<folder>.memory.md`.
- *   Injected only while the memory service (`@deepseek-ai/dsh-workbench-memory`)
- *   reports `injection: 'markdown'` — or is absent; once the migration
- *   switches to `entries`, this section yields nothing and the memory
- *   service's own guide and per-step recall take over, and when enhanced
- *   memory is switched `off` it yields nothing as well (no silent fallback
- *   to the files), so one path is live at a time and the two never form a
- *   second source of truth.
+ * - `deepseekgui:memory` — the memory: the two-file contract plus the files'
+ *   text, `<DSH home>/memory.md` and `<project cwd>/<folder>.memory.md`,
+ *   injected at the start of every window. The entry-based enhanced memory
+ *   that could take its place was removed on 2026-09-29 (住户): the two
+ *   Markdown files are the only memory again.
  *
  * The first assembly for a loaded Session captures both files. Subsequent
  * steps reuse that text until the Session is unloaded. Official context
@@ -37,7 +33,7 @@ import type { Context } from '@deepseek-ai/cordis'
 // A pure function from a type-only module: no Context augmentation crosses over.
 import { projectMemoryFileName } from '@deepseek-ai/dsh-workbench-inspector/types'
 
-/** Legacy memory context section name owned by this plugin. */
+/** Memory context section name owned by this plugin. */
 const MEMORY_SECTION_NAME = 'deepseekgui:memory'
 
 /** Product guide context section name owned by this plugin. */
@@ -122,8 +118,7 @@ export function productGuide(): string {
 }
 
 /**
- * The legacy two-file memory contract (B5-P7), injected with the file texts
- * while the memory path is `markdown`. Ships as
+ * The two-file memory contract (B5-P7), injected with the file texts. Ships as
  * `assets/deepseekgui-memory-files.md`.
  * @returns The contract, trimmed of the trailing newline.
  */
@@ -185,24 +180,9 @@ function dshHomeOf(env: Record<string, string | undefined> = process.env as Reco
 }
 
 /**
- * Which memory path is live: the memory service's injection mode when the
- * service is mounted — `markdown` (the legacy files), `entries` (the
- * service's own guide and recall), or `off` (enhanced memory switched off:
- * nothing at all, no fallback to the files) — else `markdown` (a
- * composition without the service has only the legacy files).
- * @param ctx - plugin host context.
- * @returns `markdown`, `entries` or `off`.
- */
-export function injectionModeOf(ctx: Context): 'markdown' | 'entries' | 'off' {
-  const memory = (ctx as unknown as { get(name: string): unknown }).get('workbenchMemory') as { injectionMode?: () => unknown } | undefined
-  const mode = memory?.injectionMode?.()
-  return mode === 'entries' || mode === 'off' ? mode : 'markdown'
-}
-
-/**
- * Register the product guide and the legacy memory context in the plugin
- * scope. The guide is static; the memory section is a variable resolved at
- * every assembly, empty while the entries path is live.
+ * Register the product guide and the memory context in the plugin scope.
+ * The guide is static; the memory section is a variable resolved at every
+ * assembly and captured once per loaded Session.
  * @param ctx - plugin host context.
  */
 export function registerMemoryContext(ctx: Context): void {
@@ -220,10 +200,6 @@ export function registerMemoryContext(ctx: Context): void {
   }
   ctx.effect(() => {
     const disposeVariable = systemPrompt.variable('deepseekgui_memory', (context) => {
-      // Entries mode: the memory service's guide and recall carry memory; off:
-      // nothing carries it. Either way the legacy files stay on disk untouched
-      // and out of the prompt.
-      if (injectionModeOf(ctx) !== 'markdown') return ''
       // A bare assemble (tests/diagnostics) has no agent; and without a home
       // or a session cwd there is nothing to anchor memory to.
       const home = dshHomeOf()

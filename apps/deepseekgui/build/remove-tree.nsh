@@ -1,6 +1,8 @@
 !ifndef DEEPSEEKGUI_REMOVE_TREE
 !define DEEPSEEKGUI_REMOVE_TREE
 
+Var DeepSeekGuiKeptDir
+
 # Stack: absolute path -> failure count. Reparse points are removed as links.
 # Registers are preserved across recursion. Callers validate the root first.
 Function un.DeepSeekGuiRemoveTree
@@ -63,5 +65,35 @@ FunctionEnd
   Call un.DeepSeekGuiRemoveTree
   Pop $R7
   IntOp $R8 $R8 + $R7
+!macroend
+
+# 住户 2026-09-29: files kept across a "delete data" uninstall. KEEP copies an
+# existing file into this uninstall's temporary directory before the data folder goes (a failed
+# copy counts in $R8, and the caller then deletes nothing); RESTORE puts it
+# back into the default Managed Home and removes the kept copy (a failure
+# counts in $R8 and the copy stays).
+!macro DeepSeekGuiKeepFile SOURCE NAME
+  ${if} ${FileExists} "${SOURCE}"
+    ClearErrors
+    CopyFiles /SILENT "${SOURCE}" "$DeepSeekGuiKeptDir\${NAME}"
+    ${if} ${Errors}
+    ${orifnot} ${FileExists} "$DeepSeekGuiKeptDir\${NAME}"
+      IntOp $R8 $R8 + 1
+    ${endif}
+  ${endif}
+!macroend
+
+!macro DeepSeekGuiRestoreFile NAME
+  ${if} ${FileExists} "$DeepSeekGuiKeptDir\${NAME}"
+    CreateDirectory "$APPDATA\${APP_FILENAME}\dsh"
+    ClearErrors
+    CopyFiles /SILENT "$DeepSeekGuiKeptDir\${NAME}" "$APPDATA\${APP_FILENAME}\dsh\${NAME}"
+    ${if} ${Errors}
+    ${orifnot} ${FileExists} "$APPDATA\${APP_FILENAME}\dsh\${NAME}"
+      IntOp $R8 $R8 + 1
+    ${else}
+      Delete "$DeepSeekGuiKeptDir\${NAME}"
+    ${endif}
+  ${endif}
 !macroend
 !endif

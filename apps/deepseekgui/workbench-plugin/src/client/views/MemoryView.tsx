@@ -1,24 +1,18 @@
 /**
- * Memory view (D5-c / D20; B7-P9): the session's memory, whichever path is
- * live. In entries mode: what this session's model was shown (from the
- * session log's own record), the entries of this project plus the global
- * ones — search, detail, source, edit, forget, undo, restore — the reviewable
- * import of the project's legacy `<folder>.memory.md`, and that file itself
- * folded away. In markdown mode: the legacy file rendered as before, with a
- * pointer to the switch. Off: a plain statement. The view never writes a
- * file: entries go through the `workbenchMemory` store, the legacy file is
- * the assistant's and the person's to edit natively; the one desktop write
- * it can ask for is the project AGENTS.md template (never overwriting).
+ * Memory view (D5-c / D20; B7-P9; 2026-09-29): the session's project memory,
+ * `<folder>.memory.md` in its working directory, which every new window reads
+ * once at its start beside the global `<home>/memory.md`. Inside the
+ * DeepSeekGUI window the file is edited in place (the desktop writes it,
+ * refusing a file that changed underneath); elsewhere it is rendered
+ * read-only. The entry-based enhanced memory is gone. The one other desktop
+ * write the view can ask for is the project AGENTS.md template (never
+ * overwriting).
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { ConvViewProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import { useState } from 'react'
 import type { WorkbenchMemory } from '@deepseek-ai/dsh-workbench-inspector/types'
-import type { MemoryScope, MemoryScopeFilter, MemoryStatus } from '@deepseek-ai/dsh-workbench-memory/types'
 import { MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
-import { ImportBlock } from '../memory/ImportBlock.tsx'
-import { MemoryEntries, type Translate as MemoryTranslate } from '../memory/MemoryEntries.tsx'
-import { errorMessage, unwrap, usedMemoryOf, type MemoryRemote } from '../memory/model.ts'
-import { UsedMemory } from '../memory/UsedMemory.tsx'
+import type { Translate as MemoryTranslate } from '../locales-memory.ts'
+import { ProjectMemoryEditor } from '../memory/ProjectMemoryEditor.tsx'
 import { button, BUTTON_CLASS, caption, ReadStatus, Toolbar, useRead, view, type ViewProps } from './shared.tsx'
 
 const reader: React.CSSProperties = {
@@ -39,21 +33,14 @@ const MEMORY_VIEW_MAX_CHARS = 20_000
 const guide: React.CSSProperties = { fontSize: 13, lineHeight: '20px', color: 'var(--dsw-alias-label-secondary)', margin: 0 }
 const heading: React.CSSProperties = { fontSize: 15, lineHeight: '22px', fontWeight: 600, color: 'var(--dsw-alias-label-primary)', marginTop: 10 }
 const emptyBox: React.CSSProperties = { ...reader, color: 'var(--dsw-alias-label-secondary)', textAlign: 'center', padding: '28px 18px' }
-const GLOBAL: MemoryScopeFilter & MemoryScope = { kind: 'global' }
-
-/** The memory store props the plugin entry injects beside the inspector ones. */
+/** The memory namespace props the plugin entry injects beside the inspector ones. */
 export interface MemoryViewInjected {
-  memory: MemoryRemote
-  /** Subscribe to store changes forwarded from the Host. */
-  onMemoryChange: (listener: () => void) => () => void
-  /** Whether a source session is still listed; undefined when unknown. */
-  sessionPresent: (sessionId: string) => boolean | undefined
   /** The memory namespace's translate function (the view's own `t` is the inspector namespace). */
   tm: MemoryTranslate
 }
 
 /** Props of the view. */
-export type MemoryViewProps = ViewProps & MemoryViewInjected & Partial<Pick<ConvViewProps, 'useConversation'>>
+export type MemoryViewProps = ViewProps & MemoryViewInjected
 
 /** Join cwd and file name with the separator the cwd itself uses. */
 function pathOf(memory: WorkbenchMemory): string {
@@ -90,55 +77,13 @@ function LegacyReader({ memory, fileName, t }: { memory: WorkbenchMemory; fileNa
 }
 
 export function MemoryView(props: MemoryViewProps) {
-  const { inspector, bridge, sessionId, t, submitInstruction, memory, onMemoryChange, sessionPresent, tm, useConversation } = props
+  const { inspector, bridge, sessionId, t, submitInstruction, tm } = props
   const read = useRead<WorkbenchMemory>('memory', async (id, signal) => await inspector.memory(id, signal), sessionId)
   const [agentsCreatedFor, setAgentsCreatedFor] = useState<string>()
-  const [status, setStatus] = useState<MemoryStatus>()
-  const [statusError, setStatusError] = useState<string>()
-  const [project, setProject] = useState<{ cwd: string; scope: MemoryScope | null }>()
-  const generation = useRef(0)
   const legacy = read.value
   const fileName = legacy?.fileName ?? 'memory.md'
-  const cwd = legacy?.cwd
   const hasAgents = (sessionId !== undefined && agentsCreatedFor === sessionId) || legacy?.agents === true
   const desktop = bridge !== null && sessionId !== undefined
-  // The Chat window's context rows carry the recall records; a bare render (tests, diagnostics) has no window.
-  const chat = useConversation?.(snapshot => snapshot.views.get('chat'))
-  const used = useMemo(() => usedMemoryOf(chat?.nodes.values() ?? []), [chat])
-
-  const loadStatus = useCallback(async (): Promise<void> => {
-    const mine = generation.current += 1
-    try {
-      const next = unwrap(await memory.status(new AbortController().signal))
-      if (mine !== generation.current) return
-      setStatus(next)
-      setStatusError(undefined)
-    } catch (failure) {
-      if (mine !== generation.current) return
-      setStatusError(errorMessage(failure))
-    }
-  }, [memory])
-  useEffect(() => { void loadStatus() }, [loadStatus])
-  useEffect(() => onMemoryChange(() => { void loadStatus() }), [onMemoryChange, loadStatus])
-
-  // The project scope follows the session's folder; a late answer for a folder no longer shown is dropped.
-  useEffect(() => {
-    if (cwd === undefined) { setProject(undefined); return }
-    let alive = true
-    memory.projectScope(cwd, new AbortController().signal).then(
-      (result) => { if (alive) setProject({ cwd, scope: result.ok ? result.value : null }) },
-      () => { if (alive) setProject({ cwd, scope: null }) },
-    )
-    return () => { alive = false }
-  }, [memory, cwd])
-
-  const projectScope = project !== undefined && project.cwd === cwd && project.scope?.kind === 'project' ? project.scope : null
-  const scope = useMemo<MemoryScopeFilter>(
-    () => (projectScope === null ? GLOBAL : { kind: 'session', projectKey: projectScope.projectKey }),
-    [projectScope],
-  )
-  const importSource = useMemo(() => (cwd === undefined ? undefined : { kind: 'project' as const, cwd }), [cwd])
-  const mode = status?.injection
 
   const about = (
     <details style={{ fontSize: 12, lineHeight: '18px', color: 'var(--dsw-alias-label-secondary)' }}>
@@ -176,70 +121,28 @@ export function MemoryView(props: MemoryViewProps) {
   )
 
   return (
-    <section style={view} aria-label={t('view.memory')} data-deepseekgui="memory-view" data-mode={mode ?? ''}>
-      <Toolbar t={t} refresh={() => { read.refresh(); void loadStatus() }}>
+    <section style={view} aria-label={t('view.memory')} data-deepseekgui="memory-view">
+      <Toolbar t={t} refresh={() => { read.refresh() }}>
         {desktop && (
           <button type="button" className={BUTTON_CLASS} style={button} onClick={() => { void bridge.run({ type: 'open-memory', which: 'project', sessionId }).catch(() => undefined) }}>
             {t('memory.open')}
           </button>
         )}
-        {mode === 'markdown' && (
-          <button type="button" className={BUTTON_CLASS} style={button} title={t('memory.askTitle')} onClick={() => { void submitInstruction(t('memory.prompt', { file: fileName })) }}>
-            {t('memory.ask')}
-          </button>
-        )}
+        <button type="button" className={BUTTON_CLASS} style={button} title={t('memory.askTitle')} onClick={() => { void submitInstruction(t('memory.prompt', { file: fileName })) }}>
+          {t('memory.ask')}
+        </button>
       </Toolbar>
-      {statusError !== undefined && (
-        <div role="alert" style={{ color: 'var(--dsw-alias-state-error-primary)' }}>{tm('common.failed', { message: statusError })}</div>
+      <div style={{ ...heading, marginTop: 6 }}>{t('memory.title')}</div>
+      <p style={guide}>{t('memory.guide1')}</p>
+      <p style={guide}>{t('memory.guide2')}</p>
+      <ReadStatus state={read} t={t} />
+      {read.error !== undefined && /does not exist/u.test(read.error) && (
+        <p role="note" style={{ ...caption, marginTop: 4 }}>{t('memory.missingHint')}</p>
       )}
-      {mode === 'entries' && (
-        <>
-          <p style={guide} role="note">{tm('view.entriesNote')}</p>
-          {legacy !== undefined && projectScope === null && <p style={guide} role="note">{tm('view.noProject')}</p>}
-          <UsedMemory key={sessionId} memory={memory} used={used} onChange={onMemoryChange} t={tm} />
-          <MemoryEntries
-            key={JSON.stringify([sessionId, scope])}
-            memory={memory}
-            scope={scope}
-            writeScope={legacy === undefined || (cwd !== undefined && project?.cwd !== cwd) ? null : projectScope ?? GLOBAL}
-            {...sessionId === undefined ? {} : { sessionId }}
-            onChange={onMemoryChange}
-            sessionPresent={sessionPresent}
-            t={tm}
-            title={projectScope === null ? tm('list.title.global') : tm('list.title.session')}
-          />
-          {importSource !== undefined && (
-            <ImportBlock
-              key={JSON.stringify([sessionId, importSource])}
-              memory={memory} source={importSource} {...sessionId === undefined ? {} : { sessionId }} t={tm}
-            />
-          )}
-          <p style={{ ...guide, marginTop: 8 }}>{tm('view.globalNav')}</p>
-          <details data-deepseekgui="memory-legacy-file">
-            <summary style={{ cursor: 'pointer', ...caption }}>{tm('view.legacyFile')}</summary>
-            <div style={{ marginTop: 6 }}>
-              <ReadStatus state={read} t={t} />
-              {legacy !== undefined && <LegacyReader memory={legacy} fileName={fileName} t={t} />}
-            </div>
-          </details>
-        </>
-      )}
-      {mode === 'markdown' && (
-        <>
-          <p style={guide} role="note">{tm('view.markdownNote')}</p>
-          <div style={{ ...heading, marginTop: 6 }}>{t('memory.title')}</div>
-          <p style={guide}>{t('memory.guide1')}</p>
-          <p style={guide}>{t('memory.guide2')}</p>
-          <ReadStatus state={read} t={t} />
-          {read.error !== undefined && /does not exist/u.test(read.error) && (
-            <p role="note" style={{ ...caption, marginTop: 4 }}>{t('memory.missingHint')}</p>
-          )}
-          {legacy !== undefined && <LegacyReader memory={legacy} fileName={fileName} t={t} />}
-          <p style={{ ...guide, marginTop: 8 }}>{t('memory.globalNav')}</p>
-        </>
-      )}
-      {mode === 'off' && <p style={guide} role="note">{tm('view.offNote')}</p>}
-      {mode === undefined && statusError === undefined && <div role="status" style={caption}>{tm('common.loading')}</div>}
+      {legacy !== undefined && (desktop
+        ? <ProjectMemoryEditor key={`${sessionId}:${legacy.text ?? ''}`} sessionId={sessionId} memory={legacy} bridge={bridge} onSaved={() => { read.refresh() }} t={tm} />
+        : <LegacyReader memory={legacy} fileName={fileName} t={t} />)}
+      <p style={{ ...guide, marginTop: 8 }}>{t('memory.globalNav')}</p>
       {about}
       {bridge === null && <div style={caption}>{t('common.noDesktop')}</div>}
     </section>

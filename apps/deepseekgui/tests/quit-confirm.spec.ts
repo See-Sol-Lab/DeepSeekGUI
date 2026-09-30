@@ -29,6 +29,8 @@ const apiWith = (value: SessionListValue): HarnessApi => ({
   sessionRename: async () => { throw new Error('unused') },
   sessionArchive: async () => { throw new Error('unused') },
   workbenchLastReply: async () => { throw new Error('unused') },
+  workbenchExportMarkdown: async () => { throw new Error('unused') },
+  workbenchCleanSandboxMarks: async () => { throw new Error('unused') },
   sessionDelete: async () => { throw new Error('unused') },
 })
 

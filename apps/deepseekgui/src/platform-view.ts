@@ -71,15 +71,21 @@ export function mergePlatformCookies(base: string, override: string): string {
 }
 
 /**
- * 发往平台的客户端身份头（官方 platformClientHeaders 的形状）。
+ * 发往平台的客户端身份头（官方 platformClientHeaders 的形状）。和 Host 里账号
+ * 插件同一个身份：Windows / macOS 上按桌面客户端报（desktop-win / desktop-mac，
+ * 与官方桌面一致；见 dsh-service 的 DESKTOP_ENV），官方没有对应桌面身份的系统
+ * （Linux）照旧报 web。
  * @param version - 内嵌 DSH 版本。
  * @param locale - 平台语言。
+ * @param os - 操作系统（测试注入）。
  * @returns 请求头。
  */
-export function platformClientHeaders(version: string, locale: PlatformLocale): Record<string, string> {
+export function platformClientHeaders(
+  version: string, locale: PlatformLocale, os: NodeJS.Platform = process.platform,
+): Record<string, string> {
   return {
     'x-client-bundle-id': '',
-    'x-client-platform': 'web',
+    'x-client-platform': os === 'win32' ? 'desktop-win' : os === 'darwin' ? 'desktop-mac' : 'web',
     'x-client-version': version,
     'x-client-locale': locale,
     // Date.getTimezoneOffset 是「UTC 以西的分钟数」，平台要「UTC 以东的秒数」。

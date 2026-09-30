@@ -3,17 +3,17 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write apps/deepseekgui/workbench-plugin/README.md
 /see-sol-lab-deepseekgui-workbench:
-  en: 611cc6bb0400b3d9
-  zh: 8297e1db154465ba
+  en: 568b9d8080210d1b
+  zh: 5c1eea4b6f4663ff
 /see-sol-lab-deepseekgui-workbench/loading:
-  en: 918f531d8c5c8972
-  zh: e4faed1e34f0e8dd
+  en: d9bde0188c7ad062
+  zh: 2e5e8f9eef74c1a0
 /see-sol-lab-deepseekgui-workbench/development:
   en: 2992764bc17128f3
   zh: 2810286a2ac99255
 /see-sol-lab-deepseekgui-workbench/model-experience:
-  en: 0c2c4e0f8e4d69df
-  zh: 7b3135b58cbdf58b
+  en: f10a0342a45f4b6b
+  zh: c21f911577be0e1e
 /see-sol-lab-deepseekgui-workbench/model-experience/kv-cache-effect:
   en: f927fbdcaa8b612f
   zh: 6c88a06de274857d

@@ -16,6 +16,7 @@ import { WorkbenchBadge } from '../src/client/WorkbenchBadge.tsx'
 import { DesktopActions } from '../src/client/DesktopActions.tsx'
 import { NotificationWatcher } from '../src/client/NotificationWatcher.tsx'
 import { DeleteSessionDialog, DeleteSessionMenuItem } from '../src/client/session-delete.tsx'
+import { ExportSessionDialog, ExportSessionMenuItem } from '../src/client/session-export.tsx'
 import { WelcomeOverlay } from '../src/client/welcome/WelcomeOverlay.tsx'
 import { ChangesView } from '../src/client/views/ChangesView.tsx'
 import { GitView } from '../src/client/views/GitView.tsx'
@@ -59,7 +60,7 @@ describe('workbench client apply', () => {
       locale: { register: vi.fn(), bind: vi.fn(() => (key: string) => key), getSnapshot: () => ({ active: 'zh' }) },
       sessions: { open: vi.fn(), list: { getSnapshot: () => ({ current: undefined, phase: 'ready', byId: {} }) } },
       remote: {
-        $mount: vi.fn(async () => async () => {}), $on: vi.fn(() => () => {}), workbenchInspector: {}, workbenchMemory: {},
+        $mount: vi.fn(async () => async () => {}), $on: vi.fn(() => () => {}), workbenchInspector: {},
         $stream: vi.fn(() => ({ dispose: vi.fn(), async *[Symbol.asyncIterator]() { /* no frames */ } })),
         account: { watch: vi.fn(), startSignIn: vi.fn(), cancelSignIn: vi.fn() },
       },
@@ -104,7 +105,7 @@ describe('workbench client apply', () => {
     const ctx = {
       locale: { register: vi.fn(), bind: vi.fn(() => (key: string) => key) },
       sessions: { open: vi.fn(), list: { getSnapshot: () => ({ current: undefined, phase: 'ready', byId: { 's-1': {} } }) } },
-      remote: { $mount: vi.fn(async () => async () => {}), $on: vi.fn(() => () => {}), workbenchInspector: {}, workbenchMemory: {} },
+      remote: { $mount: vi.fn(async () => async () => {}), $on: vi.fn(() => () => {}), workbenchInspector: {} },
       // #13: the frame's panel face the exclusion latches onto, and the
       // Sidebar controller it collapses.
       layout: { openRightbar: vi.fn(), closeRightbar: vi.fn() },
@@ -122,10 +123,8 @@ describe('workbench client apply', () => {
     }
     await apply(ctx as never)
 
-    // The inspector namespace and (B7-P9) the memory namespace.
-    expect(ctx.remote.$mount).toHaveBeenCalledTimes(2)
-    // One fan-out subscription to the forwarded store change.
-    expect(ctx.remote.$on).toHaveBeenCalledWith('workbench-memory/change', expect.any(Function))
+    // The inspector namespace only (the entry-based memory namespace is gone, 2026-09-29).
+    expect(ctx.remote.$mount).toHaveBeenCalledTimes(1)
     expect(ctx.provide).toHaveBeenCalledWith('chatTextDisplay', expect.anything())
     // #13: the latch replaced the face's two methods on the same instance.
     expect(typeof ctx.layout.openRightbar).toBe('function')
@@ -135,7 +134,7 @@ describe('workbench client apply', () => {
     // Outside a DeepSeekGUI window (no control bridge) the welcome overlay is not registered.
     expect(ctx.inject).toHaveBeenCalledTimes(1)
     expect(ctx.inject.mock.calls[0]?.[0]).toContain('remote.workbenchInspector')
-    expect(ctx.inject.mock.calls[0]?.[0]).toContain('remote.workbenchMemory')
+    expect(ctx.inject.mock.calls[0]?.[0]).not.toContain('remote.workbenchMemory')
     // The brand marks stay official (the whale); only the name is ours.
     expect(slots.inject.mock.calls.map(([name]) => name)).toEqual([
       'sidebar.brand.name',
@@ -146,6 +145,9 @@ describe('workbench client apply', () => {
       'shell.overlay',
       // Settings → Archived sessions (住户 2026-09-23).
       'settings.section',
+      // Export as Markdown (B8-P1).
+      'sidebar.workspaces.session.menu.item',
+      'shell.overlay',
       'tool.call.toolview',
       'conversation.view',
       'settings.section',
@@ -154,11 +156,15 @@ describe('workbench client apply', () => {
     expect(staticEntries.map(entry => entry.component)).toEqual([
       DeepSeekGUIBrandName, WorkbenchBadge, DesktopActions, NotificationWatcher,
       DeleteSessionMenuItem, DeleteSessionDialog,
+      ExportSessionMenuItem, ExportSessionDialog,
     ])
     // Delete session (住户 2026-09-22): the row follows the shipped archive row (400)
     // in the official session menu, and its confirmation hangs in the frame-wide layer.
     expect(staticEntries[4]).toMatchObject({ id: 'deepseekgui-delete', order: 500, locale: 'deepseekgui.workbench' })
     expect(staticEntries[5]).toMatchObject({ id: 'deepseekgui-session-delete', locale: 'deepseekgui.workbench' })
+    // Export as Markdown (B8-P1): between the archive row (400) and delete (500), on every row.
+    expect(staticEntries[6]).toMatchObject({ id: 'deepseekgui-export', order: 450, locale: 'deepseekgui.workbench' })
+    expect(staticEntries[7]).toMatchObject({ id: 'deepseekgui-session-export', locale: 'deepseekgui.workbench' })
     expect(staticEntries[1]).toMatchObject({ id: 'deepseekgui-workbench', order: -10 })
     expect(staticEntries[2]).toMatchObject({ id: 'deepseekgui-desktop', order: 10, locale: 'deepseekgui.workbench' })
     expect(staticEntries[3]).toMatchObject({ id: 'deepseekgui-notifier', order: 20, locale: 'deepseekgui.notify' })
@@ -181,13 +187,12 @@ describe('workbench client apply', () => {
     ])
     expect(views.every(entry => entry.locale === 'deepseekgui.inspector')).toBe(true)
     expect(views.map(entry => entry.label?.())).toEqual(['view.changes', 'view.git', 'view.memory'])
-    // The Memory view carries the store beside the inspector; the session-presence probe reads the list snapshot.
+    // The Memory view reads the file through the inspector and saves through the desktop.
     const memoryView = views[2] as RegisteredEntry & { inject: (sessionId: string) => Record<string, unknown> }
     const injected = memoryView.inject('s-1')
-    expect(injected.memory).toBe(ctx.remote.workbenchMemory)
-    expect(typeof injected.onMemoryChange).toBe('function')
-    expect((injected.sessionPresent as (id: string) => boolean | undefined)('s-1')).toBe(true)
-    expect((injected.sessionPresent as (id: string) => boolean | undefined)('s-9')).toBe(false)
+    expect(injected.inspector).toBe(ctx.remote.workbenchInspector)
+    expect(injected.memory).toBeUndefined()
+    expect(typeof injected.tm).toBe('function')
 
     // Settings → Global memory (B7-P9): the JS settings plugin's former id and slot, now the TS section.
     const sections = registered.filter(entry => entry.name === 'settings.section')

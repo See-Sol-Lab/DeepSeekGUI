@@ -40,8 +40,13 @@
     - id: session
       name: '@deepseek-ai/dsh-session'
 
+    # DeepSeekGUI: session-log upload follows the desktop's developer mode. The
+    # desktop launches the Harness with DEEPSEEKGUI_DEVELOPER_MODE=1 only when
+    # the user turns developer mode on; otherwise this stays off.
     - id: session-log-deepseek
       name: '@deepseek-ai/dsh-session-log-deepseek'
+      config:
+        enabled: !!js process.env.DEEPSEEKGUI_DEVELOPER_MODE === '1'
 
     - id: typert
       name: '@deepseek-ai/dsh-typert-registry'
@@ -74,8 +79,12 @@
     - id: agent
       name: '@deepseek-ai/dsh-agent'
 
+    # DeepSeekGUI: like the session log above, the package inventory on
+    # official requests follows developer mode (upstream ships it on).
     - id: plugin-package-inventory-deepseek
       name: '@deepseek-ai/dsh-plugin-package-inventory-deepseek'
+      config:
+        enabled: !!js process.env.DEEPSEEKGUI_DEVELOPER_MODE === '1'
 
     # The transport-independent default for Agents created by entry points.
     # Settings may supply a saved selection; consumers read it at creation time.
@@ -109,10 +118,13 @@
     - id: authorization
       name: '@deepseek-ai/dsh-authorization'
 
+    # DeepSeekGUI: its managed profile is not named `desktop`, so the desktop
+    # launcher also marks the Host with DEEPSEEKGUI_DESKTOP=1 and account requests
+    # identify as the desktop client, as the official desktop's do.
     - id: deepseek-account
       name: '@deepseek-ai/dsh-deepseek-account-platform'
       config:
-        desktopPlatform: !!js "ctx.get('profileContext')?.name === 'desktop' && ['darwin', 'win32'].includes(process.platform) ? process.platform : null"
+        desktopPlatform: !!js "(ctx.get('profileContext')?.name === 'desktop' || process.env.DEEPSEEKGUI_DESKTOP === '1') && ['darwin', 'win32'].includes(process.platform) ? process.platform : null"
 
     - id: credentials
       name: '@deepseek-ai/dsh-credentials-local'
@@ -185,6 +197,9 @@
         writeEveryEvents: 200
         writeIntervalMs: 5000
 
+    - id: otel
+      name: '@deepseek-ai/dsh-otel'
+
     # OTel releases a Session-log prefix only after explicit user feedback,
     # regardless of model provider. Ordinary activity never triggers capture.
     # DSH_TELEMETRY_OTLP_URL overrides the production endpoint. A non-empty
@@ -192,22 +207,20 @@
     # process out (the launchers patch the row disabled; config cannot disable
     # a row). Exports carry the harness home's anonymous user id ($DSH_HOME/.anonymous-user-id,
     # random UUID; delete the file to reset the identity) as the Resource's
-    # user.id. The exporter/processor values normally bound the shutdown drain
-    # to ~1s against an unreachable collector: exporter.timeoutMillis is both
-    # the per-attempt socket timeout and the retry deadline (1s effectively
-    # disables the SDK's 5-try backoff), while maxExportBatchSize == maxQueueSize
-    # (both explicit) makes the drain a single batch. The SDK awaits
-    # exporter.forceFlush() outside exportTimeoutMillis, so the backend's 3s
-    # shutdownTimeoutMillis is the load-bearing outer bound when a transport
-    # promise never settles. Every CLI exit path drains it by disposing the root
-    # on SIGINT/SIGTERM.
+    # user.id. Byte-bounded batching may turn an authorized prefix into
+    # several HTTP requests. Requests run serially; each has its own 1s
+    # transport timeout and 1.5s watchdog. A watchdog does not release the
+    # active request slot. The outer 3s shutdown deadline stops queued sends;
+    # large prefixes or an unsettled transport may leave records unsent.
+    # Every CLI exit path drains by disposing the root on SIGINT/SIGTERM.
     - id: session-telemetry-otel
       name: '@deepseek-ai/dsh-session-telemetry-otel'
       config:
         mode: !!js process.env.DSH_TELEMETRY_MODE || 'FEEDBACK_ONLY'
         shutdownTimeoutMillis: 3000
+        maxRequestBytes: 4000000
         exporter:
-          url: !!js process.env.DSH_TELEMETRY_OTLP_URL ?? 'https://harness-telemetry.deepseeksvc.com/v1/logs'
+          url: !!js process.env.DSH_TELEMETRY_OTLP_URL ?? 'https://dsh-otel-collector.deepseeksvc.com/v1/logs'
           compression: gzip
           timeoutMillis: 1000
         processor:

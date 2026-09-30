@@ -13,9 +13,6 @@ import type {} from '@deepseek-ai/dsh-plugin-manager/types'
 // Type-only: the DeepSeekGUI skill library declares `skill-manager/change` in
 // its client-safe types module, so both compiler faces see the entry below.
 import type {} from '@deepseek-ai/dsh-skill-manager/types'
-// Type-only: the DeepSeekGUI engineering memory declares `workbench-memory/change`
-// in its client-safe types module, for the same reason.
-import type {} from '@deepseek-ai/dsh-workbench-memory/types'
 import type {} from '@deepseek-ai/dsh-schedule/client'
 import type { TypertForwardableEventEntry } from '@deepseek-ai/dsh-typert-protocol'
 
@@ -54,7 +51,4 @@ export const API_REMOTE_FORWARDED_EVENTS = [
   { event: 'skill-manager/change', mode: 'emit' },
   { event: 'schedule/changed', mode: 'emit' },
   { event: 'user-questions/request', mode: 'waterfall' },
-  // DeepSeekGUI (B7-P8): a memory entry landed, changed, was forgotten, or
-  // lost its source session in any window; the memory pages re-read on it.
-  { event: 'workbench-memory/change', mode: 'emit' },
 ] as const satisfies readonly TypertForwardableEventEntry[]

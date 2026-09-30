@@ -30,6 +30,7 @@
     "apps/web/tests/auto-review-denial.e2e.ts",
     "apps/web/tests/scaffold-generation.spec.ts",
     "apps/web/tests/default-model.e2e.ts",
+    "apps/web/tests/model-menu-observer.e2e.ts",
     "apps/web/tests/github-ready-review.e2e.ts",
     "apps/web/tests/streaming-fence-highlight.e2e.ts",
     "apps/web/tests/declared-reasoning.e2e.ts",
@@ -67,6 +68,8 @@
     "apps/web/tests/plugin-install-github.e2e.ts",
     "apps/web/tests/client-plugin-live.e2e.ts",
     "apps/web/tests/settings-chrome.e2e.ts",
+    "apps/web/tests/session-log-upload.e2e.ts",
+    "apps/web/tests/caption-overlays.e2e.ts",
     "apps/web/tests/settings-appearance.e2e.ts",
     "apps/web/tests/menu-material.e2e.ts",
     "apps/web/tests/desktop-locale.e2e.ts",
@@ -90,6 +93,7 @@
     "apps/web/tests/session-unarchive.e2e.ts",
     "apps/web/tests/session-archive-active.e2e.ts",
     "apps/web/tests/replay-round-trip.e2e.ts",
+    "apps/web/tests/session-replay-reload.e2e.ts",
     "apps/web/tests/hmr-live.e2e.ts",
     "apps/web/tests/preview-boot.e2e.ts",
     "apps/web/tests/seeded-history.e2e.ts",
@@ -196,6 +200,8 @@
     "scripts/client-bundle-purity.spec.ts"
   ],
   "references": [
+    { "path": "./packages/client/product-analytics/tsconfig.host.json" },
+    { "path": "./packages/telemetry/otel" },
     { "path": "./packages/experimental/speech-to-text" },
     { "path": "./packages/experimental/speech-to-text-sensevoice" },
     { "path": "./packages/experimental/api-speech-to-text" },
@@ -361,6 +367,7 @@
     { "path": "./packages/terminal/tool-terminal" },
     { "path": "./packages/ptc-runtime/ptc-runtime" },
     { "path": "./packages/experimental/ptc-runtime-python" },
+    { "path": "./packages/experimental/schedule-bundle" },
     { "path": "./packages/ptc-runtime/ptc-runtime-node" },
     { "path": "./packages/llm/llm-deepseek" },
     { "path": "./packages/llm/llm-deepseek-api-key" },
@@ -476,7 +483,6 @@
     { "path": "./apps/deepseekgui/browser-plugin" },
     { "path": "./apps/deepseekgui/coding-tools-plugin" },
     { "path": "./packages/api/workbench-inspector" },
-    { "path": "./packages/api/skill-manager" },
-    { "path": "./packages/api/workbench-memory" }
+    { "path": "./packages/api/skill-manager" }
   ]
 }

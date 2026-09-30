@@ -75,8 +75,19 @@ export interface HarnessApi {
   sessionArchive(sessionId: string): Promise<void>
   /** `workbenchInspector/lastReply`：最新一条助手回复及其是否已完成（#15）。 */
   workbenchLastReply(sessionId: string): Promise<{ text: string | null; complete: boolean }>
+  /** `workbenchInspector/exportMarkdown`：整段会话渲染出的可读 Markdown 与标题（B8-P1）。 */
+  workbenchExportMarkdown(sessionId: string, includeDetails: boolean, language: 'zh' | 'en'): Promise<{ title: string; markdown: string }>
+  /** `workbenchInspector/cleanSandboxMarks`：去掉一个文件夹上的 Windows 沙箱标记（2026-09-29）。 */
+  workbenchCleanSandboxMarks(path: string): Promise<SandboxCleanResult>
   /** Wait for the Session owner, then remove its content under desktop authorization. */
   sessionDelete(sessionId: string, signature: string): Promise<void>
+}
+
+/** 清理沙箱标记的结果：cleaned 已清掉；clean 本来就没有；busy 那里正有受限命令在跑；unsupported 没有 Windows ACL 沙箱。 */
+export interface SandboxCleanResult {
+  status: 'cleaned' | 'clean' | 'busy' | 'unsupported'
+  /** 标记所在的文件夹：所选文件夹，或标记继承自的上层文件夹。 */
+  root: string
 }
 
 /** session/list 的一行摘要（官方 SessionSummary 的受信面）。 */
@@ -340,6 +351,24 @@ export function createHarnessApi(options: HarnessApiOptions): HarnessApi {
         throw new HarnessRpcError('bad-response', zh() ? 'lastReply: 形状不符' : 'lastReply: unexpected shape')
       }
       return { text: value.text, complete: value.complete }
+    },
+    async workbenchExportMarkdown(sessionId, includeDetails, language) {
+      // 渲染可能要读整段会话并产出几十 MB 文本，不设单次超时（同删除）。
+      const value = await call('workbenchInspector/exportMarkdown', { sessionId, includeDetails, language }, null)
+      if (!isRecord(value) || typeof value.title !== 'string' || value.title === '' || typeof value.markdown !== 'string') {
+        throw new HarnessRpcError('bad-response', zh() ? 'exportMarkdown: 形状不符' : 'exportMarkdown: unexpected shape')
+      }
+      return { title: value.title, markdown: value.markdown }
+    },
+    async workbenchCleanSandboxMarks(path) {
+      // 大仓库的清理要把改动传遍整棵树（几十秒），不设单次超时（同删除）。
+      const value = await call('workbenchInspector/cleanSandboxMarks', { path }, null)
+      const statuses = ['cleaned', 'clean', 'busy', 'unsupported'] as const
+      const status = isRecord(value) ? statuses.find(known => known === value.status) : undefined
+      if (!isRecord(value) || status === undefined || typeof value.root !== 'string') {
+        throw new HarnessRpcError('bad-response', zh() ? 'cleanSandboxMarks: 形状不符' : 'cleanSandboxMarks: unexpected shape')
+      }
+      return { status, root: value.root }
     },
     async sessionDelete(sessionId, signature) {
       // Deletion waits for the current reply rather than an ordinary RPC deadline.

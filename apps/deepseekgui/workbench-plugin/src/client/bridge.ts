@@ -51,6 +51,20 @@ export interface ControlModelSnapshot {
   dshHome?: string
   /** The legacy `<home>/memory.md` text, bounded; null when unreadable (B7-P9 legacy editor). */
   globalMemory?: string | null
+  /** Developer mode (2026-09-29): whether both official uploads follow the upstream defaults. */
+  developerMode?: boolean
+  /** The newest "clean sandbox marks" result (2026-09-29); the nonce grows per request. */
+  sandboxClean?: SandboxCleanSnapshot | null
+}
+
+/** One "clean sandbox marks" result as the desktop reports it. */
+export interface SandboxCleanSnapshot {
+  nonce: number
+  status: 'canceled' | 'cleaned' | 'clean' | 'busy' | 'unsupported'
+  /** The folder the person chose; null when canceled. */
+  path: string | null
+  /** The folder the marks were on (the chosen one or the ancestor they came from); null when canceled. */
+  root: string | null
 }
 
 /**

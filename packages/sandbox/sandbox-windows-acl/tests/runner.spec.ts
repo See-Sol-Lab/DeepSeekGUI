@@ -343,6 +343,20 @@ describe.skipIf(!isWin32 || !pwshAvailable())('windows-acl runner', () => {
     expect(existsSync(tempB)).toBe(false)
   }, 30_000)
 
+  it('holds a <pid> lease file while it runs and removes it on the way out (DeepSeekGUI)', () => {
+    const leaseDir = join(scratchRoot, 'leases')
+    const capture = join(writableDir, 'lease-seen.txt')
+    const result = runRunner([
+      '--workspace', writableDir, '--temp', isolatedTemp, '--mode', 'workspace-write', '--lease', leaseDir,
+      '--', process.execPath, '-e', "require('node:fs').writeFileSync(process.argv[1], require('node:fs').readdirSync(process.argv[2]).join(','))", capture, leaseDir,
+    ])
+    expect(result.status, `stderr: ${result.stderr}`).toBe(0)
+    const seen = readFileSync(capture, 'utf8').split(',')
+    expect(seen).toHaveLength(1)
+    expect(Number(seen[0])).toBeGreaterThan(0)
+    expect(existsSync(join(leaseDir, seen[0] ?? ''))).toBe(false)
+  }, 30_000)
+
   it('agentless workspace-write rejects a temp root inside the workspace before spawning', () => {
     const overlapWorkspace = join(scratchRoot, 'overlap-workspace')
     const nestedTempRoot = join(overlapWorkspace, 'temp')

@@ -1,6 +1,6 @@
 <div align="center">
 
-# <img src="./apps/deepseekgui/src/chrome/icon.png" width="38" alt="" align="absmiddle" /> DeepSeekGUI v1.1.2
+# <img src="./apps/deepseekgui/src/chrome/icon.png" width="38" alt="" align="absmiddle" /> DeepSeekGUI v1.2.0
 
 </div>
 
@@ -43,11 +43,11 @@ English | [中文](README.md)
 </p>
 -->
 
-DeepSeekGUI is a local AI workbench built on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness); configure a model API key and start. Choose a project folder and ask the assistant to read code, edit files, run commands, and browse the web. Check the project at any time through the Changes and Git views, use dedicated tools for commits, pushes, and Pull Requests, and carry collaboration forward with global and project memory.
+DeepSeekGUI is a local AI workbench built on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness); sign in with a DeepSeek account or configure a model API key and start. Choose a project folder and ask the assistant to read code, edit files, run commands, and browse the web. Check the project at any time through the Changes and Git views, use dedicated tools for commits, pushes, and Pull Requests, and carry collaboration forward with global and project memory.
 
 **Not an official DeepSeek product.** Built on DeepSeek Harness and independently developed, with no affiliation with or endorsement by DeepSeek. The upstream runtime and official Web UI are DeepSeek's work.
 
-**Current release: [v1.1.2](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.1.2).** The embedded Harness moves to 0.1.7-rc.1, with a translucent glass interface, a bilingual start page, and a website update channel; the assistant now stops for a red confirmation before changing Windows, installed programs, or DeepSeekGUI's own code, and a project's Git metadata is read-only by default. The Workbench extends the official Harness client through plugins and uses Harness sessions, tools, and permissions.
+**Current release: [v1.2.0](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.2.0).** The embedded Harness updates to `0.2.0-rc.2`. Windows sandbox Low integrity marks are removed after use, Enhanced Memory returns to global and project Markdown files, and sessions can be exported as Markdown. Developer mode is off by default and governs official session-log, plugin-list and feedback uploads. Applicable rc.2 PowerShell, model-search and interface improvements are included.
 
 [Product roadmap for the in-house Workbench](https://see-sol-lab.github.io/research/deepseekgui-single-task-signal.html)
 
@@ -55,7 +55,7 @@ DeepSeekGUI is a local AI workbench built on [DeepSeek Harness](https://github.c
 
 | Platform | Download | Requirements |
 | --- | --- | --- |
-| Windows | [Download installer](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.1.2/DeepSeekGUI-Setup-1.1.2.exe) | Windows 10/11, x64 |
+| Windows | [Download installer](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.2.0/DeepSeekGUI-Setup-1.2.0.exe) | Windows 10/11, x64 |
 | Linux | [Download AppImage](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.1.2-linux.1/DeepSeekGUI-1.1.2-x86_64.AppImage) | x64, AppImage; experimental support |
 
 The Windows installer installs to your user account and bundles its runtime. Linux uses a separate AppImage distribution; download and verification details are on the [v1.1.2-linux.1](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.1.2-linux.1) release page.
@@ -68,10 +68,10 @@ The Windows installer installs to your user account and bundles its runtime. Lin
 After downloading the installer, calculate its SHA256 in PowerShell:
 
 ```powershell
-Get-FileHash .\DeepSeekGUI-Setup-1.1.2.exe -Algorithm SHA256
+Get-FileHash .\DeepSeekGUI-Setup-1.2.0.exe -Algorithm SHA256
 ```
 
-Compare it with [`SHA256SUMS.txt`](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.1.2/SHA256SUMS.txt) before installing. See the [troubleshooting guide](docs/user/deepseekgui/data-troubleshooting.md#windows-smartscreen-blocks-the-installer) if needed.
+Compare it with [`SHA256SUMS.txt`](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.2.0/SHA256SUMS.txt) before installing. See the [troubleshooting guide](docs/user/deepseekgui/data-troubleshooting.md#windows-smartscreen-blocks-the-installer) if needed.
 
 </details>
 

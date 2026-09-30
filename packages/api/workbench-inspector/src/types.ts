@@ -65,6 +65,21 @@ export interface WorkbenchLastReply {
   readonly complete: boolean
 }
 
+/** The interface language a Markdown export is written in (B8-P1). */
+export type WorkbenchExportLanguage = 'zh' | 'en'
+
+/**
+ * The rendered human-readable Markdown export of one Session (B8-P1). The
+ * document quotes the log verbatim and is never sanitized; the desktop owns
+ * the save dialog and derives the default file name from `title`.
+ */
+export interface WorkbenchExportMarkdown {
+  /** The Session's current display title, already resolved. */
+  readonly title: string
+  /** The complete document; the desktop writes it UTF-8 without BOM. */
+  readonly markdown: string
+}
+
 /**
  * Repository-level facts for the Git and Worktree views in one read: the
  * current status, configured remotes, the newest commits, and every
@@ -76,4 +91,18 @@ export interface WorkbenchOverview {
   remotes: RemoteInfo[]
   commits: CommitInfo[]
   worktrees: WorkbenchWorktree[]
+}
+
+/**
+ * What cleaning a folder's sandbox marks did (DeepSeekGUI 2026-09-29): the
+ * Windows ACL sandbox's grant, deny, and Low label, which make programs
+ * started from the folder run at Low integrity. `cleaned` — gone from `root`;
+ * `clean` — no folder from the chosen one up carries any; `busy` — a confined
+ * command is running there now; `unsupported` — this Harness does not confine
+ * with Windows ACLs.
+ */
+export interface WorkbenchSandboxClean {
+  readonly status: 'cleaned' | 'clean' | 'busy' | 'unsupported'
+  /** The folder the marks were on: the chosen one, or the ancestor they are inherited from. */
+  readonly root: string
 }

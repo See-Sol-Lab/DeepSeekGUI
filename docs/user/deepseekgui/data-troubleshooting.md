@@ -82,36 +82,13 @@ DeepSeekGUI starts its embedded browser panel on the first browser operation. Co
 
 The installed version is already the newest published one. This does not alter the installed application. You can also download a release manually from GitHub.
 
-## Programs you run yourself fail in a project used with Sandbox (known issue)
+## Programs you run yourself fail in a project used with Sandbox
 
-In Sandbox mode, the first time the Windows sandbox grants write access to a project folder it leaves three settings on that folder permanently: a write grant for the sandbox, a "deny delete child" entry, and a **Low integrity label**. This is the design of upstream DSH 0.1.7; closing DeepSeekGUI does not remove them.
+On Windows, an older DeepSeekGUI version can leave a Sandbox write grant and Low integrity label on a project folder. Programs started from that folder may then fail to access your profile or cache. An Electron app may exit with `0x80000003`; Python or `uv` may report "Access is denied".
 
-A side effect of the label is that programs **you** later start from that folder also run at Low integrity, even from an ordinary terminal. Typical signs:
+DeepSeekGUI 1.2.0 takes back its grant when the project has been idle for 30 seconds and no Sandbox command is still running. To clean a folder marked by an older version, open **Settings → General → Clean sandbox marks** and choose the folder. The app refuses to change a folder while its Sandbox command is running. If the selected folder inherits the marks from a parent, the control identifies and cleans the marked level.
 
-- an Electron app in the project exits at once with `0x80000003` and no output;
-- a Python virtual environment, `uv`, or a program built in the project gets "Access is denied" when writing to your profile or a cache.
-
-If the same program runs fine after copying it to another folder, this is almost certainly the cause. To check (use your project's path):
-
-```powershell
-icacls "D:\my-project" | Select-String "Mandatory"
-```
-
-`Low Mandatory Level` in the output means the folder is labeled. Once no DeepSeekGUI task is running in that project, run these lines in your own PowerShell to restore it (replace `S-1-4-…` with the identifier the previous command shows):
-
-```powershell
-$root = "D:\my-project"
-$acl = (Get-Item $root).GetAccessControl('Access')
-$acl.PurgeAccessRules([Security.Principal.SecurityIdentifier]'S-1-4-…')
-$everyone = [Security.Principal.SecurityIdentifier]'S-1-1-0'
-foreach ($r in @($acl.GetAccessRules($true, $false, [Security.Principal.SecurityIdentifier]))) {
-  if ($r.AccessControlType -eq 'Deny' -and $r.IdentityReference -eq $everyone) { [void]$acl.RemoveAccessRuleSpecific($r) }
-}
-(Get-Item $root).SetAccessControl($acl)
-icacls $root /setintegritylevel '(OI)(CI)M'
-```
-
-The settings come back the next time a Sandbox command runs in that project. If you often run programs from the project yourself, use Full Access for it. Upstream tracking: [deepseek-harness#7709](https://github.com/deepseek-ai/deepseek-harness/discussions/7709).
+You can check the folder with `icacls "D:\my-project"`. After cleanup, the output should show neither `Mandatory Label\Low` nor a `S-1-4-…` Sandbox grant. If cleanup fails, keep the error message and export diagnostics for review.
 
 ## Export diagnostics without the GUI
 

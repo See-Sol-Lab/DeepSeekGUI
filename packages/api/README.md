@@ -28,7 +28,6 @@ The packages below provide the Remote layer; the package READMEs own the exhaust
 |---|---|---|
 | [`workbench-inspector/`](workbench-inspector/README.md) | Reads current workspace files and Git patches for DeepSeekGUI without model calls. | `ctx.workbenchInspector` |
 | [`skill-manager/`](skill-manager/README.md) | Imports, lists and uninstalls skill packages in DeepSeekGUI's local skill library, keeps each project folder's selection, and registers the one provider that lists a session's selected installs. | `ctx.skillManager` |
-| [`workbench-memory/`](workbench-memory/README.md) | Stores DeepSeekGUI's engineering memory entries per project folder or global: versioned corrections, tombstoned forgetting, one-level undo, explicit restore, and the reviewed import of the legacy Markdown memory files. | `ctx.workbenchMemory` |
 | [`remotes/`](remotes/README.md) | Chooses which Host capabilities and events the Client can consume. | — |
 | [`gateway/`](gateway/README.md) | Carries typed unary calls, multiplexed streams with their Client uplinks, and forwarded Host events. | `ctx.typertGateway` / `ctx.remote` |
 | [`job-controller/`](job-controller/README.md) | Streams one background job's observation record to the Client. | `ctx.jobController` / `ctx.remote.job` |

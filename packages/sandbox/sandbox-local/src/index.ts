@@ -8,11 +8,13 @@
  * The windows-acl rung additionally owns the write grants: the write SID is
  * the per-WORKSPACE identity derived from the canonical workspace path
  * (`workspaceWriteSid`), while every live session receives a RANDOM private
- * temp directory and its own derived capability (`tempWriteSid`). The
- * workspace-root ACE materializes once per workspace per server lifetime
- * and STANDS (the cross-session reuse cache — the exact-ACE skip makes
- * every later provision O(1) instead of re-propagating the tree per
- * session); the private-temp ACEs are revoked on dispose. The runner
+ * temp directory and its own derived capability (`tempWriteSid`). Upstream
+ * lets the workspace-root grant STAND for good as a reuse cache; DeepSeekGUI
+ * (2026-09-29) makes it through an out-of-process helper and takes it back
+ * once the root has been idle for half a minute with no runner holding a
+ * lease, because a standing Low label turns every program started from the
+ * folder into a Low-integrity process. The private-temp ACEs are revoked on
+ * dispose. The runner
  * receives both SIDs (their presence marks the seam-managed contract) and
  * stops managing DACLs itself. The rung reports partial enforcement because
  * NTFS hard links alias one file object across paths, reads stay unconfined,
@@ -21,10 +23,10 @@
  * @module @deepseek-ai/dsh-sandbox-local
  */
 
-import { spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { execFile, spawn, spawnSync } from 'node:child_process'
+import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   LAUNCHER_BIN,
@@ -37,7 +39,7 @@ import z from '@deepseek-ai/schemastery'
 import { SandboxProvider, SandboxUnavailableError, canonicalPath, readOnlySubtrees } from '@deepseek-ai/dsh-sandbox'
 import type { ConfinedArgv, ConfinedSandboxMode, RunnerFailureRule, SandboxEnforcement, SandboxPolicy } from '@deepseek-ai/dsh-sandbox'
 import type { SessionId } from '@deepseek-ai/dsh-session'
-import { AclWriteGrant, assertTempRootOutsideWorkspace, tempWriteSid, workspaceWriteSid } from '@deepseek-ai/dsh-sandbox-windows-acl'
+import { AclWriteGrant, assertTempRootOutsideWorkspace, registerAclDiagnosisSkill, tempWriteSid, workspaceWriteSid } from '@deepseek-ai/dsh-sandbox-windows-acl'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
 import { bwrapProfileArgs, landlockProfileArgs, seatbeltProfileArgs } from './profiles.ts'
 
@@ -136,6 +138,100 @@ export interface SandboxInternals {
   probeWindowsAcl?: () => boolean
   /** Replaces the private-temp-directory removal at provider dispose (a throwing fake exercises the cleanup-failure path). */
   rmTempDir?: (path: string) => void
+  /** DeepSeekGUI: replaces the out-of-process `acl-helper` run (grant / revoke / purge of a workspace's marks). */
+  aclHelper?: (command: AclHelperCommand, workspace: string, readOnly: readonly string[]) => Promise<void>
+  /** DeepSeekGUI: replaces the read-only probe of a workspace root (grant standing? any mark?). */
+  inspectWorkspace?: (workspace: string) => { grant: boolean; marks: boolean }
+  /** DeepSeekGUI: replaces the liveness check of a lease's runner pid. */
+  leaseAlive?: (pid: number) => boolean
+  /** DeepSeekGUI: replaces the clock the idle sweep reads. */
+  now?: () => number
+  /** DeepSeekGUI: replaces the detached revoke spawned at provider dispose. */
+  revokeDetached?: (workspace: string) => void
+  /** DeepSeekGUI: replaces the resolved `acl-helper` built entry path (a fake lib/acl-helper.js location). */
+  aclHelperEntry?: string
+}
+
+/** DeepSeekGUI: the `acl-helper` commands (see `@deepseek-ai/dsh-sandbox-windows-acl/acl-helper`). */
+export type AclHelperCommand = 'grant' | 'revoke' | 'purge'
+
+/**
+ * DeepSeekGUI: what {@link LocalSandboxProvider.cleanWorkspaceMarks} did.
+ * `cleaned` — the marks on `root` are gone; `clean` — no folder from the
+ * chosen one up carries any; `busy` — `root` carries them and a confined
+ * command is running there right now; `unsupported` — this host does not
+ * confine with Windows ACLs.
+ */
+export interface SandboxMarksClean {
+  status: 'cleaned' | 'clean' | 'busy' | 'unsupported'
+  /** The folder the marks were on (the chosen folder, or the ancestor they are inherited from). */
+  root: string
+}
+
+/**
+ * DeepSeekGUI (2026-09-29): how long a workspace grant stays after its last
+ * confined command, with no runner holding a lease, before the seam takes it
+ * back. A turn's commands follow each other within seconds; a finished turn
+ * leaves the folder an ordinary Medium folder half a minute later.
+ */
+const IDLE_REVOKE_MS = 30_000
+
+/** How often the idle sweep looks. */
+const IDLE_SWEEP_MS = 10_000
+
+/** How long after start the cleanup of registered workspaces begins — out of the way of the first requests. */
+const STARTUP_PURGE_DELAY_MS = 5_000
+
+/** Upper bound for one helper run: a very large tree propagates for minutes, not hours. */
+const ACL_HELPER_TIMEOUT_MS = 30 * 60_000
+
+/**
+ * DeepSeekGUI: the lease directory of one workspace — runners hold `<pid>`
+ * files here while they run (`--lease`). Keyed by the workspace SID, so every
+ * provider and runner on this machine agrees on it.
+ * @param root - the canonical workspace root.
+ * @returns the directory.
+ */
+function aclLeaseDir(root: string): string {
+  return join(tmpdir(), 'dsh-acl-leases', workspaceWriteSid(root))
+}
+
+/**
+ * Whether a process with this pid is running (signal 0: EPERM still means it exists).
+ * @param pid - the runner's pid.
+ * @returns whether it is alive.
+ */
+function processAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (error) {
+    return error instanceof Error && 'code' in error && error.code === 'EPERM'
+  }
+}
+
+/**
+ * The registered workspace paths from the `workspaceRegistry` service, read
+ * structurally (this package does not depend on the workspace package).
+ * @param registry - the service, or anything else.
+ * @returns the paths; empty when the service does not look like a registry.
+ */
+function workspacePaths(registry: unknown): string[] {
+  if (typeof registry !== 'object' || registry === null || !('list' in registry) || typeof registry.list !== 'function') return []
+  const listed: unknown = Reflect.apply(registry.list, registry, [])
+  if (!Array.isArray(listed)) return []
+  return listed.flatMap((workspace: unknown) =>
+    typeof workspace === 'object' && workspace !== null && 'path' in workspace && typeof workspace.path === 'string' ? [workspace.path] : [])
+}
+
+/** DeepSeekGUI: one workspace's grant as this provider knows it. */
+interface WorkspaceGrantState {
+  /** The standing grant is on the root (made by this provider, or by an agentless runner it launched). */
+  granted: boolean
+  /** Last confined command for this root (ms, {@link LocalSandboxProvider.now}). */
+  lastUsed: number
+  /** Serializes grant, revoke, and purge for this root. */
+  queue: Promise<void>
 }
 
 /** The chain's verdict: which runner confines, and how completely it enforces. */
@@ -266,13 +362,14 @@ export class LocalSandboxProvider extends SandboxProvider {
   /** Cached chain verdict; undefined until the first confined wrap needs it. */
   private selectedRunner: SelectedRunner | 'unavailable' | undefined
   /**
-   * Server-lifetime write grants (windows-acl rung): the STANDING
-   * workspace-root grant per workspace (its ACE is the cross-session reuse
-   * cache and outlives the provider — never revoked) and the REVOCABLE
-   * private-temp grant per live session/workspace pair (revoked on provider
-   * dispose).
+   * DeepSeekGUI (2026-09-29): workspace grants this provider made or saw made
+   * (windows-acl rung), keyed by canonical root. Upstream kept each grant
+   * standing for good as a reuse cache, which left every workspace a Low
+   * integrity folder long after the session; here a grant is taken back once
+   * the root is idle and no runner holds a lease on it.
    */
-  private readonly workspaceGrants = new Map<string, AclWriteGrant>()
+  private readonly workspaces = new Map<string, WorkspaceGrantState>()
+  /** The REVOCABLE private-temp grant per live session/workspace pair (revoked on provider dispose). */
   private readonly tempCapabilities = new Map<string, AclTempCapability>()
 
   constructor(ctx: Context, config: Config) {
@@ -295,10 +392,31 @@ export class LocalSandboxProvider extends SandboxProvider {
     this.configuredRunnerFailureSignatures = runnerFailureSignatures
     this.probeTimeoutMs = config.probeTimeoutMs as number
     assertPositiveFinite('probeTimeoutMs', this.probeTimeoutMs)
-    // The temp grants are revoked with the provider: a clean server
-    // shutdown leaves no temp ACEs behind (workspace ACEs stand by design —
-    // the reuse cache; an unclean shutdown leaves them for the next
-    // provision's exact-ACE skip).
+    // An operator-supplied runner does not use the ACL backend. The registry
+    // remains optional and may be mounted after this provider.
+    /* v8 ignore start -- Windows-only registration; the Linux coverage lane cannot take this branch */
+    if (process.platform === 'win32' && this.runnerCommand === undefined) {
+      ctx.inject(['skills'], (skillsCtx) => { registerAclDiagnosisSkill(skillsCtx) })
+      // DeepSeekGUI: take idle workspace grants back, and once per start clean
+      // the registered workspaces an older build or a crash left marked.
+      ctx.effect(() => {
+        const sweep = setInterval(() => { void this.revokeIdleGrants() }, IDLE_SWEEP_MS)
+        sweep.unref()
+        return () => { clearInterval(sweep) }
+      })
+      ctx.inject(['workspaceRegistry'], (registryCtx) => {
+        registryCtx.effect(() => {
+          const timer = setTimeout(() => { void this.purgeRegisteredWorkspaces(registryCtx.get('workspaceRegistry')) }, STARTUP_PURGE_DELAY_MS)
+          timer.unref()
+          return () => { clearTimeout(timer) }
+        })
+      })
+    }
+    /* v8 ignore stop */
+    // The temp grants are revoked with the provider, and DeepSeekGUI hands
+    // every workspace grant still standing to a detached helper: a clean
+    // server shutdown leaves no marks behind. An unclean shutdown leaves them
+    // for the next start's cleanup of the registered workspaces.
     ctx.effect(() => () => {
       this.revokeAclGrants()
     })
@@ -328,98 +446,316 @@ export class LocalSandboxProvider extends SandboxProvider {
       })
     }
     const selected = this.selectRunner(policy.mode)
-    const runnerArgv = this.runnerArgv(selected.runner, policy)
-    return Promise.resolve<ConfinedArgv>({
+    const runnerArgv = await this.runnerArgv(selected.runner, policy, signal)
+    return {
       argv: [...runnerArgv, '--', ...argv],
       enforcement: selected.enforcement,
       denialSignatures: DENIAL_SIGNATURES[selected.runner],
       runnerFailureRules: RUNNER_FAILURE_RULES[selected.runner],
-    })
+    }
   }
 
   /** The selected rung's runner invocation (program + profile arguments) for one policy. */
-  private runnerArgv(runner: SelectedRunner['runner'], policy: SandboxPolicy): string[] {
+  private async runnerArgv(runner: SelectedRunner['runner'], policy: SandboxPolicy, signal?: AbortSignal): Promise<string[]> {
     switch (runner) {
       case 'bwrap': return ['bwrap', ...bwrapProfileArgs(policy)]
       case 'landlock': return [this.landlockLauncher(), ...landlockProfileArgs(policy)]
       case 'seatbelt': return [this.seatbeltExec(), ...seatbeltProfileArgs(policy)]
-      case 'windows-acl': return this.windowsAclRunnerArgv(policy)
+      case 'windows-acl': return this.windowsAclRunnerArgv(policy, signal)
       default: return assertNever(runner)
     }
   }
 
   /**
    * The windows-acl runner argv for one policy. With a calling session (the
-   * policy's `sessionId`) under workspace-write, the grants are materialized
-   * once per provider lifetime — the standing workspace-root grant per
-   * workspace and a revocable, RANDOM private-temp capability per live
-   * session/workspace pair. The runner receives `--write-sid` plus
-   * `--temp-write-sid` and grants nothing itself. Agentless workspace-write
-   * calls pass the ambient temp ROOT and no SID flags: the runner creates and
-   * removes a random private child directory for that one invocation.
+   * policy's `sessionId`) under workspace-write, the workspace-root grant is
+   * made through the out-of-process `acl-helper` (DeepSeekGUI: queued per
+   * root, and taken back again once the root is idle — see
+   * {@link revokeIdleGrants}) and a revocable, RANDOM private-temp capability
+   * is materialized per live session/workspace pair. The runner receives
+   * `--write-sid` plus `--temp-write-sid` and grants nothing itself.
+   * Agentless workspace-write calls pass the ambient temp ROOT and no SID
+   * flags: the runner creates and removes a random private child directory
+   * for that one invocation and grants the workspace itself. Every
+   * workspace-write runner holds a `--lease` for as long as it runs.
    * @param policy - the resolved per-call policy.
+   * @param signal - cancellation while the grant is queued.
    * @returns the runner invocation.
    */
-  private windowsAclRunnerArgv(policy: SandboxPolicy): string[] {
+  private async windowsAclRunnerArgv(policy: SandboxPolicy, signal?: AbortSignal): Promise<string[]> {
     const sessionId = policy.sessionId
-    if (sessionId === undefined || policy.mode === 'read-only') {
+    const root = policy.workspaceRoot
+    if (policy.mode === 'read-only') {
+      return [...this.windowsAclRunnerInvocation(), '--workspace', root, '--temp', tmpdir(), '--mode', policy.mode]
+    }
+    const lease = ['--lease', aclLeaseDir(root)]
+    if (sessionId === undefined) {
       // DeepSeekGUI: an agentless workspace-write runner grants the workspace
       // itself, so it also gets the directories that stay read-only inside it.
-      const readOnly = policy.mode === 'read-only' ? [] : readOnlySubtrees(policy.workspaceRoot)
+      // It waits out a revoke or purge in flight; the idle sweep then takes
+      // its grant back like any other.
+      await this.useWorkspace(root, false, signal)
       return [
         ...this.windowsAclRunnerInvocation(),
-        '--workspace', policy.workspaceRoot,
+        '--workspace', root,
         '--temp', tmpdir(),
         '--mode', policy.mode,
-        ...readOnly.flatMap(directory => ['--read-only', directory]),
+        ...readOnlySubtrees(root).flatMap(directory => ['--read-only', directory]),
+        ...lease,
       ]
     }
-    const temp = this.materializeAclGrant(sessionId, policy.workspaceRoot)
+    assertTempRootOutsideWorkspace(root, tmpdir())
+    await this.useWorkspace(root, true, signal)
+    const temp = this.materializeTempCapability(sessionId, root)
     return [
       ...this.windowsAclRunnerInvocation(),
-      '--workspace', policy.workspaceRoot,
+      '--workspace', root,
       '--temp', temp.dir,
       '--mode', policy.mode,
-      '--write-sid', workspaceWriteSid(policy.workspaceRoot),
+      '--write-sid', workspaceWriteSid(root),
       '--temp-write-sid', temp.writeSid,
+      ...lease,
     ]
   }
 
   /**
-   * Materialize one workspace-write policy's ACEs once per provider
-   * lifetime. The workspace SID and standing root grant are shared by the
-   * workspace. The temp directory is random and carries a distinct SID, so
-   * another session on the same workspace cannot use the shared workspace
-   * SID to enter it. A fresh provider always chooses a new path; crash
-   * residue therefore cannot collide with or authorize a resumed session.
-   * Fail-closed: a half-materialized temp grant is revoked and its directory
-   * removed before the error propagates.
+   * DeepSeekGUI (2026-09-29): mark `root` in use and, for a session call,
+   * make sure its workspace grant stands — probed in process (one read), made
+   * through `acl-helper` when missing, which also repairs a grant something
+   * outside this provider took away. Queued behind any revoke or purge in
+   * flight for the same root. Fail-closed: a helper failure rejects the
+   * confinement.
+   * @param root - the canonical workspace root.
+   * @param grant - whether this provider makes the grant (session calls) or the runner does (agentless).
+   * @param signal - cancellation while queued.
+   */
+  private async useWorkspace(root: string, grant: boolean, signal?: AbortSignal): Promise<void> {
+    const state = this.workspaceState(root)
+    state.lastUsed = this.now()
+    const step = state.queue.then(async () => {
+      signal?.throwIfAborted()
+      // DeepSeekGUI: nested repositories' .git and protected code below the
+      // workspace stay read-only for the workspace SID (scanned per grant).
+      if (grant && !this.inspectWorkspace(root).grant) await this.runAclHelper('grant', root, readOnlySubtrees(root))
+      state.granted = true
+      state.lastUsed = this.now()
+    })
+    state.queue = step.catch(() => undefined)
+    await step
+  }
+
+  /** This root's grant state, created on first use. */
+  private workspaceState(root: string): WorkspaceGrantState {
+    let state = this.workspaces.get(root)
+    if (state === undefined) {
+      state = { granted: false, lastUsed: 0, queue: Promise.resolve() }
+      this.workspaces.set(root, state)
+    }
+    return state
+  }
+
+  /**
+   * DeepSeekGUI (2026-09-29): take back the grant of every workspace idle for
+   * {@link IDLE_REVOKE_MS} with no live lease. Runs on a timer; each revoke
+   * waits in its root's queue and checks again there, so a command that came
+   * in meanwhile keeps the grant. A failed revoke is logged and the grant is
+   * tried again by a later sweep.
+   * @returns once every revoke this sweep started has settled.
+   */
+  async revokeIdleGrants(): Promise<void> {
+    if (this.sweeping) return
+    this.sweeping = true
+    try {
+      for (const [root, state] of this.workspaces) {
+        if (!this.idle(root, state)) continue
+        const step = state.queue.then(async () => {
+          if (!this.idle(root, state)) return
+          await this.runAclHelper('revoke', root, [])
+          state.granted = false
+        })
+        state.queue = step.catch((error: unknown) => {
+          this.ctx.logger.warn(`sandbox-local: taking back the windows-acl grant on ${root} failed; the next sweep tries again`)
+          this.ctx.logger.warn(error)
+        })
+        await state.queue
+      }
+    } finally {
+      this.sweeping = false
+    }
+  }
+
+  /** Whether a sweep is running (one at a time). */
+  private sweeping = false
+
+  /** A granted root, unused for {@link IDLE_REVOKE_MS}, that no live runner holds a lease on. */
+  private idle(root: string, state: WorkspaceGrantState): boolean {
+    return state.granted && this.now() - state.lastUsed >= IDLE_REVOKE_MS && this.liveLeases(root) === 0
+  }
+
+  /**
+   * Count the live leases on `root`, discarding the ones a crashed runner
+   * left (a pid no longer running).
+   * @param root - the canonical workspace root.
+   * @returns the number of runners still holding a lease.
+   */
+  private liveLeases(root: string): number {
+    const dir = aclLeaseDir(root)
+    let names: string[]
+    try {
+      names = readdirSync(dir)
+    } catch {
+      return 0
+    }
+    const alive = this.internals.leaseAlive ?? processAlive
+    let live = 0
+    for (const name of names) {
+      const pid = Number(name)
+      if (Number.isSafeInteger(pid) && pid > 0 && alive(pid)) {
+        live++
+        continue
+      }
+      try {
+        rmSync(join(dir, name), { force: true })
+      } catch {
+        // Still there next sweep; it only counts as dead again.
+      }
+    }
+    return live
+  }
+
+  /**
+   * DeepSeekGUI (2026-09-29): once per start, clean every registered
+   * workspace that still carries marks — standing grants an older build left
+   * for good, or grants a crashed Harness could not take back. One read per
+   * workspace; the helper runs only where a mark is found, queued like any
+   * other change of that root, and never on a root this provider has granted
+   * since start or that a live runner holds a lease on.
+   * @param registry - the `workspaceRegistry` service, read structurally.
+   * @returns once every workspace has been looked at.
+   */
+  async purgeRegisteredWorkspaces(registry: unknown): Promise<void> {
+    for (const path of workspacePaths(registry)) {
+      let root: string
+      try {
+        root = canonicalPath(path)
+      } catch {
+        continue
+      }
+      if (!existsSync(root)) continue
+      const state = this.workspaceState(root)
+      const step = state.queue.then(async () => {
+        if (state.granted || this.liveLeases(root) > 0) return
+        if (!this.inspectWorkspace(root).marks) return
+        await this.runAclHelper('purge', root, readOnlySubtrees(root))
+      })
+      state.queue = step.catch((error: unknown) => {
+        this.ctx.logger.warn(`sandbox-local: cleaning the sandbox marks on ${root} failed`)
+        this.ctx.logger.warn(error)
+      })
+      await state.queue
+    }
+  }
+
+  /**
+   * DeepSeekGUI (2026-09-29): the desktop's "clean this folder's sandbox
+   * marks". The marks a folder shows may be inherited from an ancestor
+   * workspace, so the nearest folder from `path` up that carries them itself
+   * is the one cleaned. Queued like every other change of that root; refused
+   * (`busy`) while a confined command runs there, since pulling its grant
+   * would fail the command mid-write. A grant this provider still counts as
+   * standing is dropped with the marks, and the next confined command there
+   * makes it again.
+   * @param path - the folder the person chose.
+   * @returns what was done, and on which folder.
+   */
+  async cleanWorkspaceMarks(path: string): Promise<SandboxMarksClean> {
+    const chosen = canonicalPath(path)
+    if ((this.internals.platform ?? process.platform) !== 'win32' || this.runnerCommand !== undefined) return { status: 'unsupported', root: chosen }
+    let root: string | undefined
+    for (let directory = chosen; root === undefined; directory = dirname(directory)) {
+      if (this.inspectWorkspace(directory).marks) root = directory
+      else if (dirname(directory) === directory) return { status: 'clean', root: chosen }
+    }
+    const target = root
+    const state = this.workspaceState(target)
+    let status: 'cleaned' | 'busy' = 'cleaned'
+    const step = state.queue.then(async () => {
+      if (this.liveLeases(target) > 0) {
+        status = 'busy'
+        return
+      }
+      await this.runAclHelper('purge', target, readOnlySubtrees(target))
+      state.granted = false
+    })
+    state.queue = step.catch(() => undefined)
+    await step
+    return { status, root: target }
+  }
+
+  /** Read-only probe of a workspace root (injectable for tests). */
+  private inspectWorkspace(root: string): { grant: boolean; marks: boolean } {
+    if (this.internals.inspectWorkspace !== undefined) return this.internals.inspectWorkspace(root)
+    const probe = AclWriteGrant.create(workspaceWriteSid(root))
+    try {
+      return probe.inspect(root)
+    } finally {
+      probe.dispose()
+    }
+  }
+
+  /** The clock the idle sweep reads (injectable for tests). */
+  private now(): number {
+    return this.internals.now?.() ?? Date.now()
+  }
+
+  /**
+   * Run `acl-helper` out of process and wait for it (injectable for tests).
+   * @param command - grant, revoke, or purge.
+   * @param root - the workspace root.
+   * @param readOnly - directories kept read-only inside it (grant, purge).
+   * @returns once the helper exited 0; rejects with its stderr otherwise.
+   */
+  private runAclHelper(command: AclHelperCommand, root: string, readOnly: readonly string[]): Promise<void> {
+    if (this.internals.aclHelper !== undefined) return this.internals.aclHelper(command, root, readOnly)
+    const [program, ...prefix] = this.aclHelperInvocation()
+    const args = [...prefix, command, '--workspace', root, ...readOnly.flatMap(directory => ['--read-only', directory])]
+    return new Promise((resolve, reject) => {
+      execFile(program ?? process.execPath, args, { windowsHide: true, timeout: ACL_HELPER_TIMEOUT_MS }, (error, _stdout, stderr) => {
+        if (error === null) resolve()
+        else reject(new Error(`sandbox-local: acl-helper ${command} failed for ${root}: ${stderr.trim() || error.message}`))
+      })
+    })
+  }
+
+  /**
+   * Hand one workspace's revoke to a detached helper that outlives this
+   * process (provider dispose; injectable for tests).
+   * @param root - the workspace root.
+   */
+  private revokeDetached(root: string): void {
+    if (this.internals.revokeDetached !== undefined) {
+      this.internals.revokeDetached(root)
+      return
+    }
+    const [program, ...prefix] = this.aclHelperInvocation()
+    const child = spawn(program ?? process.execPath, [...prefix, 'revoke', '--workspace', root], { detached: true, stdio: 'ignore', windowsHide: true })
+    child.on('error', (error) => { this.ctx.logger.warn(error) })
+    child.unref()
+  }
+
+  /**
+   * Materialize one session/workspace pair's private temp capability, once
+   * per provider lifetime. The temp directory is random and carries a
+   * distinct SID, so another session on the same workspace cannot use the
+   * shared workspace SID to enter it. A fresh provider always chooses a new
+   * path; crash residue therefore cannot collide with or authorize a resumed
+   * session. Fail-closed: a half-materialized temp grant is revoked and its
+   * directory removed before the error propagates.
    * @param sessionId - the policy's calling-session identity.
    * @param workspaceRoot - the resolved policy root.
    * @returns the pair's private temp directory and write capability.
    */
-  private materializeAclGrant(sessionId: SessionId, workspaceRoot: string): AclTempCapability {
-    assertTempRootOutsideWorkspace(workspaceRoot, tmpdir())
-    const writeSid = workspaceWriteSid(workspaceRoot)
-    if (!this.workspaceGrants.has(workspaceRoot)) {
-      const grant = AclWriteGrant.create(writeSid)
-      try {
-        // DeepSeekGUI: nested repositories' .git and protected code below the
-        // workspace stay read-only for the workspace SID (scanned once per grant).
-        grant.add(workspaceRoot, true, readOnlySubtrees(workspaceRoot))
-      } catch (error) {
-        // Free the SID; a standing ACE (if the apply succeeded before a
-        // post-apply throw) is the intended end state, not an error
-        // artifact — nothing to revoke.
-        try {
-          grant.dispose()
-        } catch (cleanupError) {
-          throw new AggregateError([error, cleanupError], 'sandbox-local windows-acl workspace grant failed and its cleanup also failed')
-        }
-        throw error
-      }
-      this.workspaceGrants.set(workspaceRoot, grant)
-    }
+  private materializeTempCapability(sessionId: SessionId, workspaceRoot: string): AclTempCapability {
     const key = JSON.stringify([String(sessionId), workspaceRoot])
     const existing = this.tempCapabilities.get(key)
     if (existing !== undefined) return existing
@@ -456,16 +792,27 @@ export class LocalSandboxProvider extends SandboxProvider {
   /**
    * Dispose every write grant (provider dispose): the revocable temp ACEs
    * are revoked, the private temp directories this provider created are
-   * removed, and every SID allocation is freed; the standing workspace ACEs
-   * stay (the reuse cache). Cleanup failures are reported, not thrown:
-   * cordis teardown must not be aborted by grant cleanup. A crash skips all
-   * of it, but a new provider never reuses the residue's random path or SID;
-   * OS temp hygiene (or manual removal) eventually reclaims it.
+   * removed, and every SID allocation is freed. DeepSeekGUI: every workspace
+   * grant still standing goes to a detached `acl-helper revoke` — a large
+   * tree takes seconds to propagate and teardown must not wait for it.
+   * Cleanup failures are reported, not thrown: cordis teardown must not be
+   * aborted by grant cleanup. A crash skips all of it; the next start's
+   * cleanup of the registered workspaces takes the marks back, and a new
+   * provider never reuses the temp residue's random path or SID.
    */
   private revokeAclGrants(): void {
-    if (this.workspaceGrants.size === 0 && this.tempCapabilities.size === 0) return
     const failures: unknown[] = []
-    for (const grant of [...this.workspaceGrants.values(), ...[...this.tempCapabilities.values()].map(capability => capability.grant)]) {
+    for (const [root, state] of this.workspaces) {
+      if (!state.granted) continue
+      try {
+        this.revokeDetached(root)
+      } catch (error) {
+        failures.push(error)
+      }
+    }
+    this.workspaces.clear()
+    if (this.tempCapabilities.size === 0 && failures.length === 0) return
+    for (const grant of [...this.tempCapabilities.values()].map(capability => capability.grant)) {
       try {
         grant.dispose()
       } catch (error) {
@@ -479,7 +826,6 @@ export class LocalSandboxProvider extends SandboxProvider {
         failures.push(error)
       }
     }
-    this.workspaceGrants.clear()
     this.tempCapabilities.clear()
     if (failures.length > 0) {
       this.ctx.logger.warn(`sandbox-local: windows-acl grant cleanup completed with ${failures.length} failure(s)`)
@@ -574,6 +920,20 @@ export class LocalSandboxProvider extends SandboxProvider {
     const builtEntry = this.internals.windowsAclRunnerEntry ?? fileURLToPath(import.meta.resolve('@deepseek-ai/dsh-sandbox-windows-acl/runner'))
     if (existsSync(builtEntry)) return [process.execPath, builtEntry]
     const sourceEntry = fileURLToPath(import.meta.resolve('@deepseek-ai/dsh-sandbox-windows-acl/src/runner.ts'))
+    const sourceConfig = fileURLToPath(new URL('../../../../tsconfig.base.json', import.meta.url))
+    const registration = `import { register } from ${JSON.stringify(import.meta.resolve('tsx/esm/api'))}; register({ tsconfig: ${JSON.stringify(sourceConfig)} });`
+    return [process.execPath, '--import', `data:text/javascript,${encodeURIComponent(registration)}`, sourceEntry]
+  }
+
+  /**
+   * DeepSeekGUI: the `acl-helper` argv prefix, resolved like the runner's —
+   * the built lib/acl-helper.js entry when present (production), else the
+   * package source through tsx (development).
+   */
+  private aclHelperInvocation(): string[] {
+    const builtEntry = this.internals.aclHelperEntry ?? fileURLToPath(import.meta.resolve('@deepseek-ai/dsh-sandbox-windows-acl/acl-helper'))
+    if (existsSync(builtEntry)) return [process.execPath, builtEntry]
+    const sourceEntry = fileURLToPath(import.meta.resolve('@deepseek-ai/dsh-sandbox-windows-acl/src/acl-helper.ts'))
     const sourceConfig = fileURLToPath(new URL('../../../../tsconfig.base.json', import.meta.url))
     const registration = `import { register } from ${JSON.stringify(import.meta.resolve('tsx/esm/api'))}; register({ tsconfig: ${JSON.stringify(sourceConfig)} });`
     return [process.execPath, '--import', `data:text/javascript,${encodeURIComponent(registration)}`, sourceEntry]

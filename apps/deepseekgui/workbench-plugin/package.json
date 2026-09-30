@@ -44,7 +44,6 @@
     "@deepseek-ai/dsh-git": "workspace:*",
     "@deepseek-ai/dsh-typert-protocol": "workspace:*",
     "@deepseek-ai/dsh-workbench-inspector": "workspace:*",
-    "@deepseek-ai/dsh-workbench-memory": "workspace:*",
     "@deepseek-ai/dsh-client-ui-settings": "workspace:*",
     "@testing-library/react": "^16.1.0",
     "@types/react": "~18.3.1",

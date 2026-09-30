@@ -4,7 +4,7 @@
  * @module @see-sol-lab/deepseekgui-browser/tests/gate
  */
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   B2_READ_TOOLS,
   L2_TOOLS,
@@ -16,6 +16,30 @@ import {
   requiresApproval,
   submitApprovalReason,
 } from '../../browser-plugin/src/gate.ts'
+import { enforceGate } from '../../browser-plugin/src/tools.ts'
+
+describe('完全访问下的 L2 操作（2026-09-29）', () => {
+  /** 一个只带权限与审批两个服务的 ctx；审批默认像「从不」那样拒绝。 */
+  function ctxWith(mode: 'read-only' | 'workspace-write' | 'danger-full-access') {
+    const request = vi.fn(async () => 'rejected' as const)
+    const ctx = { sandboxPolicy: { resolve: () => ({ mode }) }, approval: { request } }
+    const exec = { agent: { session: {} }, callId: 'call-1', signal: new AbortController().signal }
+    return { ctx: ctx as never, exec: exec as never, request }
+  }
+
+  it('完全访问：不问、直接放行（预设就是「不弹审批」）', async () => {
+    const { ctx, exec, request } = ctxWith('danger-full-access')
+    for (const tool of L2_TOOLS) await enforceGate(ctx, tool, exec, 'submit the form')
+    expect(request).not.toHaveBeenCalled()
+  })
+
+  it('工作区可写：照旧先问，拒绝就不做', async () => {
+    const { ctx, exec, request } = ctxWith('workspace-write')
+    const tool = L2_TOOLS[0] ?? ''
+    await expect(enforceGate(ctx, tool, exec, 'submit the form')).rejects.toThrow('did not approve')
+    expect(request).toHaveBeenCalledWith(expect.objectContaining({ toolName: tool, reason: 'submit the form' }))
+  })
+})
 
 const READ_ONLY = 'read-only' as const
 

@@ -32,6 +32,7 @@ import {
   profileBundlesInclude,
   repoRoot,
   resolveDshLaunch,
+  uploadEnv,
   BROWSER_PATCH_FILENAME,
   BUNDLED_PLUGINS,
   bundledPatchFile,
@@ -776,7 +777,30 @@ describe('inheritedEnv：Managed Home 不把宿主的模型密钥透传给 DSH�
         managedHome: true,
       })
       expect(launch.env.DSH_TELEMETRY_DISABLED).toBe('1')
+      // 会话日志也关：组合配置读这个变量，关时显式写 '0'，宿主同名变量盖不过来。
+      expect(launch.env.DEEPSEEKGUI_DEVELOPER_MODE).toBe('0')
     }
+  })
+
+  it('开发者模式（住户 2026-09-29）：开时官方上报与官方默认一致，关时都不发', () => {
+    expect(uploadEnv(false)).toEqual({ DEEPSEEKGUI_DEVELOPER_MODE: '0', DSH_TELEMETRY_DISABLED: '1' })
+    expect(uploadEnv(true)).toEqual({ DEEPSEEKGUI_DEVELOPER_MODE: '1' })
+    for (const packaged of [true, false]) {
+      const on = resolveDshCommand({
+        packaged,
+        resourcesPath: 'E:\app\resources',
+        dshHome: 'E:\data\dsh',
+        args: [],
+        managedHome: true,
+        developerMode: true,
+      })
+      expect(on.env.DEEPSEEKGUI_DEVELOPER_MODE).toBe('1')
+      expect(on.env.DSH_TELEMETRY_DISABLED).toBeUndefined()
+    }
+    // 从 launch 一路传进 command：main 只调 resolveDshLaunch。
+    const launched = resolveDshLaunch({ packaged: false, root: 'E:\DeepSeekGUI', profile: 'web', dshHome: 'E:\data\dsh', developerMode: true })
+    expect(launched.env.DEEPSEEKGUI_DEVELOPER_MODE).toBe('1')
+    expect(resolveDshLaunch({ packaged: false, root: 'E:\DeepSeekGUI', profile: 'web', dshHome: 'E:\data\dsh' }).env.DSH_TELEMETRY_DISABLED).toBe('1')
   })
 
   it('安全加固（住户 2026-09-24）：告诉 Harness 自己的代码在哪、是否以管理员身份运行', () => {
@@ -796,6 +820,9 @@ describe('inheritedEnv：Managed Home 不把宿主的模型密钥透传给 DSH�
     const dev = resolveDshCommand({ packaged: false, root: 'E:\\DeepSeekGUI', dshHome: 'E:\\data\\dsh', args: [], managedHome: true })
     expect(dev.env.DEEPSEEKGUI_PROTECTED_ROOTS).toBe('E:\\DeepSeekGUI')
     expect(dev.env.DEEPSEEKGUI_ELEVATED).toBeUndefined()
+    // 账号请求按桌面客户端标明身份：基础组合里 desktopPlatform 认这个标记
+    expect(packaged.env.DEEPSEEKGUI_DESKTOP).toBe('1')
+    expect(dev.env.DEEPSEEKGUI_DESKTOP).toBe('1')
   })
 
   it('绝不改动调用方传入的环境对象', () => {

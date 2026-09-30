@@ -212,3 +212,21 @@ describe('createHarnessApi / 返回 void 的端点', () => {
     await expect(api.sessionList()).rejects.toMatchObject({ code: 'bad-response' })
   })
 })
+
+describe('createHarnessApi / workbenchCleanSandboxMarks（2026-09-29）', () => {
+  it('workbenchInspector/cleanSandboxMarks：args 只有 path，解析状态与所在文件夹', async () => {
+    const { state, fetch } = fakeFetch(state => okEnvelope(state, { status: 'cleaned', root: 'E:\\Priest' }))
+    const api = createHarnessApi({ baseUrl: 'http://127.0.0.1:3080', fetch: fetch as never })
+    expect(await api.workbenchCleanSandboxMarks('E:\\Priest\\app')).toEqual({ status: 'cleaned', root: 'E:\\Priest' })
+    expect(state.seenBody.method).toBe('workbenchInspector/cleanSandboxMarks')
+    expect(state.seenBody.payload.args).toEqual({ path: 'E:\\Priest\\app' })
+  })
+
+  it('未知状态或缺 root 按 bad-response 拒绝', async () => {
+    for (const value of [{ status: 'gone', root: 'E:\\a' }, { status: 'clean' }, null]) {
+      const { fetch } = fakeFetch(state => okEnvelope(state, value))
+      const api = createHarnessApi({ baseUrl: 'http://127.0.0.1:3080', fetch: fetch as never })
+      await expect(api.workbenchCleanSandboxMarks('E:\\a')).rejects.toMatchObject({ code: 'bad-response' })
+    }
+  })
+})

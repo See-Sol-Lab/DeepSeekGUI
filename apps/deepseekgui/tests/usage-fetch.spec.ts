@@ -9,6 +9,7 @@ import { describe, expect, it, vi } from 'vitest'
 vi.mock('electron', () => ({ WebContentsView: vi.fn(), session: {}, shell: {} }))
 
 const { fetchUsage } = await import('../src/usage-fetch.ts')
+const { platformClientHeaders } = await import('../src/platform-view.ts')
 const { planUsageFetch, usageRequestPaths } = await import('../src/usage-service.ts')
 
 const session = { origin: 'https://platform.deepseek.com', token: 'grant-token', userId: 'u1', requestHeaders: { 'x-deploy': 'd' } }
@@ -32,7 +33,7 @@ describe('fetchUsage', () => {
     const init = send.mock.calls[0]?.[1]
     expect(init?.redirect).toBe('error')
     expect(init?.headers).toMatchObject({
-      'x-dsh-auth-token': 'grant-token', 'x-client-platform': 'web', 'x-client-version': '0.1.7-rc.2', 'x-deploy': 'd',
+      'x-dsh-auth-token': 'grant-token', 'x-client-platform': platformClientHeaders('', 'zh_CN')['x-client-platform'], 'x-client-version': '0.1.7-rc.2', 'x-deploy': 'd',
     })
     expect(result).toEqual({ kind: 'responses', responses: Object.fromEntries(Object.keys(paths).map(key => [key, { status: 200, body: '{"code":0}' }])) })
   })

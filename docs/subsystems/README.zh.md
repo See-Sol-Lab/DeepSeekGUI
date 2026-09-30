@@ -63,7 +63,6 @@
 | [pull-request.md](pull-request.zh.md) | `ctx.pullRequest` 能力 seam：基于既有 provider 登录态的可用性判定、重复创建守卫，以及用用户确认过的字段创建——产品绝不读取、显示或存储 token |
 | [workbench-inspection.md](workbench-inspection.zh.md) | DeepSeekGUI 经 SessionQuery 与 Remote 实现的当前文件系统/Git 只读适配器 |
 | [skill-manager.md](skill-manager.zh.md) | DeepSeekGUI 本机技能库：审阅式整目录导入、仅限管理器自身的卸载，以及其 provider 提供的按文件夹项目选择 |
-| [workbench-memory.md](workbench-memory.zh.md) | DeepSeekGUI 的工程记忆条目：带版本、按文件夹或全局划分作用域，可纠正、遗忘、撤销、恢复，并可从旧 Markdown 文件导入 |
 | [web-client.md](web-client.zh.md) | 浏览器架构：启动、Remote 通信、配对的 Client model、UI 适配器、Conversation 组装、slot 与重连语义 |
 | [client-modules.md](client-modules.zh.md) | Web 插件表：`dsh.client` 声明、`WebBootGraph` 协议格式组合、bundle 路由与 index 挂接点 |
 | [slots.md](slots.zh.md) | 类型化 Web UI 组合：声明所有权、cardinality 与 scope、框架与功能注入、props 推导及已交付的层级结构 |
@@ -72,6 +71,7 @@
 | [conversation.md](conversation.zh.md) | 目标无关的会话事件组装：上下文标识、位置数据、回放路径、视图构建器与目标自有的渲染节点 |
 | [session-projection.md](session-projection.zh.md) | 投影 seam：`SessionProjectionMap`、纯函数 `ProjectionDefinition` 单元、`ProjectionSnapshot` 的一致切面、变更馈送 |
 | [session-telemetry.md](session-telemetry.zh.md) | 对外会话上报能力 seam：`SessionTelemetryRecord`/`SessionTelemetrySeverity`、`SessionTelemetrySink` 约定和 `session-telemetry/record` 脱敏 waterfall（瀑布式事件） |
+| [otel.md](otel.zh.md) | 共享普通事件与 Session 日志 OTLP 通道 |
 | [product-telemetry.md](product-telemetry.zh.md) | 显式产品分析事件提交与 OTLP/HTTP 传输 |
 
 > 这些页面上的类型声明及其 JSDoc 与源码等价，并由 `pnpm run verify-type-equiv` 检查漂移（见 [development.md](../development.zh.md#documenting-types-verbatim-ts-type-equiv)）。普通块保留完整声明；`public-api` 块保留去除实现体的公开 class 声明。Cordis 服务与事件使用每页生成的 **Cordis API** 小节。

@@ -50,8 +50,9 @@ async function approvalOutcomeOf(
  * Only L2 tools ever contact the ApprovalService — an L0/L1 call must not
  * raise an approval card (验收修正 2026-08-23: the unconditional request made
  * every read-only call pop an empty approval card and block on it). L2 calls
- * must carry a human-readable reason; the card renders it to the user. */
-async function enforceGate(
+ * must carry a human-readable reason; the card renders it to the user.
+ * Exported for the gate-through-services tests. */
+export async function enforceGate(
   ctx: Context,
   toolName: string,
   exec: { agent?: Agent; callId: ToolCallId; signal: AbortSignal },
@@ -62,7 +63,12 @@ async function enforceGate(
     throw new Error(toolName + ' refused in a read-only session: browser interaction changes the outside world')
   }
   let outcome: Awaited<ReturnType<typeof approvalOutcomeOf>> = null
-  if (requiresApproval(toolName)) {
+  // DeepSeekGUI (2026-09-29): Full access is the preset "without approval
+  // prompts" — its `never` policy would reject the ask, so an L2 action is
+  // allowed without one. Browser actions carry no red-warning concern.
+  if (requiresApproval(toolName) && sandboxModeOf(ctx, exec.agent) === 'danger-full-access') {
+    outcome = 'allowed-once'
+  } else if (requiresApproval(toolName)) {
     const detail = typeof reason === 'function' ? await reason() : reason
     exec.signal.throwIfAborted()
     outcome = await approvalOutcomeOf(ctx, exec, toolName, detail)

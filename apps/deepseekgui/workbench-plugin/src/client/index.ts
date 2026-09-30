@@ -38,13 +38,14 @@ import { MemoryView } from './views/MemoryView.tsx'
 import { instructionSender } from './instructions.ts'
 import { readBridge } from './bridge.ts'
 import { DeleteSessionDialog, DeleteSessionMenuItem, readSessionDeleter } from './session-delete.tsx'
+import { ExportSessionDialog, ExportSessionMenuItem, readSessionExporter } from './session-export.tsx'
+import { DeveloperModeRow } from './developer-mode.tsx'
+import { SandboxMarksRow } from './sandbox-marks.tsx'
 import { ArchivedSessionsSection } from './ArchivedSessionsSection.tsx'
 import { installSkinStyles } from './skin.ts'
 import { installTextDisplay } from './text-display.ts'
 import inspectorRemote from '@deepseek-ai/dsh-workbench-inspector/remote'
-import memoryRemote from '@deepseek-ai/dsh-workbench-memory/remote'
-// Type-only: pulls the ctx.remote merge (the typed Client Remote mount) and
-// the forwarded `workbench-memory/change` event declaration.
+// Type-only: pulls the ctx.remote merge (the typed Client Remote mount).
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import { MemorySettingsSection } from './memory/MemorySettingsSection.tsx'
 import { BrowserToolRow, GitPrToolRow } from './cards/tool-rows.tsx'
@@ -122,10 +123,6 @@ export async function apply(ctx: ClientContext): Promise<void> {
   // so the views call typed methods instead of shaping HTTP themselves.
   const unmountInspector = await ctx.remote.$mount(inspectorRemote)
   ctx.effect(() => () => { void unmountInspector() }, 'deepseekgui: inspector remote')
-  // B7-P9: the memory pages read and write the entry store through its
-  // generated namespace — the same store the session tools write.
-  const unmountMemory = await ctx.remote.$mount(memoryRemote)
-  ctx.effect(() => () => { void unmountMemory() }, 'deepseekgui: memory remote')
   const bridge = readBridge()
   const instructions = (sessionId: SessionId) => ({ submitInstruction: instructionSender(ctx, sessionId) })
   ctx.effect(
@@ -154,23 +151,6 @@ export async function apply(ctx: ClientContext): Promise<void> {
   )
   const t = ctx.locale.bind(NS_INSPECTOR)
   const tm = ctx.locale.bind(NS_MEMORY)
-  // One Host subscription to store changes fans out to every mounted memory
-  // page, so a write in any window (a tool, a page, a deletion) re-reads here.
-  const memoryListeners = new Set<() => void>()
-  const onMemoryChange = (listener: () => void): () => void => {
-    memoryListeners.add(listener)
-    return () => { memoryListeners.delete(listener) }
-  }
-  ctx.effect(
-    () => ctx.remote.$on('workbench-memory/change', () => { for (const listener of [...memoryListeners]) listener() }),
-    'deepseekgui: memory change fan-out',
-  )
-  // Whether a source session is still on the list; unknown until the list arrived.
-  const sessionPresent = (sessionId: string): boolean | undefined => {
-    const list = ctx.sessions.list.getSnapshot()
-    if (list.phase !== 'ready') return undefined
-    return Object.hasOwn(list.byId, sessionId)
-  }
   // The official whale mark stays (2026-09-06 ruling: DeepSeekGUI is a
   // non-commercial open-source DSH plugin set, so it keeps the official
   // mark); only the brand name reads DeepSeekGUI.
@@ -285,6 +265,57 @@ export async function apply(ctx: ClientContext): Promise<void> {
         }),
       }, ArchivedSessionsSection))
   }
+  // Developer mode (住户 2026-09-29): the single switch for both official
+  // uploads, in Settings → General just above the version (order 90, the seat
+  // the disabled official session-log row used). Absent outside a DeepSeekGUI
+  // window, where the desktop that owns the preference is not reachable.
+  if (bridge !== null) {
+    ctx.slots.inject('settings.general.item', () =>
+      ctx.slots.register({
+        name: 'settings.general.item',
+        id: 'deepseekgui-developer-mode',
+        order: 90,
+        locale: 'deepseekgui.workbench',
+        inject: () => ({ bridge }),
+      }, DeveloperModeRow))
+    // Clean sandbox marks (住户 2026-09-29): the manual exit for the Windows
+    // sandbox's Low label on folders an older build or a crash left marked.
+    // Just above developer mode; Windows only (see sandbox-marks.tsx).
+    ctx.slots.inject('settings.general.item', () =>
+      ctx.slots.register({
+        name: 'settings.general.item',
+        id: 'deepseekgui-sandbox-marks',
+        order: 85,
+        locale: 'deepseekgui.workbench',
+        inject: () => ({ bridge, windows: /Windows/u.test(navigator.userAgent) }),
+      }, SandboxMarksRow))
+  }
+  // Session export as Markdown (B8-P1, 2026-09-28): the same official row
+  // menu, shown for every session — exporting is read-only. The renderer
+  // runs in the workbenchInspector Remote and the save dialog lives in the
+  // desktop, so this pair is a no-op outside a DeepSeekGUI window, where the
+  // control bridge does not exist. See session-export.tsx.
+  {
+    const exporter = readSessionExporter()
+    ctx.slots.inject('sidebar.workspaces.session.menu.item', () =>
+      ctx.slots.register({
+        name: 'sidebar.workspaces.session.menu.item',
+        id: 'deepseekgui-export',
+        locale: 'deepseekgui.workbench',
+        // Between the shipped archive row (400) and our delete row (500).
+        order: 450,
+        inject: () => ({ exporter }),
+      }, ExportSessionMenuItem))
+    // The dialog outlives the menu the row sat in, so it hangs in the
+    // frame-wide layer rather than in the menu.
+    ctx.slots.inject('shell.overlay', () =>
+      ctx.slots.register({
+        name: 'shell.overlay',
+        id: 'deepseekgui-session-export',
+        locale: 'deepseekgui.workbench',
+        inject: () => ({ exporter }),
+      }, ExportSessionDialog))
+  }
   // Welcome overlay (住户 2026-09-25: 首次引导全换官方的). The official Desktop
   // shows a native welcome window — sign in, add an API key, or set up later —
   // while neither a DeepSeek account nor any key is configured, then its in-page
@@ -373,7 +404,7 @@ export async function apply(ctx: ClientContext): Promise<void> {
   // declares it — the declaration cannot sit on this plugin's own `inject`
   // because the mount happens inside apply(). Same shape as the official
   // Team UI mount (packages/experimental/client-ui-agent-team/src/client/mount.ts).
-  await ctx.inject(['slots', 'remote.workbenchInspector', 'remote.workbenchMemory'], (scoped) => {
+  await ctx.inject(['slots', 'remote.workbenchInspector'], (scoped) => {
     scoped.slots.inject('conversation.view', function* () {
       for (const entry of VIEWS) {
         yield scoped.slots.register({
@@ -389,7 +420,7 @@ export async function apply(ctx: ClientContext): Promise<void> {
           }),
         }, entry.component)
       }
-      // The Memory view (B7-P9) reads the entry store beside the inspector.
+      // The Memory view: the project memory file, edited through the desktop.
       yield scoped.slots.register({
         name: 'conversation.view',
         id: 'deepseekgui-memory',
@@ -400,16 +431,12 @@ export async function apply(ctx: ClientContext): Promise<void> {
           ...instructions(sessionId),
           inspector: scoped.remote.workbenchInspector,
           bridge,
-          memory: scoped.remote.workbenchMemory,
-          onMemoryChange,
-          sessionPresent,
           tm,
         }),
       }, MemoryView)
     })
-    // Settings → Global memory (B7-P9): the mode switch, the global entries,
-    // the legacy editor and the import — the JS settings plugin no longer
-    // registers this id.
+    // Settings → Global memory (B7-P9; 2026-09-29): the `<home>/memory.md`
+    // editor — the JS settings plugin no longer registers this id.
     scoped.slots.inject('settings.section', () =>
       scoped.slots.register({
         name: 'settings.section',
@@ -417,7 +444,7 @@ export async function apply(ctx: ClientContext): Promise<void> {
         order: MEMORY_SECTION_ORDER,
         locale: NS_MEMORY,
         label: () => tm('nav.memory'),
-        inject: () => ({ memory: scoped.remote.workbenchMemory, bridge, onChange: onMemoryChange, sessionPresent }),
+        inject: () => ({ bridge }),
       }, MemorySettingsSection))
   })
 }

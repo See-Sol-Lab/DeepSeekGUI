@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-无需模型请求即可检查工作区和 Git 事实。桌面专用的 `deleteSession` 端点把已授权删除交给 SessionController。
+无需模型请求即可检查工作区和 Git 事实。桌面专用的 `deleteSession` 端点把已授权删除交给 SessionController；`exportMarkdown` 把会话日志渲染成给人读的 Markdown 文档。
 
 ## 目录
 
@@ -28,8 +28,9 @@ DeepSeekGUI 的 Web 组合以 Loader 条目挂载本插件。自定义组合需�
 | --- | --- | --- |
 | logLimit | 30 | 总览返回的最新提交数量 |
 | maxTextBytes | 524288 | 文件文本或 diff 响应上限；超限明确失败，不静默截断 |
+| maxExportBytes | 20971520 | 渲染出的 Markdown 导出文档的 UTF-8 字节上限；超限明确失败，不静默截断 |
 
-WorkbenchFileText 包含 path 和有界的完整文本。WorkbenchMemory 描述项目记忆：Session cwd、文件名 `<文件夹名>.memory.md`（文件夹前缀把它与 DSH home 下的全局 memory.md 区分开）、文件文本（尚不存在时为 null），以及项目里是否有 AGENTS.md。WorkbenchRepository 包含 Git 根目录及提供方的 RepoStatus。WorkbenchOverview 携带根目录、RepoStatus、已配置的远端、最新提交（sha、subject、author、time），以及每个已注册的 worktree（WorkbenchWorktree：提供方的 WorktreeInfo 加 `current`——是否就是本 Session 的仓库根——与 `changedPaths`——该 worktree 自己的变更路径；干净或 bare 时为空；不可读时另有 statusError）。WorkbenchLastReply 携带 Session 最新一条助手回复（文本块拼接；第一条回复之前为 null）以及其后是否已有 `turn/end`；桌面端的反馈排查向隐藏会话提问后轮询 `lastReply` 直到 `complete` 为 true，因此不必碰流式的 follow 通道。`deleteSession(sessionId, signature)` 将经桌面授权的删除交给会话拥有者及其持久层。文本查询区分 Session 工作区与其 Git 根目录，未跟踪文件因此使用正确的基准路径。刻意不提供目录浏览：官方右侧 Sidebar 自带文件树。
+WorkbenchFileText 包含 path 和有界的完整文本。WorkbenchMemory 描述项目记忆：Session cwd、文件名 `<文件夹名>.memory.md`（文件夹前缀把它与 DSH home 下的全局 memory.md 区分开）、文件文本（尚不存在时为 null），以及项目里是否有 AGENTS.md。WorkbenchRepository 包含 Git 根目录及提供方的 RepoStatus。WorkbenchOverview 携带根目录、RepoStatus、已配置的远端、最新提交（sha、subject、author、time），以及每个已注册的 worktree（WorkbenchWorktree：提供方的 WorktreeInfo 加 `current`——是否就是本 Session 的仓库根——与 `changedPaths`——该 worktree 自己的变更路径；干净或 bare 时为空；不可读时另有 statusError）。WorkbenchLastReply 携带 Session 最新一条助手回复（文本块拼接；第一条回复之前为 null）以及其后是否已有 `turn/end`；桌面端的反馈排查向隐藏会话提问后轮询 `lastReply` 直到 `complete` 为 true，因此不必碰流式的 follow 通道。`deleteSession(sessionId, signature)` 将经桌面授权的删除交给会话拥有者及其持久层。`exportMarkdown(sessionId, includeDetails, language, signal)` 返回 `WorkbenchExportMarkdown`——折叠出的显示标题与完整文档：按 `seq` 顺序原样引用用户与助手的原文，可选附带折叠的工具调用与思考；命令、系统与内部事件一律不输出，附件只留占位行，内容不做脱敏。`cleanSandboxMarks(path, signal)` 返回 `WorkbenchSandboxClean`：在 Windows 上由本地沙箱提供方把 ACL 沙箱留下的授权、删除拒绝项和 Low 标签从所选文件夹（或标记所继承自的上层文件夹，即 `root`）上去掉；`busy` 表示那里正有受限命令在跑，`clean` 表示没找到标记，`unsupported` 表示没有挂载 Windows ACL 沙箱。文本查询区分 Session 工作区与其 Git 根目录，未跟踪文件因此使用正确的基准路径。刻意不提供目录浏览：官方右侧 Sidebar 自带文件树。
 
 <a id="understand-the-implementation"></a>
 ## 实现说明

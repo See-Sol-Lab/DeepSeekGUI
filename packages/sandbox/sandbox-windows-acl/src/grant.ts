@@ -12,7 +12,7 @@
  * @module @deepseek-ai/dsh-sandbox-windows-acl/grant
  */
 
-import { grantWrite, revokeWrite } from './acl.ts'
+import { grantWrite, inspectWorkspaceRoot, purgeSandboxMarks, revokeWorkspaceWrite, revokeWrite } from './acl.ts'
 import { allocPtrSlot, decodePtr, isNullPtr, throwLastError, win32Sync } from './ffi.ts'
 import type { NativePtr, Win32Bindings } from './ffi.ts'
 import { makeWellKnownSid } from './token.ts'
@@ -112,6 +112,40 @@ export class AclWriteGrant {
   /** Every directory currently carrying the grant, in grant order. */
   get paths(): readonly string[] {
     return [...this.standingPaths, ...this.revocablePaths]
+  }
+
+  /**
+   * DeepSeekGUI (2026-09-29): take back a standing workspace grant of this
+   * SID on `path` — the allow ACE, and the ambient-delete deny and Low label
+   * unless another capability grant still relies on them. See
+   * {@link revokeWorkspaceWrite}.
+   * @param path - the workspace root.
+   * @returns whether anything was removed.
+   */
+  revokeStanding(path: string): boolean {
+    return revokeWorkspaceWrite(this.api, path, this.sidPtr, this.lowLabelSidPtr, this.worldSidPtr)
+  }
+
+  /**
+   * DeepSeekGUI (2026-09-29): remove every mark this sandbox scheme left on
+   * `root`, whatever SID made it. See {@link purgeSandboxMarks}.
+   * @param root - the folder to clean.
+   * @param readOnly - directories inside `root` that may carry a read-only deny.
+   * @returns whether anything was removed.
+   */
+  purge(root: string, readOnly: readonly string[] = []): boolean {
+    return purgeSandboxMarks(this.api, root, this.lowLabelSidPtr, this.worldSidPtr, readOnly)
+  }
+
+  /**
+   * DeepSeekGUI (2026-09-29): read-only probe of `root` — whether this SID's
+   * exact grant stands, and whether any mark of this scheme is there. One
+   * read, no propagation. See {@link inspectWorkspaceRoot}.
+   * @param root - the workspace root.
+   * @returns both answers.
+   */
+  inspect(root: string): { grant: boolean; marks: boolean } {
+    return inspectWorkspaceRoot(this.api, root, this.sidPtr, this.lowLabelSidPtr, this.worldSidPtr)
   }
 
   /** Revoke every revocable grant (standing security descriptor edits stay) and free the SIDs; reports every cleanup failure. */

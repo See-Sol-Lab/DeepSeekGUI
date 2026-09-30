@@ -100,12 +100,14 @@ window.__ModuleLoader__.load({
         'usage.unavailable.network': '暂时连不上开放平台，稍后再试。',
         'usage.unavailable.timeout': '读取账户数据超时，稍后再试。',
         'usage.unavailable.format': '开放平台的数据格式变了，本页暂时读不出来；官网页面照常可看。',
+        'usage.unavailable.blocked': '开放平台暂时拦下了请求（短时间内请求太多时会这样），过几分钟再点刷新。',
         'usage.unavailable.no-session': '暂时拿不到账号登录信息，稍后再试。',
         'usage.open-official': '打开官方用量页',
         'usage.more': '更多详情跳转官网查看',
         'usage.no-data': '—',
-        // 住户 2026-09-23：三项官方上报默认关，在这里写明。
-        'fb.privacy': '对话记录保存在本机。DeepSeekGUI 默认关闭了官方的三项数据上报：随请求附带会话日志、点赞点踩时上传整段会话、随请求附带插件清单。',
+        // 住户 2026-09-23：三项官方上报默认关，在这里写明。2026-09-29 起三项统一由
+        // 「设置 → 通用 → 开发者模式」开关，这里指过去。
+        'fb.privacy': '对话记录保存在本机。DeepSeekGUI 默认关闭了官方的三项数据上报：随请求附带会话日志、点赞点踩时上传整段会话、随请求附带插件清单。需要与官方默认一致时，可在「设置 → 通用 → 开发者模式」中打开。',
         'fb.prompt': '遇到了什么问题？',
         'fb.placeholder': '描述你遇到的问题（保存没反应、启动失败、界面卡住……）。先说出来，发送之后 AI 会帮你排查和整理。',
         'fb.send': '发送给 AI 排查',
@@ -211,11 +213,12 @@ window.__ModuleLoader__.load({
         'usage.unavailable.network': 'The open platform is unreachable right now. Try again later.',
         'usage.unavailable.timeout': 'Reading account data timed out. Try again later.',
         'usage.unavailable.format': 'The open platform changed its data format, so this page cannot read it for now. The official page still works.',
+        'usage.unavailable.blocked': 'The open platform is refusing requests for now (this happens when too many arrive at once). Refresh again in a few minutes.',
         'usage.unavailable.no-session': 'The account sign-in is not available right now. Try again later.',
         'usage.open-official': 'Open the official usage page',
         'usage.more': 'See more details on the official site',
         'usage.no-data': '—',
-        'fb.privacy': 'Conversations are stored on this computer. DeepSeekGUI turns off three official data uploads by default: the session log attached to requests, whole-session upload on thumbs up or down, and the plugin list attached to requests.',
+        'fb.privacy': 'Conversations are stored on this computer. DeepSeekGUI turns off three official data uploads by default: the session log attached to requests, whole-session upload on thumbs up or down, and the plugin list attached to requests. To match the official defaults, turn them on under Settings → General → Developer mode.',
         'fb.prompt': 'What went wrong?',
         'fb.placeholder': 'Describe the problem you hit (save did nothing, launch failed, UI froze…). Say it first — after you send, the AI will triage and draft it for you.',
         'fb.send': 'Send to AI triage',
@@ -743,7 +746,12 @@ window.__ModuleLoader__.load({
           h('span', { style: S.note, 'data-deepseekgui': 'usage-fetched-at' },
             loading ? t('usage.refreshing')
               : u.fetchedAt !== null ? t('usage.fetched-at') + t('format.colon') + new Date(u.fetchedAt).toLocaleString() : ''),
-          btn({ testId: 'usage-refresh', disabled: refreshDisabled, onClick: function () { d.run({ type: 'usage-refresh', trigger: 'manual' }) } },
+          // 顺带让上面官方的余额卡也重读一次：它自己没有刷新入口、失败不重试（住户 2026-09-26，
+          // 上游 deepseek-harness#7931）。refreshAccount 由官方账号页经 settings.account.footer 传进来。
+          btn({ testId: 'usage-refresh', disabled: refreshDisabled, onClick: function () {
+            d.run({ type: 'usage-refresh', trigger: 'manual' })
+            if (typeof props.refreshAccount === 'function') props.refreshAccount().catch(function () { /* 余额卡自己显示失败 */ })
+          } },
             loading ? t('usage.refreshing') : '🔄 ' + t('usage.refresh')))
 
         var footer = h('div', { style: Object.assign({}, S.row, { justifyContent: 'flex-end' }) },

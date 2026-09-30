@@ -13,6 +13,7 @@ import type { BonusNotice } from '../src/client/bonus-notices.ts'
 import type { AccountMenuProps } from '../src/client/AccountMenu.tsx'
 import type {} from '../src/client/index.ts'
 import { en, zh, type AccountKey } from '../src/client/locales.ts'
+import css from '../src/client/AccountSection.module.css'
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals() })
 
@@ -187,13 +188,25 @@ it.each([en, zh])('offers settings, contact and sign-in from the signed-out acco
   expect(trigger.textContent).toBe(copy.more)
   expect(trigger.querySelector('svg')).not.toBeNull()
   fireEvent.click(trigger)
-  expect(screen.getAllByRole('menuitem').map(item => item.textContent)).toEqual([copy.settings, copy.contactUsSignedOut, copy.signIn])
+  expect(screen.getAllByRole('menuitem').map(item => item.textContent)).toEqual([copy.settings, copy.contactUs, copy.signIn])
   await expect(`${screen.getByRole('menu').textContent}\n`).toMatchFileSnapshot(`./expected/menu-signed-out-${copy === en ? 'en' : 'zh'}.txt`)
   fireEvent.click(screen.getByRole('menuitem', { name: copy.settings }))
   expect(openSettings).toHaveBeenCalledOnce()
   fireEvent.click(screen.getByRole('button', { name: copy.menu }))
-  fireEvent.click(screen.getByRole('menuitem', { name: copy.contactUsSignedOut }))
+  fireEvent.click(screen.getByRole('menuitem', { name: copy.contactUs }))
   expect(operations.contactUs).toHaveBeenCalledOnce()
+})
+
+it('omits the questionnaire entry when the distribution turns it off', async () => {
+  const operations = { ...operationsOf({ status: 'signed-out', attempt: null }), contactVisible: false }
+  const { AccountMenu } = await import('../src/client/AccountMenu.tsx')
+  render(<AccountMenu {...({} as GlobalStandardProps)} {...operations} settingsOpen={false}
+    useAccount={selector => selector(operations.hooks.account.getSnapshot())}
+    useTheme={selector => selector(operations.hooks.theme.getSnapshot())} wide openOnboarding={() => {}} openSettings={() => {}}
+    t={key => key in en ? en[key as AccountKey] : key} />)
+  fireEvent.click(screen.getByRole('button', { name: en.menu }))
+  expect(screen.getAllByRole('menuitem').map(item => item.textContent)).toEqual([en.settings, en.signIn])
+  expect(operations.contactUs).not.toHaveBeenCalled()
 })
 
 it('reports a failed start in the login dialog, not as a sidebar alert', async () => {
@@ -441,18 +454,19 @@ it.each([en, zh])('renders positive bonus wallets separately from recharge balan
   })
   expect(screen.getByText(copy.balance).parentElement!.textContent).toBe(`${copy.balance}¥209.00$20.07`)
   expect(screen.getByText(copy.bonusBalance).parentElement!.textContent).toBe(`${copy.bonusBalance}¥5.00<$0.01`)
+  expect(screen.getByRole('region').querySelectorAll(`.${css.divider}`)).toHaveLength(2)
   await expect(`${screen.getByRole('region').textContent}\n`)
     .toMatchFileSnapshot(`./expected/bonus-${copy === en ? 'en' : 'zh'}.txt`)
 })
 
 it.each([[], [{ currency: 'CNY' as const, balance: '0.00' }, { currency: 'USD' as const, balance: '-1.00' }]].map(bonusWallets => ({ bonusWallets })))(
-  'keeps the bonus row without inventing credit for zero or negative wallets', ({ bonusWallets }) => {
+  'omits the bonus row for zero or negative wallets', ({ bonusWallets }) => {
     mount({ status: 'credential-stored', attempt: null }, en, {
       balance: { status: 'ready', value: [{ currency: 'CNY', balance: '0' }], bonusWallets },
     })
-    // The row itself stays and states the absence.
-    expect(screen.getByText(en.bonusBalance)).toBeTruthy()
-    expect(screen.getByText(en.bonusEmpty)).toBeTruthy()
+    expect(screen.queryByText(en.bonusBalance)).toBeNull()
+    // The divider above the bonus row goes with it.
+    expect(screen.getByRole('region').querySelectorAll(`.${css.divider}`)).toHaveLength(1)
     expect(screen.getByText('¥0.00')).toBeTruthy()
     expect(screen.queryByText('¥-1.00')).toBeNull()
   },
@@ -718,7 +732,8 @@ it('renders the account footer extension only under a signed-in account', () => 
     close: () => {}, t: (key: string) => key in en ? en[key as AccountKey] : key,
   } as Parameters<typeof AccountSection>[0]
   const view = render(<AccountSection {...props} renderSlot={renderSlot as never} />)
-  expect(renderSlot).toHaveBeenCalledWith('settings.account.footer', {})
+  // The footer receives the account refresh, so its own refresh control can retry a failed wallet read.
+  expect(renderSlot).toHaveBeenCalledWith('settings.account.footer', { refreshAccount: operations.refreshAccount })
   expect(screen.getByTestId('footer')).toBeTruthy()
   view.unmount()
   renderSlot.mockClear()

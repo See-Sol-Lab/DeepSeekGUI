@@ -27,7 +27,7 @@ import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import type {} from '@deepseek-ai/dsh-git'
 import type {} from '@deepseek-ai/dsh-pull-request'
 import type {} from '@deepseek-ai/dsh-sandbox-policy'
-import type { ApprovalDanger } from '@deepseek-ai/dsh-user-approval'
+import { hasRedDanger, type ApprovalDanger } from '@deepseek-ai/dsh-user-approval'
 import { registerGitTools } from './git-tools.ts'
 import { registerPrTools } from './pr-tools.ts'
 
@@ -129,6 +129,12 @@ export function cardTitle(tool: string, cwd: string | undefined, detail = ''): s
 /**
  * Request one explicit user approval for a writing action. Missing approval
  * service or agent fails closed (throws), exactly like a rejection.
+ *
+ * DeepSeekGUI (2026-09-29): under Full access (`danger-full-access`, the
+ * preset described as "without approval prompts") nothing is asked, except a
+ * red-warning concern, which a person answers in every mode. Before this the
+ * ask went to the preset's `never` policy and came back rejected, so every
+ * repository write failed under Full access with "the user did not approve".
  * @param ctx - plugin context carrying the approval service.
  * @param exec - execution identity.
  * @param toolName - the tool asking.
@@ -140,6 +146,7 @@ export async function requireApproval(
   danger: readonly ApprovalDanger[] = [],
 ): Promise<void> {
   exec.signal.throwIfAborted()
+  if (!hasRedDanger(danger) && ctx.sandboxPolicy?.resolve(exec.agent === undefined ? {} : { session: exec.agent.session }).mode === 'danger-full-access') return
   const approval = ctx.approval
   if (approval === undefined || exec.agent === undefined) {
     throw new Error(`${toolName} refused: no approval channel is available (fail closed)`)

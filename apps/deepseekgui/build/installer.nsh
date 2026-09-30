@@ -266,7 +266,32 @@
     ${endif}
     # D29 追加（住户 2026-08-23）：卡片/弹窗中英同屏——安装器没有语言切换，
     # 中文在前英文在后，两边用户都能看懂。
-    MessageBox MB_YESNO|MB_ICONQUESTION "是否同时删除 DeepSeekGUI 的数据目录？$\r$\n其中包含 Harness 主目录、会话记录、日志与缓存：$\r$\n$APPDATA\${APP_FILENAME}$R6$\r$\n选「否」会保留这些数据，重新安装后可以接着用。$\r$\n$\r$\nAlso delete DeepSeekGUI's data folder (Harness home, sessions, logs, caches)?$\r$\nChoose No to keep the data for a future reinstall." IDNO deepseekguiKeepAppData
+    MessageBox MB_YESNO|MB_ICONQUESTION "是否同时删除 DeepSeekGUI 的数据目录？$\r$\n其中包含 Harness 主目录、会话记录、日志与缓存：$\r$\n$APPDATA\${APP_FILENAME}$R6$\r$\n全局记忆 memory.md 和全局 AGENTS.md 会保留，重新安装后照常生效；要清空请在设置里删改。$\r$\n选「否」会保留全部数据，重新安装后可以接着用。$\r$\n$\r$\nAlso delete DeepSeekGUI's data folder (Harness home, sessions, logs, caches)?$\r$\nThe global memory.md and global AGENTS.md are kept and apply again after a reinstall; clear them in Settings if you want them gone.$\r$\nChoose No to keep all data for a future reinstall." IDNO deepseekguiKeepAppData
+      # 住户 2026-09-29：删数据也保留全局 memory.md 与全局 AGENTS.md——一般用户
+      # 重装时最烦的就是之前的设定找不到了。先把两份文件抄到 %TEMP% 的暂存目录，
+      # 删完再放回默认 Managed Home（$APPDATA\<app>\dsh，重装首启就用它；首启
+      # 种子只补缺失的文件，所以不会被模板盖掉）。搬过家的 home 从指针所指的
+      # 位置取。抄不出来就整个不删：宁可多留数据，也不能把记忆弄丢。
+      StrCpy $R9 "$APPDATA\${APP_FILENAME}\dsh"
+      ${if} $R3 != ""
+        StrCpy $R9 $R3
+      ${endif}
+      ClearErrors
+      GetTempFileName $DeepSeekGuiKeptDir $TEMP
+      ${ifnot} ${Errors}
+        Delete "$DeepSeekGuiKeptDir"
+        CreateDirectory "$DeepSeekGuiKeptDir"
+      ${endif}
+      ${if} ${Errors}
+        MessageBox MB_OK|MB_ICONEXCLAMATION "无法创建记忆暂存目录，这次没有删除数据。$\r$\nCould not create a memory staging directory; no data was deleted."
+        Goto deepseekguiKeepAppData
+      ${endif}
+      !insertmacro DeepSeekGuiKeepFile "$R9\memory.md" "memory.md"
+      !insertmacro DeepSeekGuiKeepFile "$R9\AGENTS.md" "AGENTS.md"
+      ${if} $R8 != 0
+        MessageBox MB_OK|MB_ICONEXCLAMATION "未能先备份全局记忆与 AGENTS.md，为避免丢失，这次没有删除数据目录。$\r$\nThe global memory and AGENTS.md could not be set aside first, so the data folder was not deleted."
+        Goto deepseekguiKeepAppData
+      ${endif}
       !insertmacro DeepSeekGuiRemoveTree "$APPDATA\${APP_FILENAME}"
       ${if} $R3 != ""
         # Normalize before excluding drive roots; remove links without following them.
@@ -294,6 +319,15 @@
       ${endif}
       ${if} $R8 != 0
         MessageBox MB_OK|MB_ICONEXCLAMATION "部分数据未能删除，请检查数据目录。迁移目录未清理成功时会保留位置记录。$\r$\nSome data could not be deleted. Check the data folders; the moved-home pointer is retained when cleanup fails."
+      ${endif}
+      # 放回保留的两份文件。放不回就把暂存目录留着并告诉用户在哪。
+      StrCpy $R8 0
+      !insertmacro DeepSeekGuiRestoreFile "memory.md"
+      !insertmacro DeepSeekGuiRestoreFile "AGENTS.md"
+      ${if} $R8 == 0
+        RMDir "$DeepSeekGuiKeptDir"
+      ${else}
+        MessageBox MB_OK|MB_ICONEXCLAMATION "全局记忆或 AGENTS.md 没能放回原处，副本在：$\r$\n$DeepSeekGuiKeptDir$\r$\n$\r$\nThe global memory or AGENTS.md could not be put back; the copies are in the folder above."
       ${endif}
     deepseekguiKeepAppData:
     ${if} $installMode == "all"

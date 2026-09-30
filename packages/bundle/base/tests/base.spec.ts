@@ -82,4 +82,32 @@ describe('dsh-base bundle', () => {
     // The platform layer folded into these rows: no separate patch file ships.
     expect(existsSync(resolve(root, 'windows.cordis.patch.yml'))).toBe(false)
   })
+
+  // DeepSeekGUI（住户 2026-09-29）：随官方请求上传的两项——会话日志与插件包清单——
+  // 只在桌面以开发者模式启动 Harness（DEEPSEEKGUI_DEVELOPER_MODE=1）时打开；
+  // 没有这个变量、或者是别的任何值，都保持关闭。
+  it('binds the request uploads to DeepSeekGUI developer mode', () => {
+    const root = fileURLToPath(new URL('..', import.meta.url))
+    const parsed = yaml.load(
+      readFileSync(resolve(root, 'cordis.patch.yml'), 'utf8'),
+      { schema: entryListSchema },
+    )
+    if (!Array.isArray(parsed)) throw new TypeError('base patch must parse to a patch list')
+    const rows = parsed.flatMap((patch): Record<string, unknown>[] =>
+      typeof patch === 'object' && patch !== null
+        ? (patch as { insert?: Record<string, unknown>[] }).insert ?? []
+        : [],
+    )
+    for (const id of ['session-log-deepseek', 'plugin-package-inventory-deepseek']) {
+      const row = rows.find(candidate => candidate.id === id)
+      if (row === undefined) throw new Error(`base patch must mount ${id}`)
+      expect(row.disabled, `${id} stays mounted`).toBeUndefined()
+      const expression = ((row.config as { enabled?: { __jsExpr?: string } } | undefined)?.enabled)?.__jsExpr
+      if (expression === undefined) throw new Error(`${id} must bind enabled to a !!js expression`)
+      for (const [value, enabled] of [['1', true], ['0', false], [undefined, false], ['true', false], ['', false]] as const) {
+        const env = value === undefined ? {} : { DEEPSEEKGUI_DEVELOPER_MODE: value }
+        expect(evaluate({ process: { env } }, expression), `${id} with ${String(value)}`).toBe(enabled)
+      }
+    }
+  })
 })

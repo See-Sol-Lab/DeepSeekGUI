@@ -26,6 +26,11 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 
 /** Owner share of the account footer. */
 export interface AccountFooterOwnerProps {
-  /** Marker field: footer owner props are intentionally empty. */
-  children?: never
+  /**
+   * Re-read the balance, bonus wallets and unnotified bonus — the same read the
+   * Settings launcher runs on entry. A footer with its own refresh control calls
+   * it too, so one click also retries a wallet read that failed earlier (the card
+   * itself has no retry; DeepSeekGUI, 2026-09-26, deepseek-harness#7931).
+   */
+  refreshAccount: () => Promise<void>
 }

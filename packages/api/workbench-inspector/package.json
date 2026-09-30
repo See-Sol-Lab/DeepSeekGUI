@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-workbench-inspector",
-  "version": "0.1.7-rc.2",
+  "version": "0.2.0-rc.2",
   "private": true,
   "repository": {
     "type": "git",

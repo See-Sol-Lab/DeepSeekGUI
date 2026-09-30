@@ -5,6 +5,8 @@ import z from '@deepseek-ai/schemastery'
 export interface ContactConfig {
   /** HTTPS questionnaire URL; override for a test form. */
   contactFormUrl: string
+  /** Show the account menu's questionnaire entry; a distribution with its own feedback channel turns it off. */
+  contactVisible: boolean
   /** Questionnaire source option; empty until Harness is supported by the form. */
   contactSource: string
   /** First delay before retrying a failed bonus acknowledgement. */
@@ -14,7 +16,8 @@ export interface ContactConfig {
 }
 /** Validate public questionnaire options. */
 export const ContactConfigFields = {
-  contactFormUrl: z.string().pattern(/^https:\/\/[^/\s]+\//).default('https://trtgsjkv6r.feishu.cn/share/base/form/shrcnlCoGElW7MQznGy9r3YYXcg'),
+  contactFormUrl: z.string().pattern(/^https:\/\/[^/\s]+\//).default('https://trtgsjkv6r.feishu.cn/share/base/form/shrcnlCoGElW7MQznGy9r3YYXcg?hide_uid=1&hide_device_info=1&hide_harness_version=1'),
+  contactVisible: z.boolean().default(true),
   contactSource: z.string().default(''),
   bonusAckRetryDelayMs: z.number().min(1).default(1_000),
   bonusAckRetryMaxDelayMs: z.number().min(1).default(60_000),

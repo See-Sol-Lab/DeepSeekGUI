@@ -204,6 +204,32 @@ export function decodeUint32At(ptr: NativePtr, offset: number): number {
 }
 
 /**
+ * Copy `length` bytes at a native pointer offset into a fresh Buffer — the
+ * copy outlives the allocation it came from.
+ * @param ptr - native record pointer.
+ * @param offset - first byte offset.
+ * @param length - byte count.
+ * @returns the copied bytes.
+ */
+export function decodeBytesAt(ptr: NativePtr, offset: number, length: number): Buffer {
+  const koffi = requireKoffi()
+  return Buffer.from(koffi.decode(ptr, offset, koffi.array('uint8', length, 'Typed')) as Uint8Array)
+}
+
+/**
+ * Copy bytes into a fresh native allocation with {@link allocBytes}'s
+ * lifetime — for an ACL assembled in JS and handed to a Win32 call.
+ * @param bytes - the bytes to copy.
+ * @returns the native copy.
+ */
+export function bytesToNative(bytes: Buffer): NativePtr {
+  const koffi = requireKoffi()
+  const ptr = allocBytes(bytes.length)
+  koffi.encode(ptr, 0, koffi.array('uint8', bytes.length, 'Typed'), new Uint8Array(bytes))
+  return ptr
+}
+
+/**
  * Compare two in-memory SID records without allocating strings.
  * @param left - first native buffer.
  * @param leftOffset - first SID byte offset.

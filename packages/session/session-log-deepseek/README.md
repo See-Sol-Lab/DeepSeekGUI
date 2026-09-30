@@ -27,10 +27,12 @@ Incremental canonical session-log upload for official DeepSeek LLM API requests.
 
 | Key | Default | Meaning |
 |---|---:|---|
-| `enabled` | `false` | Register the `dsh_session_log` contribution. Set it to `true` to opt in to Session-log upload. |
+| `enabled` | `false` | Send the `dsh_session_log` contribution. DeepSeekGUI leaves it off (upstream ships `true`). Changes apply to the next request; `false` stops Session-log upload. |
 | `maxBytes` | 8 MiB | Largest serialized `dsh_session_log` field, in UTF-8 bytes, that one request carries. |
 
-Shipped profiles mount the plugin, but DeepSeekGUI leaves it off by default (upstream turned it on in 0.1.6-alpha.1): Session content stays local unless an overlay opts in with `enabled: true`, which registers the request field and appends the acceptance watermark.
+Shipped profiles mount the plugin, and the DeepSeekGUI base composition binds `enabled` to developer mode: the desktop starts the Harness with `DEEPSEEKGUI_DEVELOPER_MODE=1` only when the user turns developer mode on, so by default no request carries the field. Home patches and command-line overlays retain precedence.
+
+DeepSeekGUI does not mount the official Web **Settings → General → Upload Session Log when using the official model API** switch; **Settings → General → Developer mode** replaces it and restarts the Harness, and the same switch governs the OpenTelemetry feedback upload. In-flight requests keep their prepared payload. Re-enabling resumes the unaccepted suffix, including events recorded while disabled, so continuing an existing Session after turning developer mode on uploads what it recorded before.
 
 <a id="request-field"></a>
 ## Request field

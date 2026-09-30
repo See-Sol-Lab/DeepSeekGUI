@@ -1,6 +1,6 @@
 <div align="center">
 
-# <img src="./apps/deepseekgui/src/chrome/icon.png" width="38" alt="" align="absmiddle" /> DeepSeekGUI v1.1.2
+# <img src="./apps/deepseekgui/src/chrome/icon.png" width="38" alt="" align="absmiddle" /> DeepSeekGUI v1.2.0
 
 </div>
 
@@ -43,11 +43,11 @@
 </p>
 -->
 
-DeepSeekGUI 是基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的本地 AI 工作台，配置模型 API key 后即可开始。选择项目文件夹，在会话中让助手读取代码、修改文件、运行命令和浏览网页；通过「改动」「Git」视图随时检查项目状态，用专用工具完成提交、推送与 Pull Request，并通过全局记忆和项目记忆延续协作。
+DeepSeekGUI 是基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的本地 AI 工作台，用 DeepSeek 账号登录或配置模型 API key 后即可开始。选择项目文件夹，在会话中让助手读取代码、修改文件、运行命令和浏览网页；通过「改动」「Git」视图随时检查项目状态，用专用工具完成提交、推送与 Pull Request，并通过全局记忆和项目记忆延续协作。
 
 **非官方产品：** 基于 DeepSeek Harness 构建，由第三方独立开发，与 DeepSeek 无隶属关系，未获官方背书。
 
-**当前版本：[v1.1.2](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.1.2)。** 内嵌 Harness 升级到 0.1.7-rc.1；界面改为半透明玻璃风格，新增中英双语启动页和官网更新通道；助手要改动 Windows 系统、已安装程序或 DeepSeekGUI 自身代码时先弹出红色确认，项目的 Git 元数据默认只读。工作台通过插件扩展官方 Harness 客户端，继续使用 Harness 的会话、工具与权限机制。
+**当前版本：[v1.2.0](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.2.0)。** 内嵌 Harness 升至 `0.2.0-rc.2`，修复 Windows 沙箱用完后遗留 Low 完整性标记的问题，增强记忆回退为全局与项目 Markdown 文件，新增会话 Markdown 导出。开发者模式默认关闭，统一控制官方会话日志、插件清单与反馈上报；官方 rc.2 的 PowerShell、模型搜索和界面改进随版适配。
 
 [产品自研workbench路线图](https://see-sol-lab.github.io/research/deepseekgui-single-task-signal.html)
 
@@ -55,7 +55,7 @@ DeepSeekGUI 是基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek
 
 | 平台 | 下载 | 要求 |
 | --- | --- | --- |
-| Windows | [下载安装包](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.1.2/DeepSeekGUI-Setup-1.1.2.exe) | Windows 10/11，x64 |
+| Windows | [下载安装包](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.2.0/DeepSeekGUI-Setup-1.2.0.exe) | Windows 10/11，x64 |
 | Linux | [下载 AppImage](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.1.2-linux.1/DeepSeekGUI-1.1.2-x86_64.AppImage) | x64，AppImage；实验性支持 |
 
 Windows 安装包安装到当前用户目录，自带运行时。Linux 使用独立的 AppImage 发行文件，下载与校验信息见 [v1.1.2-linux.1](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.1.2-linux.1) 发布页。
@@ -68,10 +68,10 @@ Windows 安装包安装到当前用户目录，自带运行时。Linux 使用独
 下载安装包后，在 PowerShell 中计算 SHA256：
 
 ```powershell
-Get-FileHash .\DeepSeekGUI-Setup-1.1.2.exe -Algorithm SHA256
+Get-FileHash .\DeepSeekGUI-Setup-1.2.0.exe -Algorithm SHA256
 ```
 
-与 [`SHA256SUMS.txt`](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.1.2/SHA256SUMS.txt) 核对后再安装。遇到问题看[故障排查指南](docs/user/deepseekgui/data-troubleshooting.zh.md#windows-smartscreen-blocks-the-installer)。
+与 [`SHA256SUMS.txt`](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.2.0/SHA256SUMS.txt) 核对后再安装。遇到问题看[故障排查指南](docs/user/deepseekgui/data-troubleshooting.zh.md#windows-smartscreen-blocks-the-installer)。
 
 </details>
 

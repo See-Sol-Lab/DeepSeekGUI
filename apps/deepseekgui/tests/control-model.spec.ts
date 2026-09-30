@@ -77,6 +77,9 @@ describe('buildControlModel', () => {
     expect(model.dshHome).toBe('C:/ud/dsh')
     expect(model.activeProfile).toBe('web')
     expect(model.status).toEqual({ phase: 'running', profile: 'web', recovered: false })
+    // 开发者模式缺省为关；给出时原样带到页面（2026-09-29）。
+    expect(model.developerMode).toBe(false)
+    expect(buildControlModel(input({ developerMode: true })).developerMode).toBe(true)
     expect(model.pending).toBeNull()
     expect(model.recovery).toBeNull()
     expect(model.profiles).toBeNull()
@@ -413,5 +416,60 @@ describe('parseControlCommand: B5-P7 记忆管理命令', () => {
     expect(parseControlCommand({ type: 'save-global-memory', content: 'x'.repeat(MEMORY_GLOBAL_CONTENT_MAX + 1) })).toBeNull()
     expect(parseControlCommand({ type: 'save-global-memory', content: 7 })).toBeNull()
     expect(parseControlCommand({ type: 'save-global-memory' })).toBeNull()
+  })
+
+  it('developer-mode-set：只接受显式布尔，别的一律拒绝（2026-09-29）', async () => {
+    const { parseControlCommand } = await import('../src/control-model.ts')
+    expect(parseControlCommand({ type: 'developer-mode-set', enabled: true })).toEqual({ type: 'developer-mode-set', enabled: true })
+    expect(parseControlCommand({ type: 'developer-mode-set', enabled: false })).toEqual({ type: 'developer-mode-set', enabled: false })
+    expect(parseControlCommand({ type: 'developer-mode-set' })).toBeNull()
+    expect(parseControlCommand({ type: 'developer-mode-set', enabled: 'true' })).toBeNull()
+    expect(parseControlCommand({ type: 'developer-mode-set', enabled: 1 })).toBeNull()
+    expect(parseControlCommand({ type: 'developer-mode-set', enabled: true, extra: 1 })).toBeNull()
+  })
+
+  it('sandbox-clean-marks：不带载荷，页面传不进路径（2026-09-29）', async () => {
+    const { parseControlCommand } = await import('../src/control-model.ts')
+    expect(parseControlCommand({ type: 'sandbox-clean-marks' })).toEqual({ type: 'sandbox-clean-marks' })
+    expect(parseControlCommand({ type: 'sandbox-clean-marks', path: 'C:\\Windows' })).toBeNull()
+  })
+
+  it('save-project-memory：会话 id、内容、编辑起点原文三项齐全且限长，页面传不进路径（2026-09-29）', async () => {
+    const { parseControlCommand, MEMORY_GLOBAL_CONTENT_MAX } = await import('../src/control-model.ts')
+    expect(parseControlCommand({ type: 'save-project-memory', sessionId: 's-1', content: 'new', expected: '' }))
+      .toEqual({ type: 'save-project-memory', sessionId: 's-1', content: 'new', expected: '' })
+    expect(parseControlCommand({ type: 'save-project-memory', sessionId: 's-1', content: 'new' })).toBeNull()
+    expect(parseControlCommand({ type: 'save-project-memory', sessionId: '', content: 'new', expected: '' })).toBeNull()
+    expect(parseControlCommand({ type: 'save-project-memory', sessionId: 's-1', content: 'x'.repeat(MEMORY_GLOBAL_CONTENT_MAX + 1), expected: '' })).toBeNull()
+    expect(parseControlCommand({ type: 'save-project-memory', sessionId: 's-1', content: 'new', expected: 7 })).toBeNull()
+    expect(parseControlCommand({ type: 'save-project-memory', sessionId: 's-1', content: 'new', expected: '', path: 'C:\\x.md' })).toBeNull()
+  })
+
+  it('session-export-markdown：id 与 session-delete 同一把尺，勾选项必须是布尔', async () => {
+    const { parseControlCommand, SESSION_ID_MAX } = await import('../src/control-model.ts')
+    expect(parseControlCommand({ type: 'session-export-markdown', sessionId: 's1', includeDetails: false }))
+      .toEqual({ type: 'session-export-markdown', sessionId: 's1', includeDetails: false })
+    expect(parseControlCommand({ type: 'session-export-markdown', sessionId: 's1', includeDetails: true }))
+      .toEqual({ type: 'session-export-markdown', sessionId: 's1', includeDetails: true })
+    // 缺字段、类型不对、多余字段。
+    expect(parseControlCommand({ type: 'session-export-markdown', sessionId: 's1' })).toBeNull()
+    expect(parseControlCommand({ type: 'session-export-markdown', includeDetails: false })).toBeNull()
+    expect(parseControlCommand({ type: 'session-export-markdown', sessionId: 's1', includeDetails: 'no' })).toBeNull()
+    expect(parseControlCommand({ type: 'session-export-markdown', sessionId: 's1', includeDetails: 0 })).toBeNull()
+    expect(parseControlCommand({ type: 'session-export-markdown', sessionId: 's1', includeDetails: false, extra: 1 })).toBeNull()
+    // 会话 id：非空、限长、字符集合、拒绝 . 与 ..。
+    expect(parseControlCommand({ type: 'session-export-markdown', sessionId: '', includeDetails: false })).toBeNull()
+    expect(parseControlCommand({ type: 'session-export-markdown', sessionId: 'x'.repeat(SESSION_ID_MAX + 1), includeDetails: false })).toBeNull()
+    expect(parseControlCommand({ type: 'session-export-markdown', sessionId: 'a/b', includeDetails: false })).toBeNull()
+    expect(parseControlCommand({ type: 'session-export-markdown', sessionId: '.', includeDetails: false })).toBeNull()
+    expect(parseControlCommand({ type: 'session-export-markdown', sessionId: '..', includeDetails: false })).toBeNull()
+  })
+
+  it('buildControlModel：sessionExport 缺省为 null，有值时透传', () => {
+    expect(buildControlModel(input()).sessionExport).toBeNull()
+    const model = buildControlModel(input({
+      sessionExport: { nonce: 3, canceled: false, path: 'C:\\Users\\u\\Downloads\\会话-20260928-1502.md' },
+    }))
+    expect(model.sessionExport).toEqual({ nonce: 3, canceled: false, path: 'C:\\Users\\u\\Downloads\\会话-20260928-1502.md' })
   })
 })

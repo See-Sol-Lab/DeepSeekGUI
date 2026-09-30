@@ -12,7 +12,6 @@
   "references": [
     { "path": "../../../packages/api/remotes/tsconfig.client.json" },
     { "path": "../../../packages/api/workbench-inspector" },
-    { "path": "../../../packages/api/workbench-memory" },
     { "path": "../../../packages/credentials/deepseek-account" },
     { "path": "../../../packages/git/git" },
     { "path": "../../../packages/typert/protocol" },

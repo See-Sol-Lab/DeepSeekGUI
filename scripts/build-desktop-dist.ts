@@ -31,6 +31,7 @@ import {
 } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { basename, delimiter, dirname, join, sep } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { releaseFamily, tarballName } from './release/families.ts'
 import { capture } from './release/process.ts'
 import { packedIdentity, tarballFiles } from './release/tarball.ts'
@@ -231,6 +232,52 @@ function requireUnlockedOutput(): void {
 }
 
 /**
+ * Read the DeepSeekGUI app version, the single hand-written source of the
+ * installer's delivery identity (apps/deepseekgui/package.json).
+ * @returns the manifest's `version` field.
+ */
+function readAppVersion(): string {
+  let version: unknown
+  try {
+    version = (JSON.parse(readFileSync(join(ROOT, 'apps', 'deepseekgui', 'package.json'), 'utf8')) as { version?: unknown }).version
+  } catch (error) {
+    throw new Error(`build-desktop-dist: cannot read DeepSeekGUI app manifest: ${String(error instanceof Error ? error.message : error)}`)
+  }
+  if (typeof version !== 'string' || version === '') throw new Error('build-desktop-dist: DeepSeekGUI app manifest has no version')
+  return version
+}
+
+/**
+ * Whether a `dist/desktop` entry is an installer this build produces.
+ * @param name - directory entry name.
+ * @returns true for the platform's installer file.
+ */
+function isInstallerName(name: string): boolean {
+  return IS_WINDOWS ? /^DeepSeekGUI-Setup-.*\.exe$/.test(name) : /^DeepSeekGUI-.*\.AppImage$/.test(name)
+}
+
+/**
+ * Refuse to start while `dist/desktop` still holds an installer of another version.
+ *
+ * The release manifest and the installer summary read installers from this
+ * directory by name. On 2026-09-29 a 1.1.2 installer kept from an earlier local
+ * build landed in the 1.2.0 `SHA256SUMS.txt`: the version check only ran at the
+ * end, after the manifest had been written. Old installers may be kept on
+ * purpose, so this asks for them to be moved instead of deleting them.
+ */
+function requireNoForeignInstallers(): void {
+  if (!existsSync(DIST_ROOT)) return
+  const version = readAppVersion()
+  const foreign = readdirSync(DIST_ROOT).filter(name => isInstallerName(name) && !name.includes(version))
+  if (foreign.length === 0) return
+  throw new Error(
+    `build-desktop-dist: ${DIST_ROOT} still holds installer(s) of another version (${foreign.join(', ')});`
+    + ` the release manifest would pick them up next to ${version}. Move them (and their .blockmap files) out of`
+    + ' dist/desktop and rebuild.',
+  )
+}
+
+/**
  * Drop every locally packed tarball's entry from a seeded lockfile.
  *
  * The lockfile exists to pin external registry dependencies, and for those the
@@ -273,8 +320,18 @@ function dropLocalTarballEntries(lockPath: string): void {
     packages?: Record<string, { resolved?: string }>
   }
   const packages = lock.packages ?? {}
+  // A dropped tarball takes its nested subtree with it. Left behind, those
+  // entries are orphans npm half-reuses: on 2026-09-29 the second 1.2.0 build
+  // kept the nested `koffi` under each repacked host package but pruned its
+  // optional `@koromix/koffi-<platform>` binaries, so the installer shipped a
+  // koffi that cannot load. Dropping the subtree makes npm resolve it afresh,
+  // the way the first build after a merge does.
+  const droppedRoots = Object.entries(packages)
+    .filter(([, entry]) => entry.resolved?.startsWith('file:') === true)
+    .map(([key]) => `${key}/node_modules/`)
   const kept = Object.fromEntries(
-    Object.entries(packages).filter(([, entry]) => entry.resolved?.startsWith('file:') !== true),
+    Object.entries(packages).filter(([key, entry]) => entry.resolved?.startsWith('file:') !== true
+      && !droppedRoots.some(root => key.startsWith(root))),
   )
   const dropped = Object.keys(packages).length - Object.keys(kept).length
   if (dropped > 0) {
@@ -321,7 +378,6 @@ const PRODUCT_PACKAGES = [
   join('apps', 'deepseekgui', 'coding-tools-plugin'),
   join('packages', 'api', 'workbench-inspector'),
   join('packages', 'api', 'skill-manager'),
-  join('packages', 'api', 'workbench-memory'),
 ] as const
 
 /** Pack the product packages into `out` beside the family tarballs. */
@@ -703,15 +759,10 @@ function summarize(): void {
     : name.endsWith('.AppImage'))
   // 交付身份：installer 文件名必须携带 DeepSeekGUI app version（唯一手写源头
   // 是 apps/deepseekgui/package.json）。文件名与产品版本不一致立即失败。
-  let appVersion: unknown
-  try {
-    appVersion = (JSON.parse(readFileSync(join(ROOT, 'apps', 'deepseekgui', 'package.json'), 'utf8')) as { version?: unknown }).version
-  } catch (error) {
-    throw new Error(`build-desktop-dist: cannot read DeepSeekGUI app manifest: ${String(error instanceof Error ? error.message : error)}`)
-  }
+  const appVersion = readAppVersion()
   for (const installer of installers) {
-    if (!installer.includes(String(appVersion))) {
-      throw new Error(`build-desktop-dist: installer ${installer} does not carry the DeepSeekGUI app version ${String(appVersion)}`)
+    if (!installer.includes(appVersion)) {
+      throw new Error(`build-desktop-dist: installer ${installer} does not carry the DeepSeekGUI app version ${appVersion}`)
     }
   }
   console.log(`build-desktop-dist: distribution at ${UNPACKED}`)
@@ -901,6 +952,72 @@ function smokeRuntimeUnderPackagedElectron(resourcesDsh: string): void {
     throw new Error(`build-desktop-dist: the packaged Electron cannot load the DSH native addon (exit ${String(result.status)}):\n${result.stderr.trim()}`)
   }
   console.log(`build-desktop-dist: packaged Electron ${result.stdout.trim().slice(3)} loads the DSH native addon`)
+  smokeKoffiUnderPackagedElectron(resourcesDsh)
+  const sandboxEntry = join(resourcesDsh, 'node_modules', '@deepseek-ai', 'dsh-sandbox-local', 'lib', 'index.js')
+  const sandboxProbe = `import(${JSON.stringify(pathToFileURL(sandboxEntry).href)}).then(() => console.log('ok')).catch(error => { console.error(error); process.exitCode = 1 })`
+  const sandbox = spawnSync(UNPACKED_EXE, ['--input-type=module', '-e', sandboxProbe], {
+    cwd: resourcesDsh,
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+    encoding: 'utf8',
+    timeout: 60_000,
+  })
+  if (sandbox.error !== undefined) throw sandbox.error
+  if (sandbox.status !== 0 || sandbox.stdout.trim() !== 'ok') {
+    throw new Error(`build-desktop-dist: the packaged Electron cannot import the Windows sandbox (exit ${String(sandbox.status)}):\n${sandbox.stderr.trim()}`)
+  }
+  console.log('build-desktop-dist: packaged Electron imports the Windows sandbox')
+}
+
+/**
+ * Find every installed copy of one package in a node_modules tree, nested
+ * copies included.
+ * @param root - directory whose `node_modules` is walked.
+ * @param name - unscoped package name.
+ * @returns absolute package directories.
+ */
+function findInstalledPackages(root: string, name: string): string[] {
+  const found: string[] = []
+  const visit = (nodeModules: string): void => {
+    if (!existsSync(nodeModules)) return
+    for (const entry of readdirSync(nodeModules, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue
+      if (entry.name.startsWith('@')) {
+        for (const scoped of readdirSync(join(nodeModules, entry.name), { withFileTypes: true })) {
+          if (scoped.isDirectory()) visit(join(nodeModules, entry.name, scoped.name, 'node_modules'))
+        }
+        continue
+      }
+      if (entry.name === name) found.push(join(nodeModules, entry.name))
+      visit(join(nodeModules, entry.name, 'node_modules'))
+    }
+  }
+  visit(join(root, 'node_modules'))
+  return found
+}
+
+/**
+ * Load every shipped koffi under the packaged executable. The Windows file,
+ * sandbox, process, and Session-persistence packages reach the OS through it,
+ * and its native binary arrives as an optional per-platform package that npm
+ * can drop without failing the install (2026-09-29: the second 1.2.0 build
+ * shipped five copies with no binary, "Cannot find the native Koffi module").
+ * @param resourcesDsh - the runtime copied into the unpacked distribution.
+ */
+function smokeKoffiUnderPackagedElectron(resourcesDsh: string): void {
+  const copies = findInstalledPackages(resourcesDsh, 'koffi')
+  if (copies.length === 0) throw new Error(`build-desktop-dist: no koffi under ${resourcesDsh} — the Windows host packages cannot reach the OS`)
+  const probe = 'const paths = JSON.parse(process.argv[1]); for (const path of paths) { if (typeof require(path).load !== "function") throw new Error(path) } console.log("ok " + paths.length)'
+  const result = spawnSync(UNPACKED_EXE, ['-e', probe, JSON.stringify(copies)], {
+    cwd: resourcesDsh,
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+    encoding: 'utf8',
+    timeout: 60_000,
+  })
+  if (result.error !== undefined) throw result.error
+  if (result.status !== 0 || !result.stdout.startsWith('ok ')) {
+    throw new Error(`build-desktop-dist: the packaged Electron cannot load koffi (exit ${String(result.status)}):\n${result.stderr.trim()}`)
+  }
+  console.log(`build-desktop-dist: packaged Electron loads all ${String(copies.length)} shipped koffi copies`)
 }
 
 /** Chromium locale packs kept in the distribution: the two languages DeepSeekGUI ships. */
@@ -955,6 +1072,7 @@ function formatBytes(bytes: number): string {
 if (import.meta.main) {
   requirePrerequisites()
   requireUnlockedOutput()
+  requireNoForeignInstallers()
   // Dirty-tree gate (B5 release): the public chain checks first; this
   // repeat keeps the internal assemble entry from bypassing it.
   requireCleanTree(ROOT)
@@ -1083,9 +1201,9 @@ if (import.meta.main) {
  * 按同一约定解析——两端共用一套路径约定，绝不各写各的。 */
 function writeSha256Manifest(): void {
   const lines: string[] = []
-  const installer = readdirSync(DIST_ROOT).find(name => IS_WINDOWS
-    ? /^DeepSeekGUI-Setup-.*\.exe$/.test(name)
-    : /^DeepSeekGUI-.*\.AppImage$/.test(name))
+  // 只认本版本的 installer：别的版本启动时已拦下，这里再兜一层。
+  const version = readAppVersion()
+  const installer = readdirSync(DIST_ROOT).find(name => isInstallerName(name) && name.includes(version))
   const targets: { rel: string; abs: string }[] = [
     ...installer === undefined ? [] : [{ rel: installer, abs: join(DIST_ROOT, installer) }],
     { rel: `${basename(UNPACKED)}/${basename(UNPACKED_EXE)}`, abs: UNPACKED_EXE },

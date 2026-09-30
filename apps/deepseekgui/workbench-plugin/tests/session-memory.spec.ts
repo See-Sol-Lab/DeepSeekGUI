@@ -14,7 +14,6 @@ import { SystemPrompt, renderContextSections } from '@deepseek-ai/dsh-system-pro
 import * as memoryPlugin from '../src/index.ts'
 import {
   buildMemorySectionText,
-  injectionModeOf,
   memoryContract,
   memoryFilesOf,
   productGuide,
@@ -63,33 +62,21 @@ it('keeps literal memory stable for a loaded session and disposes its contributi
   }
 })
 
-it('yields no legacy memory while the memory service reports the entries path or off, and follows a switch back', async () => {
+it('injects both files in every composition: a leftover memory service no longer switches them off (2026-09-29)', async () => {
   const home = tempHome()
   const project = tempHome()
   vi.stubEnv('DSH_HOME', home)
-  writeFileSync(join(home, 'memory.md'), 'legacy text', 'utf8')
+  writeFileSync(join(home, 'memory.md'), 'global text', 'utf8')
+  writeFileSync(memoryFilesOf(home, project).projectPath, 'project text', 'utf8')
   const ctx = new Context()
-  let mode = 'entries'
-  ctx.provide('workbenchMemory', { injectionMode: () => mode } as never)
+  ctx.provide('workbenchMemory', { injectionMode: () => 'entries' } as never)
   const promptFiber = await ctx.plugin(SystemPrompt, {})
   const memoryFiber = await ctx.plugin(memoryPlugin)
-  const assemble = async () => renderContextSections(await ctx.get('systemPrompt').assemble({ agent: { session: { header: { cwd: project } } } } as never))
   try {
-    expect(injectionModeOf(ctx)).toBe('entries')
-    const sections = await assemble()
-    expect(sections.some(s => s.name === 'deepseekgui:memory')).toBe(false)
-    expect(sections.some(s => s.name === 'deepseekgui:guide')).toBe(true)
-    mode = 'markdown'
-    expect(injectionModeOf(ctx)).toBe('markdown')
-    expect((await assemble()).find(s => s.name === 'deepseekgui:memory')?.text).toContain('legacy text')
-    // Enhanced memory switched off: nothing, and no fallback to the files.
-    mode = 'off'
-    expect(injectionModeOf(ctx)).toBe('off')
-    expect((await assemble()).some(s => s.name === 'deepseekgui:memory')).toBe(false)
-    expect((await assemble()).some(s => s.name === 'deepseekgui:guide')).toBe(true)
-    mode = 'something-else'
-    expect(injectionModeOf(ctx)).toBe('markdown')
-    expect(injectionModeOf(new Context())).toBe('markdown')
+    const sections = renderContextSections(await ctx.get('systemPrompt').assemble({ agent: { session: { header: { cwd: project } } } } as never))
+    const memory = sections.find(s => s.name === 'deepseekgui:memory')?.text ?? ''
+    expect(memory).toContain('global text')
+    expect(memory).toContain('project text')
   } finally {
     await memoryFiber.dispose()
     await promptFiber.dispose()

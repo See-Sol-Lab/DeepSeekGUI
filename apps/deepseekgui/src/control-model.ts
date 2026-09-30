@@ -136,6 +136,24 @@ export interface DesktopControlModel {
    */
   skillPick: SkillPickView | null
   /**
+   * 会话导出的最近一次结果（B8-P1；main 单处持有）。页面发
+   * `session-export-markdown` 后从命令响应里读它：nonce 每次递增，客户端
+   * 只认自己这次请求带回的那个；canceled 表示用户在另存为里点了取消。
+   */
+  sessionExport: SessionExportView | null
+  /**
+   * 「清理沙箱标记」的最近一次结果（2026-09-29；main 单处持有）。设置页发
+   * `sandbox-clean-marks` 后从命令响应里读它：nonce 每次递增，客户端只认
+   * 自己这次请求带回的那个。
+   */
+  sandboxClean: SandboxCleanView | null
+  /**
+   * 开发者模式（2026-09-29）：官方上报是否与官方默认一致。偏好存在 UI
+   * state 里、启动 Harness 时读取；main 是唯一写者，切换经
+   * `developer-mode-set` 并重启 Harness。
+   */
+  developerMode: boolean
+  /**
    * 当前界面形态（B3-P2）：Workbench（带 DeepSeekGUI 产品插件）或
    * Compatibility View（不带 Workbench 插件的官方界面）。内存态，
    * 不持久化——应用重开默认 Workbench。
@@ -167,6 +185,28 @@ export interface SkillPickView {
   kind: SkillPickKind
   /** 选中的绝对路径；用户取消为 null。 */
   path: string | null
+}
+
+/** 一次「导出为 Markdown」的结果（B8-P1）。 */
+export interface SessionExportView {
+  /** 每次导出递增；客户端据此辨认自己那次请求的结果。 */
+  nonce: number
+  /** 用户在另存为对话框里点了取消。 */
+  canceled: boolean
+  /** 保存成功的绝对路径；取消为 null。 */
+  path: string | null
+}
+
+/** 一次「清理沙箱标记」的结果（2026-09-29）。 */
+export interface SandboxCleanView {
+  /** 每次清理递增；客户端据此辨认自己那次请求的结果。 */
+  nonce: number
+  /** canceled：用户在选文件夹时取消；其余是 Harness 的答复。 */
+  status: 'canceled' | 'cleaned' | 'clean' | 'busy' | 'unsupported'
+  /** 用户选的文件夹；取消为 null。 */
+  path: string | null
+  /** 标记所在的文件夹（所选的或继承来源的上层）；取消为 null。 */
+  root: string | null
 }
 
 /** Update service 的运行状态（单一状态机，main 单处持有）。 */
@@ -380,6 +420,12 @@ export type DesktopControlCommand =
    */
   | { type: 'save-global-memory'; content: string; home: string; expected: string }
   /**
+   * 2026-09-29：保存会话的项目记忆 `<文件夹名>.memory.md`（记忆视图里的编辑框）。
+   * 路径由 main 从官方 session.list 解析；`expected` 是编辑开始时的原文（文件不存在
+   * 为空串），文件在此期间变了就拒绝，绝不覆盖。
+   */
+  | { type: 'save-project-memory'; sessionId: string; content: string; expected: string }
+  /**
    * D7（莉莉丝 2026-09-06）：在系统文件管理器里打开会话的整个工作区。
    * 路径由 main 从官方 session.list 解析，不接受调用方传路径。
    */
@@ -412,10 +458,27 @@ export type DesktopControlCommand =
    * 一律报错，绝不假装删成功。
    */
   | { type: 'session-delete'; sessionId: string }
+  /**
+   * B8-P1：把一个会话导出为可读 Markdown。页面只送 id 与勾选项；标题
+   * 来自 Harness 折叠的会话标题，保存路径只能来自 main 弹出的系统另存为
+   * 对话框——页面传不进路径。结果进 `model.sessionExport`。
+   */
+  | { type: 'session-export-markdown'; sessionId: string; includeDetails: boolean }
+  /**
+   * 开启 / 关闭开发者模式。与当前值相同是空操作；Harness 在跑时先走「会打断
+   * 工作」的确认，用户取消则不改；确认后写 UI state 并重启 Harness。
+   */
+  | { type: 'developer-mode-set'; enabled: boolean }
+  /**
+   * 清理一个文件夹的 Windows 沙箱标记（2026-09-29）：main 弹系统「选择文件夹」，
+   * 页面传不进路径；清理在 Harness 的沙箱提供方里排队做。结果进 `model.sandboxClean`。
+   */
+  | { type: 'sandbox-clean-marks' }
 
 /** 不带载荷的命令类型集合。 */
 const BARE_COMMANDS = new Set([
   'refresh-profiles',
+  'sandbox-clean-marks',
   'choose-existing-home',
   'cancel-existing-home',
   'use-managed-home',
@@ -558,6 +621,13 @@ export function parseControlCommand(raw: unknown): DesktopControlCommand | null 
     if (expected.length > MEMORY_GLOBAL_CONTENT_MAX) return null
     return { type, content, home, expected }
   }
+  if (type === 'save-project-memory') {
+    const { sessionId, content, expected } = record
+    if (keys.length !== 4 || typeof sessionId !== 'string' || sessionId === '' || sessionId.length > SESSION_ID_MAX) return null
+    if (typeof content !== 'string' || content.length > MEMORY_GLOBAL_CONTENT_MAX) return null
+    if (typeof expected !== 'string' || expected.length > MEMORY_GLOBAL_CONTENT_MAX) return null
+    return { type, sessionId, content, expected }
+  }
   if (type === 'session-delete') {
     // 会话 id 拿去拼路径，所以在边界就限死形状：非空、限长、只含 id 该有
     // 的字符。真实 id 都在这个集合里；别的一律整条拒绝，不做清洗后放行。
@@ -566,6 +636,20 @@ export function parseControlCommand(raw: unknown): DesktopControlCommand | null 
     if (sessionId === '' || sessionId.length > SESSION_ID_MAX) return null
     if (!/^[A-Za-z0-9._-]+$/u.test(sessionId) || sessionId === '.' || sessionId === '..') return null
     return { type, sessionId }
+  }
+  if (type === 'developer-mode-set') {
+    const { enabled } = record
+    if (keys.length !== 2 || typeof enabled !== 'boolean') return null
+    return { type, enabled }
+  }
+  if (type === 'session-export-markdown') {
+    // 会话 id 与 session-delete 同一把尺（同一长度上限与字符集合）；勾选
+    // 项必须是显式布尔。形状不符整条拒绝，绝不猜测降级。
+    const { sessionId, includeDetails } = record
+    if (keys.length !== 3 || typeof sessionId !== 'string' || typeof includeDetails !== 'boolean') return null
+    if (sessionId === '' || sessionId.length > SESSION_ID_MAX) return null
+    if (!/^[A-Za-z0-9._-]+$/u.test(sessionId) || sessionId === '.' || sessionId === '..') return null
+    return { type, sessionId, includeDetails }
   }
   if (type === 'reveal-path') {
     const { sessionId, path } = record
@@ -676,6 +760,12 @@ export interface ControlModelInput {
   usage: UsageView
   /** 技能导入的最近一次选择结果（B7-P4）；缺省为 null。 */
   skillPick?: SkillPickView | null
+  /** 会话导出的最近一次结果（B8-P1）；缺省为 null。 */
+  sessionExport?: SessionExportView | null
+  /** 清理沙箱标记的最近一次结果；缺省为 null。 */
+  sandboxClean?: SandboxCleanView | null
+  /** 开发者模式当前值；缺省为关。 */
+  developerMode?: boolean
   /** 当前界面形态（B3-P2；main 内存持有，不持久化）。 */
   viewMode: 'workbench' | 'compatibility'
   /** 一次性会话导航请求（B4-P8 通知点击）；缺省为 null。 */
@@ -734,6 +824,9 @@ export function buildControlModel(input: ControlModelInput): DesktopControlModel
     dataHome: input.dataHome,
     usage: input.usage,
     skillPick: input.skillPick ?? null,
+    sessionExport: input.sessionExport ?? null,
+    sandboxClean: input.sandboxClean ?? null,
+    developerMode: input.developerMode ?? false,
     viewMode: input.viewMode,
     navigateRequest: input.navigateRequest ?? null,
     globalMemory: input.globalMemory ?? null,

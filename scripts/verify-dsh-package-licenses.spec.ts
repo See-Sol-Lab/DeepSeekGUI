@@ -63,8 +63,8 @@ describe('DSH package license gate', () => {
       name: '@deepseek-ai/dsh-skill-manager',
       license: 'SEE LICENSE IN LICENSE',
     })
-    writeManifest(root, 'packages/api/workbench-memory/package.json', {
-      name: '@deepseek-ai/dsh-workbench-memory',
+    writeManifest(root, 'packages/api/workbench-inspector/package.json', {
+      name: '@deepseek-ai/dsh-workbench-inspector',
       license: 'MIT',
     })
     writeManifest(root, 'packages/api/other/package.json', {
@@ -74,7 +74,7 @@ describe('DSH package license gate', () => {
 
     expect(inspectDshPackageLicenses(root).failures).toEqual([
       'packages/api/other/package.json: @deepseek-ai/dsh-other must declare "license": "MIT"; found "SEE LICENSE IN LICENSE".',
-      'packages/api/workbench-memory/package.json: @deepseek-ai/dsh-workbench-memory must declare "license": "SEE LICENSE IN LICENSE"; found "MIT".',
+      'packages/api/workbench-inspector/package.json: @deepseek-ai/dsh-workbench-inspector must declare "license": "SEE LICENSE IN LICENSE"; found "MIT".',
     ])
   })
 })

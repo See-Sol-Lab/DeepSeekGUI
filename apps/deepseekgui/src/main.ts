@@ -28,6 +28,8 @@ import {
   type DesktopControlCommand,
   type DesktopControlModel,
   type DiagnosticsView,
+  type SandboxCleanView,
+  type SessionExportView,
   type SkillPickView,
 } from './control-model.ts'
 import { createControlDispatcher, type ControlDispatchDeps, type ControlStateHolder } from './control-dispatch.ts'
@@ -41,6 +43,7 @@ import {
 import { discoverProfiles, type ProfileDiscoveryV1 } from './profile-discovery.ts'
 import { atomicWriteFile } from './atomic-write.ts'
 import { seedManagedHome, seedProjectAgents } from './memory-seed.ts'
+import { migrateMemoryEntries } from './memory-migrate.ts'
 import { appendDesktopEvent } from './desktop-events.ts'
 import { describeLegacyCredentialsLayout, describeRuntimeVersionSkew, detectRuntimeVersionSkew, hasLegacyCredentialsLayout } from './runtime-skew.ts'
 import { exportHeadlessDiagnostics } from './diagnostics-export.ts'
@@ -51,6 +54,7 @@ import { configureBrowserPaneProxy, releaseCrashedPane } from './browser-pane-ru
 import { readSessionPressure } from './session-pressure.ts'
 import { startDirectoryPickerBridge } from './picker-bridge.ts'
 import { revealTargetOf } from './reveal-target.ts'
+import { sessionExportFileName } from './session-export-filename.ts'
 import { offerSessionImport as offerImport } from './session-import-offer.ts'
 import { maskWindowsLiterals, redactSecrets } from './redact.ts'
 import { aboutDetailText, pnpmVersionFromExecpath } from './about.ts'
@@ -746,6 +750,10 @@ let mainWindow: BrowserWindow | undefined
 let desktopAccount: DesktopAccount | undefined
 /** 内嵌平台页（充值、用量）：令牌只活在这个视图里。 */
 let platformView: DesktopPlatformView | undefined
+/** 登录后第一次取用量要等的时间：避开官方账号页登录时那一阵连读。 */
+const SIGN_IN_USAGE_DELAY_MS = 5_000
+/** 登录后那一次取用量的计时器；会话连着变时重新计时，只取一次。 */
+let signInUsageTimer: ReturnType<typeof setTimeout> | undefined
 
 // ---- B5-P6 通知点击的一次性会话导航（Web 侧官方事件消费端推 notify 命令）----
 // pendingNavigate 由 notify 点击写入、随下一次 buildModel 进入控制模型；
@@ -851,6 +859,7 @@ async function stopService(): Promise<void> {
   service.stopped = false
   // 账号状态与平台会话属于那一代 Harness：停了就作废，等下一代重新推。
   desktopAccount?.reset()
+  if (signInUsageTimer !== undefined) { clearTimeout(signInUsageTimer); signInUsageTimer = undefined }
 }
 
 /** Client Loader settle 的超时（毫秒）：超时 = boot 失败（page-load）。 */
@@ -930,6 +939,8 @@ function createRuntimeAdapter(packaged: boolean, root: string): HarnessRuntimeAd
         // 密钥输入框才不会被锁成只读（P8-D23）。
         managedHome: selection.managedHome === true,
         elevated: HOST_ELEVATED,
+        // 开发者模式：官方上报跟随它（见 dsh-service 的 uploadEnv）。
+        developerMode,
         // Compatibility View（B3-P2）：不带 Workbench 产品插件的官方界面。
         compatibility: workbenchViewMode === 'compatibility',
         // P9-4：测试实例的显式端口（生产 = DEFAULT_PORT，不传也一样）。
@@ -1652,6 +1663,11 @@ let controlBridgeParam: string | undefined
  * 持久化——应用重开默认 Workbench；切换经 controller.restart 唯一路径。
  */
 let workbenchViewMode: 'workbench' | 'compatibility' = 'workbench'
+/**
+ * 开发者模式（住户 2026-09-29）：官方上报是否与官方默认一致。真源是 UI
+ * state，app ready 时读入；只在启动 Harness 时生效，所以切换要重启 Harness。
+ */
+let developerMode = false
 
 /** 目录选择桥：宿主能力在这里凑齐，桥本身在 picker-bridge。 */
 const startPickerBridge = async (): Promise<void> => {
@@ -1813,6 +1829,7 @@ void app.whenReady().then(async () => {
   }
   // 控制器还没建（它要等 runner）；把开关初值记下来，建的时候带进去。
   initialAutoDownload = uiResult.state.autoDownloadUpdate
+  developerMode = uiResult.state.developerMode
   // 系统主题变化时跟随（仅当偏好为 system 时才改变生效主题；始终推送
   // high contrast 状态）。Compatibility View 不受任何影响。
   nativeTheme.on('updated', () => {
@@ -1955,8 +1972,15 @@ void app.whenReady().then(async () => {
    * @param home - 解析后的 DSH home。
    * @returns 文件内容、空串或 null。
    */
-  const readGlobalMemory = (home: string): string | null => {
-    const path = join(home, 'memory.md')
+  const readGlobalMemory = (home: string): string | null => readMemoryText(join(home, 'memory.md'))
+
+  /**
+   * 一份记忆文件的当前内容（全局 memory.md 与项目 `<文件夹名>.memory.md` 共用）：
+   * 不存在 = 空串；读不到或超长 = null（保存时据此拒绝，绝不覆盖）。
+   * @param path - 文件路径。
+   * @returns 文件内容、空串或 null。
+   */
+  function readMemoryText(path: string): string | null {
     try {
       if (!existsSync(path)) return ''
       if (statSync(path).size > MEMORY_GLOBAL_CONTENT_MAX * 4) return null
@@ -2044,6 +2068,9 @@ void app.whenReady().then(async () => {
       },
       usage: usage.view(),
       skillPick,
+      sessionExport,
+      sandboxClean,
+      developerMode,
       diagnostics: buildDiagnosticsView({ state, feedUrl }),
       // Feedback：模型里给的是快照（renderer 只读）。
       feedback: { ...feedbackView },
@@ -2708,6 +2735,14 @@ void app.whenReady().then(async () => {
   let skillPick: SkillPickView | null = null
   let skillPickNonce = 0
 
+  // ---- 会话导出为 Markdown（B8-P1）：渲染在 Harness 侧，另存为与写盘在 main ----
+  let sessionExport: SessionExportView | null = null
+  let sessionExportNonce = 0
+
+  // ---- 清理沙箱标记（2026-09-29）：选文件夹在 main，清理在 Harness 的沙箱提供方 ----
+  let sandboxClean: SandboxCleanView | null = null
+  let sandboxCleanNonce = 0
+
   /**
    * installer handoff：确认 → orderly stop → spawn 已验证 installer → 退出。
    *
@@ -3363,7 +3398,7 @@ void app.whenReady().then(async () => {
    * @param command - 已验证的记忆命令。
    */
   const runMemoryCommand = async (
-    command: Extract<DesktopControlCommand, { type: 'open-memory' | 'save-global-memory' | 'create-project-agents' }>,
+    command: Extract<DesktopControlCommand, { type: 'open-memory' | 'save-global-memory' | 'save-project-memory' | 'create-project-agents' }>,
   ): Promise<void> => {
     const home = resolveHarnessHome(launcher.read().active.home, userDataDir)
     const globalPath = join(home, 'memory.md')
@@ -3372,6 +3407,17 @@ void app.whenReady().then(async () => {
         throw new Error(desktopLocaleZh() ? '记忆文件或 Harness 目录已改变，请重新打开全局记忆后再保存。' : 'The memory file or Harness home changed. Reopen global memory before saving.')
       }
       atomicWriteFile(globalPath, command.content, message => new Error(message))
+      return
+    }
+    // 2026-09-29：项目记忆在记忆视图里直接编辑。文件名规则同下面的「在文件管理器
+    // 中打开」；编辑开始后文件被助手或别的编辑器改过就拒绝，让用户刷新后再改。
+    if (command.type === 'save-project-memory') {
+      const cwd = await sessionCwdOf(command.sessionId, command.type)
+      const path = join(cwd, `${basename(cwd) || 'project'}.memory.md`)
+      if (readMemoryText(path) !== command.expected) {
+        throw new Error(desktopLocaleZh() ? '项目记忆文件已被改动，请刷新后再保存。' : 'The project memory file changed. Refresh before saving.')
+      }
+      atomicWriteFile(path, command.content, message => new Error(message))
       return
     }
     // D20：项目 AGENTS.md 只按用户按钮从随包模板生成一次；已有即原样保留。
@@ -3432,6 +3478,23 @@ void app.whenReady().then(async () => {
     }
   }
 
+  /**
+   * 2026-09-29：增强记忆拿掉后，把用过条目模式的人留下的有效条目一次性迁回两份
+   * Markdown 文件（旧目录原样留作备份，见 memory-migrate.ts）。Managed 与 Existing
+   * Home 都做：条目本来就是 DeepSeekGUI 自己写进那个 home 的。失败只记日志。
+   */
+  const migrateMemoryEntriesOnce = (): void => {
+    try {
+      const home = resolveHarnessHome(launcher.read().active.home, userDataDir)
+      const result = migrateMemoryEntries(home, localeOf())
+      if (!result.skipped) {
+        console.log(`[deepseekgui] memory entries moved back to Markdown: appended=${String(result.appended)} duplicates=${String(result.duplicates)} orphaned=${String(result.orphaned)}`)
+      }
+    } catch (error) {
+      console.error(`[deepseekgui] memory entry migration failed: ${String(error instanceof Error ? error.message : error)}`)
+    }
+  }
+
   /** 会话 cwd（官方 session.list 权威解析）；Harness 未运行或会话无 cwd 时抛错。 */
   const sessionCwdOf = async (sessionId: string, what: string): Promise<string> => {
     if (harness.status().phase !== 'running' || harnessApi === undefined) {
@@ -3488,7 +3551,7 @@ void app.whenReady().then(async () => {
     }
     // B5-P7：记忆管理命令同样由 main 直办（需要 DSH home、shell 与官方
     // session.list），不经 dispatch。
-    if (command.type === 'open-memory' || command.type === 'save-global-memory' || command.type === 'create-project-agents') {
+    if (command.type === 'open-memory' || command.type === 'save-global-memory' || command.type === 'save-project-memory' || command.type === 'create-project-agents') {
       await runMemoryCommand(command).catch((error: unknown) => { reportFailure(error); throw error })
       broadcast()
       return
@@ -3551,6 +3614,96 @@ void app.whenReady().then(async () => {
       const home = resolveHarnessHome(launcher.read().active.home, userDataDir)
       const signature = sign(null, Buffer.from(`${home}\0${command.sessionId}`), sessionDeletionKeys.privateKey).toString('base64')
       await harnessApi.sessionDelete(command.sessionId, signature)
+      broadcast()
+      return
+    }
+    // B8-P1：会话导出为可读 Markdown。渲染在 Harness 侧（进行中的会话最
+    // 新几条可能还没写盘，observeSession 读的是 Harness 手里的权威数据）；
+    // 保存路径只能来自这里弹出的系统另存为对话框，页面传不进路径。用户
+    // 取消是正常路径，命令照常返回（canceled），页面安静关掉不报错；写盘
+    // 失败抛回页面显示。
+    if (command.type === 'session-export-markdown') {
+      if (harnessApi === undefined || harness.status().phase !== 'running') {
+        throw new Error(desktopLocaleZh()
+          ? 'Harness 未运行，无法导出会话：导出要读 Harness 手里的会话记录'
+          : 'The Harness is not running, so the session cannot be exported: the log is read through the Harness')
+      }
+      const { title, markdown } = await harnessApi.workbenchExportMarkdown(command.sessionId, command.includeDetails, desktopLocaleZh() ? 'zh' : 'en')
+      const win = mainWindow
+      const options: Electron.SaveDialogOptions = {
+        defaultPath: join(app.getPath('downloads'), sessionExportFileName(title, new Date())),
+        filters: [{ name: 'Markdown (*.md)', extensions: ['md'] }],
+      }
+      const chosen = win === undefined || win.isDestroyed()
+        ? await dialog.showSaveDialog(options)
+        : await dialog.showSaveDialog(win, options)
+      if (chosen.canceled || chosen.filePath === '') {
+        sessionExportNonce += 1
+        sessionExport = { nonce: sessionExportNonce, canceled: true, path: null }
+        broadcast()
+        return
+      }
+      // 原子写：失败时目标保持原样，错误原样抛回页面（桥会脱敏后回 500）。
+      atomicWriteFile(chosen.filePath, markdown, message => new Error(
+        desktopLocaleZh() ? `写入导出文件失败：${message}` : `Failed to write the exported file: ${message}`,
+      ))
+      sessionExportNonce += 1
+      sessionExport = { nonce: sessionExportNonce, canceled: false, path: chosen.filePath }
+      broadcast()
+      return
+    }
+    // 清理沙箱标记（2026-09-29）：DS 在沙箱里动过的文件夹带着 Low 标签，从那
+    // 里启动的程序（Electron 之类）会以低完整性运行、起不来。新版用完就收回，
+    // 这里给旧版本留下的、或崩溃没来得及收回的标记一个手动出口。路径只能来自
+    // 这里弹出的系统选文件夹框；清理交给 Harness 的沙箱提供方，它知道哪些命令
+    // 还在跑（那时答 busy，不动）。
+    if (command.type === 'sandbox-clean-marks') {
+      if (harnessApi === undefined || harness.status().phase !== 'running') {
+        throw new Error(desktopLocaleZh()
+          ? 'Harness 未运行，无法清理：清理要经由 Harness 的沙箱确认没有命令在用这个文件夹'
+          : 'The Harness is not running, so nothing can be cleaned: the Harness sandbox has to confirm no command is using the folder')
+      }
+      const win = mainWindow
+      const options: Electron.OpenDialogOptions = {
+        properties: ['openDirectory'],
+        title: desktopLocaleZh() ? '选择要清理沙箱标记的文件夹' : 'Choose the folder to clean sandbox marks from',
+      }
+      const chosen = win === undefined || win.isDestroyed()
+        ? await dialog.showOpenDialog(options)
+        : await dialog.showOpenDialog(win, options)
+      const path = chosen.canceled ? undefined : chosen.filePaths[0]
+      sandboxCleanNonce += 1
+      if (path === undefined) {
+        sandboxClean = { nonce: sandboxCleanNonce, status: 'canceled', path: null, root: null }
+        broadcast()
+        return
+      }
+      const result = await harnessApi.workbenchCleanSandboxMarks(path)
+      sandboxClean = { nonce: sandboxCleanNonce, status: result.status, path, root: result.root }
+      broadcast()
+      return
+    }
+    // 开发者模式（住户 2026-09-29）：官方上报与官方默认对齐。它只在启动
+    // Harness 时读取，所以切换 = 写 UI state + 重启 Harness。在跑的时候先走与
+    // 重启同一条「会打断工作」的确认；用户取消就什么都不改，页面拿到的仍是旧值。
+    // 写失败照实抛回页面，不假装已经切换。
+    if (command.type === 'developer-mode-set') {
+      if (command.enabled === developerMode) return
+      const store = uiStore
+      if (store === undefined) throw new Error('ui state store is not ready')
+      const { phase } = harness.status()
+      if (phase === 'running' && !await confirmDisruptive({ kind: 'restart-harness' })) return
+      try {
+        store.write({ ...store.read().state, developerMode: command.enabled })
+      } catch (error) {
+        reportFailure(error)
+        throw error
+      }
+      developerMode = command.enabled
+      broadcast()
+      // 启动/切换/恢复中的那一轮可能已经按旧值拉起了进程，所以也要重启（排在
+      // 当前这轮之后）。只有还没起（idle）和起失败（failed）不用：下次启动自然读新值。
+      if (phase !== 'idle' && phase !== 'failed') await harness.restart()
       broadcast()
       return
     }
@@ -3670,7 +3823,11 @@ void app.whenReady().then(async () => {
     dark: () => effectiveThemeNow === 'dark',
     onSessionChange: (next) => {
       platform.setSession(next)
-      if (next !== null) void usage.refresh('sign-in')
+      // 登录那一阵官方账号页自己会连着读好几遍余额；我们的五个用量请求再挤进去，平台防护
+      // 就回 202 拦下（住户 2026-09-26，上游 deepseek-harness#7931）。会话连着变（身份补全）
+      // 只算一次，等 5 秒没再变才取数。
+      if (signInUsageTimer !== undefined) clearTimeout(signInUsageTimer)
+      signInUsageTimer = next === null ? undefined : setTimeout(() => { signInUsageTimer = undefined; void usage.refresh('sign-in') }, SIGN_IN_USAGE_DELAY_MS)
     },
     onViewChange: () => { broadcastModel() },
   })
@@ -3834,6 +3991,7 @@ void app.whenReady().then(async () => {
   void permissions.refresh().then(() => permissions.ensureManagedDefault())
   // D20：Managed Home 出厂文件（AGENTS.md 模板 + 空 memory.md），只补缺失。
   ensureManagedMemorySeed()
+  migrateMemoryEntriesOnce()
   const status = controller.status()
   if (status.phase === 'failed') {
     // 起不来就 fail loud 退出：弹窗说明卡在哪一步，并指出记录文件。

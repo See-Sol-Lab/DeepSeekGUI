@@ -45,6 +45,7 @@ function sampleState(): DesktopUiStateV1 {
     closeToTrayNoticeAcknowledged: true,
     terminalBounds: { x: 40, y: 60, width: 900, height: 560 },
     autoDownloadUpdate: false,
+    developerMode: true,
   }
 }
 
@@ -59,6 +60,7 @@ describe('defaultUiState', () => {
       closeToTrayNoticeAcknowledged: false,
       terminalBounds: null,
       autoDownloadUpdate: true,
+      developerMode: false,
     })
   })
 })
@@ -92,6 +94,7 @@ describe('parseUiState 严格校验', () => {
     ['终端几何负数宽', `{${base},"terminalBounds":{"x":0,"y":0,"width":-1,"height":10}}`],
     ['终端几何含未知字段', `{${base},"terminalBounds":{"x":0,"y":0,"width":10,"height":10,"scale":2}}`],
     ['自动下载开关非布尔', `{${base},"autoDownloadUpdate":"yes"}`],
+    ['开发者模式非布尔', `{${base},"developerMode":"on"}`],
   ])('拒绝 %s', (_name, content) => {
     expect(() => parseUiState(content)).toThrow()
   })
@@ -107,6 +110,12 @@ describe('parseUiState 严格校验', () => {
     expect(parseUiState(`{${base}}`).autoDownloadUpdate).toBe(true)
     expect(parseUiState(`{${base},"autoDownloadUpdate":false}`).autoDownloadUpdate).toBe(false)
     expect(parseUiState(`{${base},"autoDownloadUpdate":true}`).autoDownloadUpdate).toBe(true)
+  })
+
+  it('developerMode 缺失宽容为关，给出时按值解析（2026-09-29）', () => {
+    expect(parseUiState(`{${base}}`).developerMode).toBe(false)
+    expect(parseUiState(`{${base},"developerMode":true}`).developerMode).toBe(true)
+    expect(parseUiState(`{${base},"developerMode":false}`).developerMode).toBe(false)
   })
 })
 

@@ -27,7 +27,7 @@ import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 
 import { Win32Error } from '@deepseek-ai/dsh-win32-process'
 
-import { allocBytes, allocOverlapped, allocPtrSlot, allocUint32, decodePtr, decodePtrAt, decodeUint8At, decodeUint16At, decodeUint32, decodeUint32At, getTempPath, isInvalidHandle, isNullPtr, ptrAddress, sameSidAt, throwLastError, throwWin32 } from './ffi.ts'
+import { allocBytes, allocOverlapped, allocPtrSlot, allocUint32, bytesToNative, decodeBytesAt, decodePtr, decodePtrAt, decodeUint8At, decodeUint16At, decodeUint32, decodeUint32At, getTempPath, isInvalidHandle, isNullPtr, ptrAddress, sameSidAt, throwLastError, throwWin32 } from './ffi.ts'
 import type { NativePtr, Win32Bindings } from './ffi.ts'
 import * as abi from './win32-abi.ts'
 
@@ -605,4 +605,284 @@ export function revokeWrite(api: Win32Bindings, path: string, sidPtr: NativePtr)
     )
     return true
   })
+}
+
+/** One ACE of a raw ACL: where it sits and the header fields the filters read. */
+interface RawAce {
+  readonly offset: number
+  readonly size: number
+  readonly type: number
+  readonly flags: number
+  readonly mask: number
+}
+
+/**
+ * Walk a raw ACL's ACEs. Null when the header or any ACE size is implausible —
+ * the callers then leave the directory alone rather than rewrite a DACL they
+ * could not read.
+ * @param acl - the ACL pointer (from {@link readCurrentSecurity}).
+ * @returns the ACEs in order, or null.
+ */
+function walkAcl(acl: NativePtr): RawAce[] | null {
+  const aclSize = decodeUint16At(acl, 2)
+  const aceCount = decodeUint16At(acl, 4)
+  if (aclSize < 8 || aclSize > 1_048_576) return null
+  const aces: RawAce[] = []
+  let offset = 8
+  for (let index = 0; index < aceCount; index++) {
+    const size = decodeUint16At(acl, offset + 2)
+    if (size < 8 || offset + size > aclSize) return null
+    aces.push({
+      offset,
+      size,
+      type: decodeUint8At(acl, offset),
+      flags: decodeUint8At(acl, offset + 1),
+      mask: decodeUint32At(acl, offset + 4),
+    })
+    offset += size
+  }
+  return aces
+}
+
+/**
+ * A byte copy of `acl` without the ACEs `drop` selects: every other ACE is
+ * copied verbatim (inherited ones included, as SetNamedSecurityInfoW expects
+ * of a merged DACL) and the header is recomputed. SetEntriesInAclW cannot do
+ * this: REVOKE_ACCESS removes a trustee's allow ACEs, never its deny, and
+ * dropping every entry of a trustee would take the user's own entries along.
+ * @param acl - the ACL pointer the ACEs were read from.
+ * @param aces - its ACEs ({@link walkAcl}).
+ * @param drop - which ACEs to leave out.
+ * @returns the new ACL, or null when nothing is dropped.
+ */
+function aclWithout(acl: NativePtr, aces: readonly RawAce[], drop: (ace: RawAce) => boolean): Buffer | null {
+  const kept = aces.filter(ace => !drop(ace))
+  if (kept.length === aces.length) return null
+  const body = Buffer.concat(kept.map(ace => decodeBytesAt(acl, ace.offset, ace.size)))
+  const header = Buffer.alloc(8)
+  header.writeUInt8(decodeUint8At(acl, 0), 0) // AclRevision; Sbz1 and Sbz2 stay zero
+  header.writeUInt16LE(8 + body.length, 2) // AclSize
+  header.writeUInt16LE(kept.length, 4) // AceCount
+  return Buffer.concat([header, body])
+}
+
+/** An explicit (not inherited) ACE. */
+const explicit = (ace: RawAce): boolean => (ace.flags & abi.INHERITED_ACE) === 0
+
+/**
+ * Whether the ACE's inline SID is a capability identity of this sandbox's
+ * shape: identifier authority 4 (`S-1-4-…`, SECURITY_NON_UNIQUE_AUTHORITY),
+ * which {@link workspaceWriteSid}-style derivations and the temp SIDs use.
+ * @param acl - the ACL pointer.
+ * @param ace - the ACE (its SID sits at offset 8).
+ * @returns whether the authority is 4.
+ */
+function capabilitySidAt(acl: NativePtr, ace: RawAce): boolean {
+  for (let index = 0; index < 5; index++) if (decodeUint8At(acl, ace.offset + 10 + index) !== 0) return false
+  return decodeUint8At(acl, ace.offset + 15) === 4
+}
+
+/**
+ * Apply a rewritten DACL and/or clear the Low label, then free the descriptor
+ * the old ACL lived in (the rewritten DACL is a copy, so the order is free).
+ * @param api - the binding table.
+ * @param path - the directory.
+ * @param dacl - the new DACL, or null to leave the DACL alone.
+ * @param clearLabel - whether to remove the explicit label.
+ * @param descriptor - the descriptor from {@link readCurrentSecurity}.
+ * @param label - the caller's name for error details.
+ */
+function applyRewrite(
+  api: Win32Bindings,
+  path: string,
+  dacl: Buffer | null,
+  clearLabel: boolean,
+  descriptor: NativePtr | null,
+  label: string,
+): void {
+  const info = (dacl === null ? 0 : abi.DACL_SECURITY_INFORMATION) | (clearLabel ? abi.LABEL_SECURITY_INFORMATION : 0)
+  const nativeDacl = dacl === null ? null : bytesToNative(dacl)
+  const applyResult = info === 0
+    ? abi.ERROR_SUCCESS
+    : api.setNamedSecurityInfoW(path, abi.SE_FILE_OBJECT, info, null, null, nativeDacl, null)
+  const freed = descriptor === null ? null : api.localFree(descriptor)
+  if (applyResult !== abi.ERROR_SUCCESS) throwWin32(api, 'SetNamedSecurityInfoW', applyResult, `${label}(${path})`)
+  if (freed !== null && !isNullPtr(freed)) throwLastError(api, 'LocalFree', `${label}(${path}) descriptor`)
+}
+
+/**
+ * DeepSeekGUI (2026-09-29): take a workspace grant back — the capability SID's
+ * allow ACEs, the ambient-delete deny, and the Low label — so a workspace is
+ * an ordinary Medium folder again once the sandbox is done with it. Upstream
+ * leaves the workspace grant standing as a reuse cache; the standing Low label
+ * then makes every program started from the folder run at Low integrity
+ * (Electron builds die at start) and the deny outlives every session.
+ *
+ * The deny and the label stay while another capability grant remains on the
+ * directory (a second workspace SID, a nested sandbox): that grant's child
+ * still needs them. Nothing is written when none of the three is present, so
+ * calling it on a clean folder costs one read and no propagation. The
+ * read-only denies on `.git` and protected subtrees name only the capability
+ * SID and stay (inert without the grant; a re-grant then skips them).
+ * @param api - the binding table.
+ * @param path - the workspace root.
+ * @param sidPtr - the workspace capability SID.
+ * @param lowLabelSidPtr - the Low integrity SID the label names.
+ * @param worldSidPtr - the Everyone SID the ambient-delete deny names.
+ * @returns whether anything was removed.
+ */
+export function revokeWorkspaceWrite(
+  api: Win32Bindings,
+  path: string,
+  sidPtr: NativePtr,
+  lowLabelSidPtr: NativePtr,
+  worldSidPtr: NativePtr,
+): boolean {
+  return withPathLock(api, path, () => {
+    const { oldAcl, labelAcl, descriptor } = readCurrentSecurity(api, path)
+    let dacl: Buffer | null = null
+    let clearLabel = false
+    try {
+      const aces = oldAcl === null ? [] : walkAcl(oldAcl)
+      if (aces !== null) {
+        const foreign = oldAcl !== null && hasForeignGrant(oldAcl, sidPtr)
+        dacl = oldAcl === null ? null : aclWithout(oldAcl, aces, ace => explicit(ace) && (
+          (ace.type === abi.ACCESS_ALLOWED_ACE_TYPE && sameSidAt(oldAcl, ace.offset + 8, sidPtr, 0))
+          || (!foreign && isAmbientDeny(oldAcl, ace, worldSidPtr))
+        ))
+        clearLabel = !foreign && labelAcl !== null && hasExactLabel(labelAcl, lowLabelSidPtr)
+      }
+    } catch (error) {
+      if (descriptor !== null) api.localFree(descriptor)
+      throw error
+    }
+    applyRewrite(api, path, dacl, clearLabel, descriptor, 'revokeWorkspaceWrite')
+    return dacl !== null || clearLabel
+  })
+}
+
+/**
+ * DeepSeekGUI (2026-09-29): remove every mark this sandbox scheme leaves on a
+ * folder, whichever workspace path or build produced it — capability grants
+ * and read-only denies naming any `S-1-4-…` SID with this module's masks, the
+ * ambient-delete deny, and the Low label on the root; the read-only denies on
+ * the root's `.git` and on `readOnly` directories inside it. For folders
+ * tagged by an older build (the standing grant) or by a workspace path that
+ * was spelled differently, where the exact SID is unknown. Other entries,
+ * including the user's own Everyone entries, are left exactly as they were.
+ * @param api - the binding table.
+ * @param root - the folder to clean.
+ * @param lowLabelSidPtr - the Low integrity SID the label names.
+ * @param worldSidPtr - the Everyone SID the ambient-delete deny names.
+ * @param readOnly - directories inside `root` that may carry a read-only deny.
+ * @returns whether anything was removed.
+ */
+export function purgeSandboxMarks(
+  api: Win32Bindings,
+  root: string,
+  lowLabelSidPtr: NativePtr,
+  worldSidPtr: NativePtr,
+  readOnly: readonly string[] = [],
+): boolean {
+  let changed = withPathLock(api, root, () => {
+    const { oldAcl, labelAcl, descriptor } = readCurrentSecurity(api, root)
+    let dacl: Buffer | null = null
+    let clearLabel = false
+    try {
+      const aces = oldAcl === null ? [] : walkAcl(oldAcl)
+      if (aces !== null) {
+        dacl = oldAcl === null ? null : aclWithout(oldAcl, aces, ace => explicit(ace) && (
+          isCapabilityMark(oldAcl, ace) || isAmbientDeny(oldAcl, ace, worldSidPtr)
+        ))
+        clearLabel = labelAcl !== null && hasExactLabel(labelAcl, lowLabelSidPtr)
+      }
+    } catch (error) {
+      if (descriptor !== null) api.localFree(descriptor)
+      throw error
+    }
+    applyRewrite(api, root, dacl, clearLabel, descriptor, 'purgeSandboxMarks')
+    return dacl !== null || clearLabel
+  })
+  for (const directory of [join(root, '.git'), ...readOnly]) {
+    const relation = relative(resolve(root).toLowerCase(), resolve(directory).toLowerCase())
+    if (relation === '' || relation.startsWith('..') || isAbsolute(relation)) continue
+    if (!existsSync(directory) || !lstatSync(directory).isDirectory()) continue
+    const removed = withPathLock(api, directory, () => {
+      const { oldAcl, descriptor } = readCurrentSecurity(api, directory)
+      let dacl: Buffer | null = null
+      try {
+        const aces = oldAcl === null ? [] : walkAcl(oldAcl)
+        if (aces !== null && oldAcl !== null) dacl = aclWithout(oldAcl, aces, ace => explicit(ace) && isCapabilityMark(oldAcl, ace))
+      } catch (error) {
+        if (descriptor !== null) api.localFree(descriptor)
+        throw error
+      }
+      applyRewrite(api, directory, dacl, false, descriptor, 'purgeSandboxMarks')
+      return dacl !== null
+    })
+    changed ||= removed
+  }
+  return changed
+}
+
+/**
+ * DeepSeekGUI (2026-09-29): read-only probes of a workspace root — one
+ * GetNamedSecurityInfoW, no write, no propagation. `grant` is whether the
+ * exact workspace grant of `sidPtr` stands (the seam re-grants when something
+ * outside it took the grant away); `marks` is whether any mark of this scheme
+ * is on the root (the startup cleanup spawns a purge only then).
+ * @param api - the binding table.
+ * @param root - the workspace root.
+ * @param sidPtr - the workspace capability SID.
+ * @param lowLabelSidPtr - the Low integrity SID the label names.
+ * @param worldSidPtr - the Everyone SID the ambient-delete deny names.
+ * @returns both answers.
+ */
+export function inspectWorkspaceRoot(
+  api: Win32Bindings,
+  root: string,
+  sidPtr: NativePtr,
+  lowLabelSidPtr: NativePtr,
+  worldSidPtr: NativePtr,
+): { grant: boolean; marks: boolean } {
+  const { oldAcl, labelAcl, descriptor } = readCurrentSecurity(api, root)
+  try {
+    const aces = oldAcl === null ? [] : walkAcl(oldAcl) ?? []
+    const grant = oldAcl !== null && hasExactGrant(oldAcl, sidPtr)
+    const marks = (labelAcl !== null && hasExactLabel(labelAcl, lowLabelSidPtr))
+      || (oldAcl !== null && aces.some(ace => explicit(ace) && (isCapabilityMark(oldAcl, ace) || isAmbientDeny(oldAcl, ace, worldSidPtr))))
+    return { grant, marks }
+  } finally {
+    if (descriptor !== null) {
+      const freed = api.localFree(descriptor)
+      if (!isNullPtr(freed)) throwLastError(api, 'LocalFree', `inspectWorkspaceRoot(${root}) descriptor`)
+    }
+  }
+}
+
+/**
+ * The ambient-delete deny exactly as {@link applyGrant} writes it: an explicit
+ * container-inherited Deny of FILE_DELETE_CHILD naming Everyone.
+ * @param acl - the ACL pointer.
+ * @param ace - the ACE.
+ * @param worldSidPtr - the Everyone SID.
+ * @returns whether it is that deny.
+ */
+function isAmbientDeny(acl: NativePtr, ace: RawAce, worldSidPtr: NativePtr): boolean {
+  return ace.type === abi.ACCESS_DENIED_ACE_TYPE && ace.flags === abi.CONTAINER_INHERIT_ACE
+    && ace.mask === abi.FILE_DELETE_CHILD && sameSidAt(acl, ace.offset + 8, worldSidPtr, 0)
+}
+
+/**
+ * A capability grant or read-only deny as this module writes them, for any
+ * `S-1-4-…` SID: Allow of {@link abi.GRANT_MASK} or Deny of
+ * {@link abi.GIT_DENY_MASK}, inheriting to subcontainers and objects.
+ * @param acl - the ACL pointer.
+ * @param ace - the ACE.
+ * @returns whether it is such a mark.
+ */
+function isCapabilityMark(acl: NativePtr, ace: RawAce): boolean {
+  const shape = (ace.type === abi.ACCESS_ALLOWED_ACE_TYPE && ace.mask === abi.GRANT_MASK)
+    || (ace.type === abi.ACCESS_DENIED_ACE_TYPE && ace.mask === abi.GIT_DENY_MASK)
+  return shape && ace.flags === abi.SUB_CONTAINERS_AND_OBJECTS_INHERIT && capabilitySidAt(acl, ace)
 }

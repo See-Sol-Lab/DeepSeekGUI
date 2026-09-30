@@ -8,10 +8,12 @@
  */
 
 import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import type { SandboxPolicy } from '@deepseek-ai/dsh-sandbox'
 import { LocalSandboxProvider } from '@deepseek-ai/dsh-sandbox-local'
+import { workspaceWriteSid } from '../src/index.ts'
 
 const RO: SandboxPolicy = { mode: 'read-only', workspaceRoot: '/ws' }
 const WW: SandboxPolicy = { mode: 'workspace-write', workspaceRoot: '/ws' }
@@ -38,6 +40,8 @@ describe('windows-acl win32 chain (LocalSandboxProvider)', () => {
       '--workspace', '/ws',
       '--temp', tmpdir(),
       '--mode', 'workspace-write',
+      // DeepSeekGUI: the runner holds a lease while it runs, so the seam keeps the grant.
+      '--lease', join(tmpdir(), 'dsh-acl-leases', workspaceWriteSid('/ws')),
       '--',
       'pwsh', '/Command', 'x',
     ])

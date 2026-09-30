@@ -163,11 +163,25 @@ export const CHROME_URL_PREFIX = 'file://'
 /** Compatibility View（官方 Web UI）。 */
 export const COMP_URL_PREFIX = `http://127.0.0.1:${String(TEST_APP_PORT)}`
 
-/** 等 Compatibility View 前端真正挂载（#root 有子元素）。 */
+/** Follow the visible API-key → Set up later path without signing in. */
+const dismissDesktopWelcome = `(() => {
+  const welcome = document.querySelector('[data-deepseekgui="welcome"]')
+  if (welcome === null) return false
+  const buttons = Array.from(welcome.querySelectorAll('button')).filter(button => button.getClientRects().length > 0 && !button.disabled)
+  const next = buttons.find(button => button.getAttribute('data-deepseekgui') === 'welcome-later')
+    ?? buttons.find(button => /API.*Key/i.test(button.textContent ?? ''))
+  next?.click()
+  return true
+})()`
+
+/** 等前端挂载，并经可见按钮跳过测试 Home 的桌面首启配置。 */
 export async function waitForCompMount(app: ElectronApplication, timeoutMs = 90_000): Promise<void> {
   await expect.poll(async () => {
     try {
-      return await evalInView<number>(app, COMP_URL_PREFIX, 'document.getElementById("root")?.childElementCount ?? 0')
+      return await evalInView<number>(app, COMP_URL_PREFIX, `(() => {
+        if (${dismissDesktopWelcome}) return 0
+        return document.getElementById("root")?.childElementCount ?? 0
+      })()`)
     } catch {
       return 0
     }
@@ -272,7 +286,8 @@ export async function openDeepSeekGUISection(
   await expect.poll(async () => {
     try {
       return await evalInComp<boolean>(app, `(() => {
-        const dialog = document.querySelector('[role="dialog"][aria-modal="true"]')
+        if (${dismissDesktopWelcome}) return false
+        const dialog = Array.from(document.querySelectorAll('[role="dialog"][aria-modal="true"]')).at(-1) ?? null
         if (dialog !== null) {
           if (dialog.querySelector('button[aria-current]') !== null) return true
           const dismiss = Array.from(dialog.querySelectorAll('button'))
@@ -293,7 +308,7 @@ export async function openDeepSeekGUISection(
     // 触发钮在不在、当前 modal 是什么、页面还剩什么文字——足以分辨「引导框
     // 挡着」「页面根本没加载」「后端断了官方 SPA 换了界面」这几种完全不同的病。
     const scene = await evalInComp<string>(app, `(() => {
-      const dialog = document.querySelector('[role="dialog"][aria-modal="true"]')
+      const dialog = Array.from(document.querySelectorAll('[role="dialog"][aria-modal="true"]')).at(-1) ?? null
       const trigger = document.querySelector('button[aria-haspopup="dialog"]')
       return JSON.stringify({
         url: location.href,
@@ -309,7 +324,8 @@ export async function openDeepSeekGUISection(
   await expect.poll(async () => {
     try {
       return await evalInComp<boolean>(app, `(() => {
-        const dialog = document.querySelector('[role="dialog"][aria-modal="true"]')
+        if (${dismissDesktopWelcome}) return false
+        const dialog = Array.from(document.querySelectorAll('[role="dialog"][aria-modal="true"]')).at(-1) ?? null
         if (dialog === null) return false
         // 引导框也可能**后于**设置面板弹出并盖在上面（这是个竞态：它在页面
         // 挂载后才出现，驱动跑得快时会抢在它前面）。所以这一步也要认得它，
@@ -426,7 +442,8 @@ export async function clickDeepSeekGUIButton(app: ElectronApplication, testId: s
 export async function dismissStartupModal(app: ElectronApplication): Promise<boolean> {
   try {
     return await evalInComp<boolean>(app, `(() => {
-      const dialog = document.querySelector('[role="dialog"][aria-modal="true"]')
+      if (${dismissDesktopWelcome}) return true
+      const dialog = Array.from(document.querySelectorAll('[role="dialog"][aria-modal="true"]')).at(-1) ?? null
       if (dialog === null) return false
       if (dialog.querySelector('button[aria-current]') !== null) return false
       const dismiss = Array.from(dialog.querySelectorAll('button'))
@@ -448,7 +465,8 @@ export async function dismissStartupModal(app: ElectronApplication): Promise<boo
 export async function startupModalPresent(app: ElectronApplication): Promise<boolean> {
   try {
     return await evalInComp<boolean>(app, `(() => {
-      const dialog = document.querySelector('[role="dialog"][aria-modal="true"]')
+      if (document.querySelector('[data-deepseekgui="welcome"]') !== null) return true
+      const dialog = Array.from(document.querySelectorAll('[role="dialog"][aria-modal="true"]')).at(-1) ?? null
       if (dialog === null) return false
       return dialog.querySelector('button[aria-current]') === null
     })()`)

@@ -69,7 +69,7 @@
     "d989aa728fdee30184e2b7713a3fab2fdcb96983c90648ab9cc4dff1e6f02b92": 1
   },
   "apps/deepseekgui/workbench-plugin/src/session-memory.ts": {
-    "38a7cf3dfd5da2f739390f5b233b97731f3bfa1ac3a51fdb8e1594735764bb80": 2
+    "38a7cf3dfd5da2f739390f5b233b97731f3bfa1ac3a51fdb8e1594735764bb80": 1
   },
   "apps/deepseekgui/workbench-plugin/tests/archived-sessions.client.spec.tsx": {
     "4af3d79b5a05f089a4f18d94f0a9cbbfd1f85b3a0f499399c3acf75acae29329": 1,
@@ -83,12 +83,6 @@
     "653cd197e7417ca93d1186b2317715712ca535b5635e5eeccd3aecc5ff4f4133": 1,
     "e08e868096189d37c399ad4cc66b8c228e1ed5fe279a45f21c3eed375429909a": 1,
     "f484889ed22a5f4f98a2f97b4a360971c77d28abf4898a9fa23647c78250dfa0": 1
-  },
-  "apps/deepseekgui/workbench-plugin/tests/memory-entries.client.spec.tsx": {
-    "a5cc084c7b08798fed2de12497312800c3d9bbb8911d859364876cfbf4adf8e7": 1
-  },
-  "apps/deepseekgui/workbench-plugin/tests/memory-settings.client.spec.tsx": {
-    "217afd058cfe46b85e7c288795ed20493bd6f54f846fe8355876f16d8b5eef9c": 1
   },
   "apps/deepseekgui/workbench-plugin/tests/notifier.client.spec.tsx": {
     "ae9d264363f729f64a5a3857aec15c2e0356cf08560ddf400a54629cfb41c0b1": 1
@@ -105,8 +99,7 @@
     "d332553c0d1503c02ef53b1bcc345b80cd21d68a579a8be64c8326cddd5760ae": 1
   },
   "apps/deepseekgui/workbench-plugin/tests/views.client.spec.tsx": {
-    "266a58c83d47515aca3b8862dc954bd6be94005fb9896c48fa92bf1887c47ac2": 1,
-    "4cc3db5a18e90c97fd960dfad7d1e32ce8bf61ad97438b250caa948e9f679672": 1
+    "266a58c83d47515aca3b8862dc954bd6be94005fb9896c48fa92bf1887c47ac2": 1
   },
   "apps/web/tests/assembled-boot.ts": {
     "203f87d9e4f18ce1f00bf575fe96f724975341cbb67b8c51ea45d4cbb8e60005": 1,
@@ -340,12 +333,6 @@
     "4a17ad415e8556830780e89cee49c549a01e82d90754af288f5b57214d8fca2c": 1,
     "752fa554afd541f82ac34511802bec5f3cf52967db5ea470ee8160e1ffb0d606": 1
   },
-  "packages/api/workbench-memory/src/runtime.ts": {
-    "6fe9024d30e0d4757a348b83d246925b3f5aeaf2e79a0eff4bf12f3c9fb5826b": 4
-  },
-  "packages/api/workbench-memory/tests/loop-support.ts": {
-    "b1301ec1e1818079ee45a25e876ad75f024f8b24f2614c7fe424b363545e6ce6": 1
-  },
   "packages/attachment/attachment/tests/admission.spec.ts": {
     "d7dc9c349af8699fefcaffed26377443dd73ef95f1dc985f4de542ec133869f5": 1
   },
@@ -532,9 +519,6 @@
   "packages/client/ui-chat/tests/conversation.client.spec.ts": {
     "299fcafb8671655372c99c1dbe14e2705536d569bf475ca09693f87b3b1182da": 1
   },
-  "packages/client/ui-chat/tests/skill-name-projector.client.spec.ts": {
-    "cc5bd784736472e7293f8b0e2d889b0cf1c156a218457571390871164e35b5d5": 1
-  },
   "packages/client/ui-chat/tests/tool-call-tree.client.spec.ts": {
     "427f7efc431dec431f6707ea0e4431c54fafc97efbcc9c93865d29f2488300d9": 1
   },
@@ -648,9 +632,6 @@
   },
   "packages/client/ui-plan/tests/plan-resource.client.spec.ts": {
     "fa53d5cd55d87b522c83a98968e3a2bf933b1cc1b84d2f009e79d6c702099786": 1
-  },
-  "packages/client/ui-plugin-manager/tests/browser-plugin.client.spec.tsx": {
-    "04984a2ce1486250236e638e0197da0a1a840855ed3975c59130a85358c7e5fe": 1
   },
   "packages/client/ui-primitives/tests/highlight-viewport.client.spec.tsx": {
     "6061de0a1e01547eb1abf9d4e1b5fa79fda112fa35dda980775491123413dcce": 1
@@ -1374,7 +1355,6 @@
     "0c7b023d04a2d6744d9844f27de8438231e642fd058e2b75e113a1996711014a": 1
   },
   "packages/interaction/tool-ask-user/tests/tool-ask-user.spec.ts": {
-    "60655aea47d3d8667f90341b58e3faaf64d12670b9592af837aa40ecf7b83583": 1,
     "d423bbcd1caff7aab2e2de52564efbc9061e775620a530157805a43d851c6fe9": 1
   },
   "packages/interaction/user-approval/tests/approval.spec.ts": {
