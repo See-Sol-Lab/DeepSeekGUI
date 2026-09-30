@@ -22,7 +22,7 @@ English | [中文](README.md)
   <a href="https://github.com/See-Sol-Lab/DeepSeekGUI/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/See-Sol-Lab/DeepSeekGUI?style=flat-square&label=release" /></a>
   <a href="https://github.com/See-Sol-Lab/DeepSeekGUI/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/See-Sol-Lab/DeepSeekGUI/total?style=flat-square" /></a>
   <img alt="Windows 10 and 11 x64" src="https://img.shields.io/badge/Windows-10%20%7C%2011%20x64-0078D4?style=flat-square&logo=windows" />
-  <a href="https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.1.2-linux.1"><img alt="Linux x64 AppImage" src="https://img.shields.io/badge/Linux-x64%20AppImage-FCC624?style=flat-square&logo=linux&logoColor=black" /></a>
+  <a href="https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.2.0-linux.1"><img alt="Linux x64 AppImage" src="https://img.shields.io/badge/Linux-x64%20AppImage-FCC624?style=flat-square&logo=linux&logoColor=black" /></a>
   <a href="apps/deepseekgui/LICENSE"><img alt="DeepSeekGUI product layer: PolyForm Perimeter 1.0.1" src="https://img.shields.io/badge/DeepSeekGUI-PolyForm%20Perimeter%201.0.1-6f42c1?style=flat-square" /></a>
   <a href="LICENSE-MIT-UPSTREAM"><img alt="Upstream DeepSeek Harness: MIT" src="https://img.shields.io/badge/Upstream%20Harness-MIT-2ea44f?style=flat-square" /></a>
   <a href="https://doi.org/10.5281/zenodo.22205160"><img alt="DOI" src="https://zenodo.org/badge/DOI/10.5281/zenodo.22205160.svg" /></a>
@@ -56,9 +56,9 @@ DeepSeekGUI is a local AI workbench built on [DeepSeek Harness](https://github.c
 | Platform | Download | Requirements |
 | --- | --- | --- |
 | Windows | [Download installer](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.2.0/DeepSeekGUI-Setup-1.2.0.exe) | Windows 10/11, x64 |
-| Linux | [Download AppImage](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.1.2-linux.1/DeepSeekGUI-1.1.2-x86_64.AppImage) | x64, AppImage; experimental support |
+| Linux | [Download AppImage](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.2.0-linux.1/DeepSeekGUI-1.2.0-x86_64.AppImage) | x64, AppImage; experimental support |
 
-The Windows installer installs to your user account and bundles its runtime. Linux uses a separate AppImage distribution; download and verification details are on the [v1.1.2-linux.1](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.1.2-linux.1) release page.
+The Windows installer installs to your user account and bundles its runtime. Linux uses a separate AppImage distribution; download and verification details are on the [v1.2.0-linux.1](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.2.0-linux.1) release page.
 
 > **Windows installation:** The installer is not code-signed, so SmartScreen may report an unknown publisher. After checking the download source and SHA256, choose **“More info” → “Run anyway”** to continue.
 
@@ -146,7 +146,7 @@ Git, file sidebar, model settings, browser, and archived-session screenshots sho
 - **Updates and data migration** — Downloads and SHA256 checks can run automatically; installation requires confirmation, and automatic download can be disabled. Move managed data after copying and verification, then confirm cleanup of the old copy.
 - **Onboarding and diagnostics** — First launch offers DeepSeek account sign-in or an API key, and the official setup after sign-in introduces your credit and options. Includes Chinese and English interfaces, a system tray, local diagnostics export, and assistant-aided bug triage.
 
-See the [v1.1.2 release notes](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.1.2) for the complete version changes.
+See the [v1.2.0 release notes](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.2.0) for the complete version changes.
 
 ## Documentation
 
