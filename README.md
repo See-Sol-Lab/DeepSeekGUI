@@ -15,10 +15,6 @@
 </p>
 
 <p align="center">
-  基于 <a href="https://github.com/deepseek-ai/deepseek-harness">DeepSeek Harness</a>，面向 Windows 与 Linux 的本地桌面工作台。
-</p>
-
-<p align="center">
   <a href="https://github.com/See-Sol-Lab/DeepSeekGUI/releases/latest"><img alt="最新版本" src="https://img.shields.io/github/v/release/See-Sol-Lab/DeepSeekGUI?style=flat-square&label=release" /></a>
   <a href="https://github.com/See-Sol-Lab/DeepSeekGUI/releases"><img alt="下载量" src="https://img.shields.io/github/downloads/See-Sol-Lab/DeepSeekGUI/total?style=flat-square" /></a>
   <img alt="Windows 10 与 11 x64" src="https://img.shields.io/badge/Windows-10%20%7C%2011%20x64-0078D4?style=flat-square&logo=windows" />
