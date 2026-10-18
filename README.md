@@ -18,7 +18,7 @@
   <a href="https://github.com/See-Sol-Lab/DeepSeekGUI/releases/latest"><img alt="最新版本" src="https://img.shields.io/github/v/release/See-Sol-Lab/DeepSeekGUI?style=flat-square&label=release" /></a>
   <a href="https://github.com/See-Sol-Lab/DeepSeekGUI/releases"><img alt="下载量" src="https://img.shields.io/github/downloads/See-Sol-Lab/DeepSeekGUI/total?style=flat-square" /></a>
   <img alt="Windows 10 与 11 x64" src="https://img.shields.io/badge/Windows-10%20%7C%2011%20x64-0078D4?style=flat-square&logo=windows" />
-  <a href="https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.2.0-linux.1"><img alt="Linux x64 AppImage" src="https://img.shields.io/badge/Linux-x64%20AppImage-FCC624?style=flat-square&logo=linux&logoColor=black" /></a>
+  <a href="https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.2.1-linux.1"><img alt="Linux x64 AppImage" src="https://img.shields.io/badge/Linux-x64%20AppImage-FCC624?style=flat-square&logo=linux&logoColor=black" /></a>
   <a href="apps/deepseekgui/LICENSE"><img alt="DeepSeekGUI 产品层：PolyForm Perimeter 1.0.1" src="https://img.shields.io/badge/DeepSeekGUI-PolyForm%20Perimeter%201.0.1-6f42c1?style=flat-square" /></a>
   <a href="LICENSE-MIT-UPSTREAM"><img alt="上游 DeepSeek Harness：MIT" src="https://img.shields.io/badge/Upstream%20Harness-MIT-2ea44f?style=flat-square" /></a>
   <a href="https://doi.org/10.5281/zenodo.22205160"><img alt="DOI" src="https://zenodo.org/badge/DOI/10.5281/zenodo.22205160.svg" /></a>
@@ -43,7 +43,7 @@ DeepSeekGUI 是基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek
 
 **非官方产品：** 基于 DeepSeek Harness 构建，由第三方独立开发，与 DeepSeek 无隶属关系，未获官方背书。
 
-**当前版本：[v1.2.1](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.2.1)。** 内嵌 Harness 升至 `0.2.1-rc.2`。新增程序与数据整体搬家、归档会话时整理项目记忆；修复只读工作区的权限显示、非 Git 工作区的空状态，以及发行运行时里 fflate 与 fast-uri 的已知漏洞。开发者模式仍默认关闭；官方 0.2.1 的 V4.1 Flash 标识、Search/Fetch 接口开关与界面改进随版适配。Linux AppImage 暂为 v1.2.0。
+**当前版本：[v1.2.1](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.2.1)。** 内嵌 Harness 升至 `0.2.1-rc.2`。新增程序与数据整体搬家、归档会话时整理项目记忆；修复只读工作区的权限显示、非 Git 工作区的空状态，以及发行运行时里 fflate 与 fast-uri 的已知漏洞。开发者模式仍默认关闭；官方 0.2.1 的 V4.1 Flash 标识、Search/Fetch 接口开关与界面改进随版适配；Linux AppImage 同步为 v1.2.1（实验性）。
 
 [产品自研workbench路线图](https://see-sol-lab.github.io/research/deepseekgui-single-task-signal.html)
 
@@ -52,9 +52,9 @@ DeepSeekGUI 是基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek
 | 平台 | 下载 | 要求 |
 | --- | --- | --- |
 | Windows | [下载安装包](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.2.1/DeepSeekGUI-Setup-1.2.1.exe) | Windows 10/11，x64 |
-| Linux | [下载 AppImage](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.2.0-linux.1/DeepSeekGUI-1.2.0-x86_64.AppImage) | x64，AppImage；实验性支持 |
+| Linux | [下载 AppImage](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.2.1-linux.1/DeepSeekGUI-1.2.1-x86_64.AppImage) | x64，AppImage；实验性支持 |
 
-Windows 安装包安装到当前用户目录，自带运行时。Linux 使用独立的 AppImage 发行文件，下载与校验信息见 [v1.2.0-linux.1](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.2.0-linux.1) 发布页。
+Windows 安装包安装到当前用户目录，自带运行时。Linux 使用独立的 AppImage 发行文件，下载与校验信息见 [v1.2.1-linux.1](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.2.1-linux.1) 发布页。
 
 > **Windows 安装提示：** 安装包尚未进行代码签名，SmartScreen 可能提示发布者未知。核对下载来源和 SHA256 后，可通过 **“更多信息” → “仍要运行”** 继续安装。
 
