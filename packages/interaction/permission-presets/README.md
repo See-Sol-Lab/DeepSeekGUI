@@ -59,6 +59,10 @@ Switching to Auto first runs its synchronous admission check; every preset switc
 
 Clients render selectable entries from the process catalog: configured presets in table order followed by Auto while its integration is live. They join that snapshot with the Session's current value; an unmatched `custom` value may label the current control but never appears as a selectable catalog row. Auto's identity and knob bundle, Full access sandbox with the `ask` approval policy, are fixed inside this service; a recorded Auto selection also matches the `never` policy that delegated children pin. The shipped client locale dictionaries own Auto's label and description, while configured presets retain Host-supplied presentation. Callers cannot publish another preset through a generic contribution API, and they can switch away from `custom` but cannot select or persist a named custom preset through this service.
 
+### Workspaces the sandbox policy runs read-only
+
+DeepSeekGUI's sandbox policy runs a chat-only workspace (the home directory, a drive root, a system or application location) and DeepSeekGUI's own code read-only at execution time. This service records the same fact so the current value matches it: a session created or resumed there pins read-only (the configured preset with the read-only sandbox, else only the sandbox knob), and switching it to any preset with a wider sandbox is refused with a `chat-only` or `DeepSeekGUI code` message. Full access is additionally refused on an administrator desktop (`administrator`). Ordinary workspaces are unaffected.
+
 ### Session defaults
 
 The `permission` settings namespace holds `defaultPreset` for future sessions and accepts configured presets only. Session creation reads it, applies it to the sandbox mode and approval policy, and records the applied preset as a `permission/preset` selection. Later settings changes never alter an existing session. A resumed seed, including an explicitly empty one marked by `session/end-seed`, preserves its effective permission and receives only missing durable facts rather than the latest user default; a persisted `auto` identity requires the live Auto registration and its admission before publication.
@@ -79,7 +83,6 @@ The observable behavior is covered in [Use this package](#use-this-package); thi
 |---|---|
 | [`src/index.ts`](src/index.ts) | `PermissionPresetService`: configured table, fixed Auto registration, write path, settings namespace, session pinning, children |
 | [`src/types.ts`](src/types.ts) | Process catalog, catalog-change event, and `permissions` current-selection types |
-| [`src/invariant.ts`](src/invariant.ts) | Invariant companion validating configured preset names; Auto restore is checked before publication |
 
 ### Write path
 
@@ -109,7 +112,7 @@ The service requires `ctx.sessionProjections` and registers a `permissions` proj
 Read these pages when the package-level contract is not enough. They move from the preset vocabulary to the enforcement knobs and the design rationale.
 
 - [Permission presets subsystem reference](../../../docs/subsystems/permission-presets.md) — the preset table, process catalog, current selection, and `ctx.permissionPresets` Cordis API.
-- [Sandbox switching design Agent Note](../../../.agents/notes/implemented/feature/2026-07-06-sandbox.md) — how sandbox mode and approval policy compose and switch.
+- [historical Sandbox switching design Agent Note](../../../.agents/notes/archived/feature/2026-07-06-sandbox.md) — how sandbox mode and approval policy compose and switch.
 - [Approval subsystem reference](../../../docs/subsystems/approval.md) — the approval policy knob this service bundles.
 - [Interaction group map](../README.md) — adjacent command, approval, and question packages.
 

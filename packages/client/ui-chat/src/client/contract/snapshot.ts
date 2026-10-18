@@ -9,7 +9,7 @@ export type {
   AssistantBlock, AssistantMessageNode, AssistantProviderMetadataView, AssistantRequestConfig,
   AssistantTiming, CommandNode, CompactionSummaryNode, ContextMessageNode, ConversationNode,
   ModelRetryNode, PartialAssistant, PreparingToolCall, RunningToolCall, StartedToolCall, SteeringMessageNode, TodoItem,
-  ToolCallBlock, ToolResultNode, TurnErrorNode, TurnMaxTokensNode, UnknownSurfaceNode,
+  ToolArgs, ToolCallBlock, ToolResultNode, TurnErrorNode, TurnMaxTokensNode, UnknownSurfaceNode,
   UserMessageNode,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
 
@@ -35,6 +35,11 @@ export interface ChatNodeStore {
   get(key: string): ChatConversationViewNode | undefined
   /** @param key - stable Conversation Context key. @returns its identity-stable observable source. */
   source(key: string): ChatNodeSource
+  /**
+   * @param key - Chat Node identity.
+   * @returns whether the visible Node belongs to the latest loaded exchange (see `ChatConversationViewNode.groupTree`).
+   */
+  bottomSource(key: string): ObservableSnapshot<boolean>
   /**
    * Observe one Turn's data for a single Node kind, including hidden Nodes, in anchor order.
    * Other Turns and kinds do not notify this source.
@@ -92,7 +97,7 @@ export interface ChatTurnProcessPresentation {
   readonly compactAnswer: boolean
 }
 
-/** Compatibility projection backing StatsPills and the legacy top-level snapshot fields. */
+/** Compatibility projection backing the composer stats pills (StatsPills.tsx) and the legacy top-level snapshot fields. */
 export interface LegacyConversationSlice {
   readonly nodes: readonly ConversationNode[]
   readonly turnTimings: ReadonlyMap<number, { readonly startTime: number; readonly endTime?: number }>
@@ -123,6 +128,10 @@ const EMPTY_NODE_SOURCE: ChatNodeSource = {
   getSnapshot: () => undefined,
   subscribe: () => () => {},
 }
+const EMPTY_BOTTOM_SOURCE: ObservableSnapshot<boolean> = {
+  getSnapshot: () => false,
+  subscribe: () => () => {},
+}
 const EMPTY_NODE_PROCESS_SOURCE: ChatNodeProcessSource = {
   getSnapshot: () => undefined,
   subscribe: () => () => {},
@@ -138,6 +147,7 @@ export const EMPTY_CHAT_SNAPSHOT: ChatSnapshot = {
   nodes: {
     get: () => undefined,
     source: () => EMPTY_NODE_SOURCE,
+    bottomSource: () => EMPTY_BOTTOM_SOURCE,
     turnDataSource: () => EMPTY_TURN_NODE_SOURCE,
     processSource: () => EMPTY_NODE_PROCESS_SOURCE,
     values: () => EMPTY_LIST,

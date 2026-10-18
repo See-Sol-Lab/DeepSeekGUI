@@ -75,7 +75,6 @@ The service owns everything except terminal mechanics: session identity, publica
 |---|---|
 | [`src/index.ts`](src/index.ts) | `TerminalSessionService`: backend registry, spawn/send/read/signal/kill/list, owner cleanups, disposal |
 | [`src/types.ts`](src/types.ts) | Shared contracts: backend interface, session types, wait reasons, signal set, error codes |
-| — | No runtime invariant companion is published; backend and owner-scoped session registries are private mutable state, and the service exposes neither an independent lifecycle stream nor an unscoped snapshot. |
 
 ### Data model and lifecycle
 
@@ -103,7 +102,7 @@ Read these pages when the package-level contract is not enough. They move from t
 - [Terminal subsystem reference](../../../docs/subsystems/terminal.md) — shared types, backend and session contracts, and the generated `ctx.terminals` surface.
 - [terminal/ package map](../README.md) — the three-package family and how it composes.
 - [terminal-bash backend](../terminal-bash/README.md) — the shipped shell backend that provides the `shell` type.
-- [tool-terminal tools](../tool-terminal/README.md) — the six model-facing tools that operate sessions.
+- [tool-terminal tools](../../experimental/tool-terminal/README.md) — the six model-facing tools that operate sessions.
 - [Persistent PTY Agent Note](../../../.agents/notes/implemented/feature/2026-07-16-persistent-pty-sessions.md) — design rationale, alternatives, and deferred boundaries.
 
 -----

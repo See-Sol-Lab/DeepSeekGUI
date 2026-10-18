@@ -202,7 +202,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: 'refreshProjections(sessionId: SessionId): Promise<void>',
-        description: 'Load all Session projections once per connection; retry an unsuccessful initial read.',
+        description: 'Read projections without starting migration; retry failed or migration-deferred reads.',
         parameters: [{ name: 'sessionId', description: 'Session to inspect without opening its conversation.' }],
         returns: 'completion of the current or newly started refresh.',
       },
@@ -213,7 +213,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'bounded results, or a business/transport error.',
       },
       {
-        signature: 'fork(opts: { sessionId: SessionId atSeq?: number increaseTitle?: boolean onCreated?: (childId: SessionId) => void }): Promise<SessionId>',
+        signature: 'fork(opts: { sessionId: SessionId atSeq?: number increaseTitle?: boolean onCreated?: (childId: SessionId) => void /** False refuses source migration; omission preserves the Host default. */ allowMigration?: boolean }): Promise<SessionId>',
         description: 'Fork a session from an exact inclusive prefix of the source; on resolution the child is catalogued and can be explicitly retained.',
         parameters: [{ name: 'opts', description: 'source session id, the optional exact inclusive boundary seq (a real event seq the caller already knows; a cut inside an open turn is balanced Host-side with synthetic closers, and omission selects the latest completed-turn prefix), and whether to increment an inherited durable title before resolving. `onCreated` observes the catalogued child before that optional rename.' }],
         returns: 'the child session id.',
@@ -275,9 +275,9 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [{ name: 'id', description: 'a registered theme id or `system`; unknown ids throw.' }],
       },
       {
-        signature: 'setFontSize(px: number): void',
-        description: 'Change the conversation content font size — the only font-size write entry. Accepted values are written through the settings scope and emit `theme/change`.',
-        parameters: [{ name: 'px', description: 'integer px within FONT_SIZE_MIN..FONT_SIZE_MAX; out-of-range or fractional values throw.' }],
+        signature: 'setFontSize(role: FontRole, px: number): void',
+        description: 'Change one role\'s font size. Accepted values are written through the settings scope and emit `theme/change`.',
+        parameters: [{ name: 'role', description: 'font role.' }, { name: 'px', description: 'integer px within the role\'s `FONT_SIZE_SPECS` range; out-of-range or fractional values throw.' }],
       },
       {
         signature: 'register(definition: ThemeDefinition): () => void',
@@ -341,28 +341,28 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [{ name: 'target', description: 'known Session identity or durable direct-parent subagent address to display.' }],
       },
       {
-        signature: 'openWorkspace(workspaceId: WorkspaceId, beforeOpen?: (sessionId: SessionId) => void): Promise<void>',
+        signature: 'openWorkspace( workspaceId: WorkspaceId, beforeOpen?: (sessionId: SessionId) => void, options?: Pick<StartSessionOptions, \'agentPreset\'>, ): Promise<void>',
         description: 'Connect a Workspace and open its Session unless a later navigation supersedes it.',
-        parameters: [{ name: 'workspaceId', description: 'target Workspace.' }, { name: 'beforeOpen', description: 'optional synchronous preparation for the selected Session, skipped after supersession; a throw aborts the open and releases the retained reference.' }],
+        parameters: [{ name: 'workspaceId', description: 'target Workspace.' }, { name: 'beforeOpen', description: 'optional synchronous preparation for the selected Session, skipped after supersession; a throw aborts the open and releases the retained reference.' }, { name: 'options', description: 'choices for the Session the connection creates or reuses.' }],
         returns: 'completion; a superseded request may create a Session but does not open it.',
         throws: ['on failure; a refused creation is also shown through the Workspace notice unless a later navigation or disposal superseded the request.'],
       },
       {
-        signature: 'forkSession(sessionId: SessionId, onCreated?: (childId: SessionId) => void): Promise<SessionId>',
+        signature: 'forkSession( sessionId: SessionId, onCreated?: (childId: SessionId) => void, options?: Pick<Parameters<ISessions[\'fork\']>[0], \'allowMigration\'>, ): Promise<SessionId>',
         description: 'Fork a Session without changing the current selection.',
-        parameters: [{ name: 'sessionId', description: 'source Session.' }, { name: 'onCreated', description: 'observer before the optional child-title update.' }],
+        parameters: [{ name: 'sessionId', description: 'source Session.' }, { name: 'onCreated', description: 'observer before the optional child-title update.' }, { name: 'options', description: 'optional permission to start source migration; omission preserves the Host default.' }],
         returns: 'the child SessionId after creation and inherited-title increment.',
       },
       {
-        signature: 'connectWorkspace(workspaceId: WorkspaceId): Promise<SessionId>',
-        description: 'Resolve the reusable or newly created blank Session for a Workspace.',
-        parameters: [{ name: 'workspaceId', description: 'target Workspace.' }],
+        signature: 'connectWorkspace(workspaceId: WorkspaceId, options?: Pick<StartSessionOptions, \'agentPreset\'>): Promise<SessionId>',
+        description: 'Resolve the Session for a new conversation in a Workspace: the Host reuses the first listed blank member while it is reusable and otherwise creates one, under the requested preset or the Host default.',
+        parameters: [{ name: 'workspaceId', description: 'target Workspace.' }, { name: 'options', description: 'choices for the created or reused Session.' }],
         returns: 'a Session already addressable through the Session Controller.',
       },
       {
-        signature: 'startSession(workspaceId?: WorkspaceId): void',
-        description: 'Start a New Session flow and navigate to its Session; a creation the Host refuses is shown through the Workspace notice and leaves the selection as it was.',
-        parameters: [{ name: 'workspaceId', description: 'explicit target; absent inherits the current or most recent Workspace.' }],
+        signature: 'startSession(workspaceId?: WorkspaceId, options?: StartSessionOptions): void',
+        description: 'Create a fresh Session, or reuse a blank when preparing an explicit draft. A creation the Host refuses is shown through the Workspace notice and leaves the selection as it was.',
+        parameters: [{ name: 'workspaceId', description: 'explicit target; absent inherits the current or most recent Workspace.' }, { name: 'options', description: 'initial content and the reused blank\'s preset; existing text or attachments are preserved unless clearPreviousDraft is true.' }],
       },
       {
         signature: 'archiveSession(sessionId: SessionId, options?: { readonly stopActivity?: boolean }): Promise<void>',
@@ -545,11 +545,15 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ConnectionHandle',
-    declaration: 'export interface ConnectionHandle {\n    readonly isLoopback: boolean;\n    readonly generation: ConnectionGenerationState;\n    readonly state: ConnectionStateSource;\n    readonly rpc: ClientConnectionRpc;\n    reconnect(): void;\n    registerGenerationSource(source: ConnectionGenerationSource): () => void;\n    start(sinks: ConnectionSinks, config?: ConnectionRecoveryConfig): ConnectionLoop;\n}',
+    declaration: 'export interface ConnectionHandle {\n    readonly interactions: ConnectionInteractions;\n    readonly isLoopback: boolean;\n    readonly generation: ConnectionGenerationState;\n    readonly state: ConnectionStateSource;\n    readonly rpc: ClientConnectionRpc;\n    openWebSocket(path: string): ConnectionWebSocket;\n    reconnect(): void;\n    registerGenerationSource(source: ConnectionGenerationSource): () => void;\n    start(sinks: ConnectionSinks, config?: ConnectionRecoveryConfig): ConnectionLoop;\n}',
   },
   {
     name: 'ConnectionHostInfo',
     declaration: 'export interface ConnectionHostInfo {\n    readonly home: string;\n}',
+  },
+  {
+    name: 'ConnectionInteractions',
+    declaration: 'export type ConnectionInteractions = \'answer\' | \'none\';',
   },
   {
     name: 'ConnectionLoop',
@@ -580,6 +584,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ConnectionStateSource {\n    getSnapshot(): ConnectionState | undefined;\n    subscribe(listener: () => void): () => void;\n}',
   },
   {
+    name: 'ConnectionWebSocket',
+    declaration: 'export interface ConnectionWebSocket {\n    readonly readyState: number;\n    send(data: string): void;\n    close(code?: number, reason?: string): void;\n    addEventListener<Event extends keyof ConnectionWebSocketEventMap>(event: Event, listener: (event: ConnectionWebSocketEventMap[Event]) => void, options?: {\n        readonly once?: boolean;\n    }): void;\n    removeEventListener<Event extends keyof ConnectionWebSocketEventMap>(event: Event, listener: (event: ConnectionWebSocketEventMap[Event]) => void): void;\n}',
+  },
+  {
+    name: 'ConnectionWebSocketEventMap',
+    declaration: 'export interface ConnectionWebSocketEventMap {\n    readonly open: object;\n    readonly error: object;\n    readonly close: object;\n    readonly message: {\n        readonly data: unknown;\n    };\n}',
+  },
+  {
+    name: 'DraftInitializationOptions',
+    declaration: 'export interface DraftInitializationOptions {\n    readonly prompt?: string;\n    readonly clearPreviousDraft?: boolean;\n}',
+  },
+  {
     name: 'EntryKeyOf',
     declaration: 'export type EntryKeyOf<K extends keyof SlotMap & string> = SlotMap[K] extends {\n    kind: \'keyed\';\n    keyProps: infer P extends object;\n} ? keyof P & string : string;',
   },
@@ -602,6 +618,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'FactoryRegistrationPropsOf',
     declaration: 'export type FactoryRegistrationPropsOf<F extends keyof SlotFactoryMap & string> = FactoryRenderPropsOf<F> & PropsStore<FactoryStoreOf<F>> & InjectFace<FactoryInjectOf<F>> & PropsLocale<FactoryLocaleOf<F>> & PropsRenderFactories;',
+  },
+  {
+    name: 'FontFamilies',
+    declaration: 'export type FontFamilies = Readonly<Record<FontRole, string>>;',
+  },
+  {
+    name: 'FontRole',
+    declaration: 'export type FontRole = typeof FONT_ROLES[number];',
+  },
+  {
+    name: 'FontSizes',
+    declaration: 'export type FontSizes = Readonly<Record<FontRole, number>>;',
   },
   {
     name: 'GlobalStandardProps',
@@ -632,6 +660,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ISession {\n    readonly sessionId: SessionId;\n    readonly projections: ProjectionsFace;\n    beginSubmission(input: BeginSubmissionInput): SubmissionHandle;\n    prompt(content: PromptContentPart[], mode: \'queue\' | \'steer\', signal?: AbortSignal, requestId?: SessionRequestId): Promise<RemoteResult<{\n        accepted: true;\n    }>>;\n    readAttachment(attachmentId: AttachmentIdType): Promise<RemoteResult<{\n        attachment: ImageAttachmentRef;\n        data: Uint8Array;\n    }>>;\n    updateQueue(itemId: MessageId, action: QueueAction): Promise<RemoteResult<{\n        accepted: true;\n    }>>;\n    cancel(): Promise<RemoteResult<{\n        accepted: true;\n    }>>;\n    rename(title: string): Promise<RemoteResult<{\n        title: string;\n        seq: SessionSeq;\n    }>>;\n    loadOlder(): Promise<void>;\n    loadThrough(seq: SessionSeq): Promise<void>;\n    command(line: string): Promise<RemoteResult<{\n        matched: boolean;\n    }>>;\n}',
   },
   {
+    name: 'ISessions',
+    declaration: 'export interface ISessions {\n    readonly list: ObservableSnapshot<SessionListState>;\n    retain(target: SessionTarget, options: SessionRetainOptions): SessionReference;\n    using<T>(target: SessionTarget, options: SessionRetainOptions, operation: (reference: SessionReference) => T | Promise<T>): Promise<T>;\n    retainInfo(id: SessionId): ObservableSnapshot<SessionRetainInfo>;\n    readonly searchResultLimit: number;\n    create(opts?: {\n        workspaceId?: WorkspaceId;\n        cwd?: string;\n        sessionId?: SessionId;\n        agentPreset?: string;\n    }): Promise<SessionId>;\n    subagentAddress(id: SessionId): SubagentAddress | undefined;\n    refreshProjections(sessionId: SessionId): Promise<void>;\n    refresh(): Promise<void>;\n    search(query: string, signal: AbortSignal): Promise<RemoteResult<{\n        items: SessionSearchResultItem[];\n        hasMore: boolean;\n    }>>;\n    fork(opts: {\n        sessionId: SessionId;\n        atSeq?: number;\n        increaseTitle?: boolean;\n        onCreated?: (childId: SessionId) => void;\n        allowMigration?: boolean;\n    }): Promise<SessionId>;\n    scope(id: SessionId): AgentContext | undefined;\n    scopeOf(ctx: Context): SessionId | undefined;\n    sessionOf(ctx: Context): SessionFace | undefined;\n    binding(id: SessionId): SessionBinding | undefined;\n}',
+  },
+  {
     name: 'KeyedHooksSources',
     declaration: 'export type KeyedHooksSources = Record<string, KeyedStandardSource>;',
   },
@@ -641,7 +673,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'KeyedStandardSource',
-    declaration: 'export type KeyedStandardSource = (key: string) => HostObservable<unknown> | undefined;',
+    declaration: 'export type KeyedStandardSource = (key: string, member?: string) => HostObservable<unknown> | undefined;',
   },
   {
     name: 'KeyPropsOf',
@@ -868,8 +900,20 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type SessionIdOf = SessionStandardProps extends {\n    sessionId: infer S;\n} ? S : string;',
   },
   {
+    name: 'SessionListPhase',
+    declaration: 'export type SessionListPhase = \'pending\' | \'ready\';',
+  },
+  {
+    name: 'SessionListState',
+    declaration: 'export interface SessionListState {\n    ids: SessionId[];\n    byId: Record<SessionId, SessionSummary>;\n    phase: SessionListPhase;\n    projectionsBySession: Readonly<Record<SessionId, SessionProjectionSnapshot>>;\n}',
+  },
+  {
     name: 'SessionMaybeStandardProps',
     declaration: 'export interface SessionMaybeStandardProps {\n}',
+  },
+  {
+    name: 'SessionProjectionSnapshot',
+    declaration: 'export interface SessionProjectionSnapshot {\n    readonly values: Readonly<Partial<SessionProjectionMap>>;\n    readonly state: \'idle\' | \'loading\' | \'ready\' | \'migration-required\' | \'error\';\n    readonly error: RemoteFailure | null;\n}',
   },
   {
     name: 'SessionProviderComponent',
@@ -925,7 +969,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SlotEntryDef',
-    declaration: 'export interface SlotEntryDef {\n    kind: SlotKind;\n    scope: SlotScope;\n    owner?: object;\n    keyProps?: Record<string, object>;\n    hookContext?: unknown;\n    inject?: object;\n}',
+    declaration: 'export interface SlotEntryDef {\n    kind: SlotKind;\n    scope: SlotScope;\n    inline?: true;\n    owner?: object;\n    keyProps?: Record<string, object>;\n    hookContext?: unknown;\n    inject?: object;\n}',
   },
   {
     name: 'SlotFactoryMap',
@@ -961,11 +1005,15 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SlotSpec',
-    declaration: 'export type SlotSpec<E extends SlotEntryDef> = {\n    kind: E[\'kind\'];\n    scope: E[\'scope\'];\n} & (\'inject\' extends keyof E ? E extends {\n    inject: infer Injected extends object;\n} ? {\n    inject: Injected;\n} : {\n    inject?: object;\n} : {\n    inject?: never;\n});',
+    declaration: 'export type SlotSpec<E extends SlotEntryDef> = {\n    kind: E[\'kind\'];\n    scope: E[\'scope\'];\n    inline?: true;\n} & (\'inject\' extends keyof E ? E extends {\n    inject: infer Injected extends object;\n} ? {\n    inject: Injected;\n} : {\n    inject?: object;\n} : {\n    inject?: never;\n});',
   },
   {
     name: 'SnapshotSelectorHook',
     declaration: 'export type SnapshotSelectorHook<T> = <S>(sel: (s: T) => S, eq?: (a: S, b: S) => boolean) => S;',
+  },
+  {
+    name: 'StartSessionOptions',
+    declaration: 'export interface StartSessionOptions extends DraftInitializationOptions {\n    readonly agentPreset?: string;\n}',
   },
   {
     name: 'StoreDecl',
@@ -1009,7 +1057,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ThemeSnapshot',
-    declaration: 'export interface ThemeSnapshot {\n    preference: ThemePreference;\n    fontSize: number;\n    active: ThemeDefinition;\n    themes: readonly ThemeDefinition[];\n    revision: number;\n}',
+    declaration: 'export interface ThemeSnapshot {\n    preference: ThemePreference;\n    fontSizes: FontSizes;\n    fontFamilies: FontFamilies;\n    active: ThemeDefinition;\n    themes: readonly ThemeDefinition[];\n    revision: number;\n}',
   },
   {
     name: 'ThemeTokenModes',

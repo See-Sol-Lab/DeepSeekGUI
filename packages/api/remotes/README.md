@@ -27,7 +27,7 @@ Two-sided BFF for Host Remote capabilities selected by this application. The Hos
 <a id="use-this-package"></a>
 ## Use this package
 
-[`@deepseek-ai/dsh-api-session-controller`](../session-controller/README.md) owns Agent and Session identity policy, including the Typert lookup resolvers used by other namespaces. This package only selects and mounts that generated Session contribution; it does not duplicate activation policy.
+[`@deepseek-ai/dsh-api-session-controller`](../session-controller/README.md) owns Agent and Session identity policy, including the Typert lookup resolvers used by other namespaces. This package selects and mounts that generated Session contribution without a direct runtime dependency on `@deepseek-ai/dsh-session`; activation policy stays with Session Controller.
 
 The Client assembly mounts Office conversion, Commands, credentials, settings, Goal, Schedule, dynamic Cordis, file and Session references, read-only Host plugin inventory, plugin-installation registry response comparison, message feedback, permission presets, Session Controller, subagents, and Workspace Controller contributions. The `permissionPresets` namespace returns the complete process-level catalog used by current-session controls. Cordis effect ownership withdraws every contribution when this assembly unloads, while `@deepseek-ai/dsh-api-gateway/client` owns descriptor validation, traced namespace Services, direct and scoped methods, invocation, streams, and cancellation. The Client entry consumes the shared `TypertClientRemote` interface through Cordis and does not import the concrete Gateway. It re-exports the Gateway Client face's declaration merges type-only, so a consumer reaching the forwarded-event vocabulary through this facade gains no runtime edge to the Gateway implementation.
 
@@ -43,6 +43,8 @@ This package owns no physical transport or Host service discovery. It projects t
 `src/remote-events.ts` holds `API_REMOTE_FORWARDED_EVENTS`, the allowlist of Host Cordis events this application forwards without renaming, and therefore the legal key set of `ctx.remote.$on`; each entry also selects ordinary emission or Agent-scoped waterfall delivery. The type-only `src/types.ts` derives its selection face. Forwarding one more event requires one entry in that array: the type projection, consumer key face, and Host forwarding loop all derive from it.
 
 The listener signature is not restated here. Each allowlisted event's Cordis `Events` declaration lives in its owner package's client-safe `./types` export, and both faces of this package pull those declarations in. The Host face additionally asserts every entry against `TypertForwardableEventEntry`: an `emit` entry must be a declared one-way event, while a `waterfall` entry must be a declared Agent-scoped waterfall whose final parameter is its same-result `next()` callback.
+
+An `emit` entry may declare `resources`, readers keyed by `TypertResourceMap` kind and typed by the event's own parameters, such as `resources: { session: summary => summary.sessionId }` on `api-session/added`. The Host entry attaches them to each forwarded frame unchanged, and the Gateway forwards a notification to a non-owner Peer only when access control allows the event on the resources they name; a notification without `resources` touches the built-in `global` resource. `api-session/activity`, `api-session/added`, `api-session/error`, `api-session/removed`, and `api-session/status` declare their Session. A notification names one resource identity or none; collection changes travel on follow streams instead.
 
 The Host entry registers an independent allowlist listener set and queue for each Client stream. It rejects non-JSON ordinary-event arguments before enqueueing. For a waterfall, it projects only the top-level Agent identity and JSON request fields; a Client result must also be lossless JSON, while `next()` delegates to the following Host listener. Each scoped waterfall request must carry its routed Agent directly as `request.agent`; the Host rejects a missing or mismatched identity before forwarding. The source attaches all listeners synchronously before `ctx.typertGateway.registerRemoteEvents()` exposes Gateway's internal `$events` logical stream, so its first `ready` item proves that incremental delivery is active and carries the Host home for Client path display. Withdrawing the registration aborts active streams.
 
@@ -86,7 +88,5 @@ No direct effect; mounted Host capabilities own any model-visible behavior they 
 None.
 
 </details>
-
-**Runtime invariant:** No companion is published. Typert and the Agent/Session registries own the observed relationships.
 
 The Client assembly includes the account namespace for login commands and reconnectable account snapshots.

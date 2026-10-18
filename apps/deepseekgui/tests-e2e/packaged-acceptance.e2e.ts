@@ -112,6 +112,22 @@ async function waitForMarker(path: string, timeoutMs = 60_000): Promise<Marker> 
   }
 }
 
+
+/**
+ * Best-effort removal of a case's scratch root. Software injected into the
+ * test window (an IME writing logs under the fake USERPROFILE, e.g. Sogou's
+ * SGTool) can hold files open past the app's exit; a leftover temp directory
+ * is not a test failure.
+ * @param dir - scratch root to remove.
+ */
+function removeScratch(dir: string): void {
+  try {
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code
+    if (code !== 'EPERM' && code !== 'EBUSY') throw error
+  }
+}
 describe('打包产物门禁', () => {
   it('dist/desktop/win-unpacked/DeepSeekGUI.exe 存在（成品验收入口不得假绿）', () => {
     expect(packagedExists, `缺少 ${EXE}；先运行 \`pnpm run build:desktop-dist\` 再执行打包验收`).toBe(true)
@@ -146,7 +162,7 @@ describe.runIf(packagedExists)('Packaged Acceptance（Case A–F）', () => {
         await shutdownApp(app)
       }
     } finally {
-      rmSync(join(temp, '..'), { recursive: true, force: true })
+      removeScratch(join(temp, '..'))
     }
   })
 
@@ -188,7 +204,7 @@ ${await dumpChromeButtons(app)}`)
         await shutdownApp(app)
       }
     } finally {
-      rmSync(join(temp, '..'), { recursive: true, force: true })
+      removeScratch(join(temp, '..'))
     }
   })
 
@@ -236,7 +252,7 @@ ${await dumpChromeButtons(app)}`)
       expect(log).toContain('fixture stdout secret: sk-<redacted>')
       expect(log).toContain('fixture stderr secret: sk-<redacted>')
     } finally {
-      rmSync(join(temp, '..'), { recursive: true, force: true })
+      removeScratch(join(temp, '..'))
     }
   })
 
@@ -287,7 +303,7 @@ ${await dumpChromeButtons(app)}`)
         await shutdownApp(app)
       }
     } finally {
-      rmSync(join(temp, '..'), { recursive: true, force: true })
+      removeScratch(join(temp, '..'))
     }
   })
 
@@ -316,7 +332,7 @@ ${await dumpChromeButtons(app)}`)
         await shutdownApp(second)
       }
     } finally {
-      rmSync(join(temp, '..'), { recursive: true, force: true })
+      removeScratch(join(temp, '..'))
     }
   })
 
@@ -400,7 +416,7 @@ ${await dumpChromeButtons(app)}`)
         await shutdownApp(app)
       }
     } finally {
-      rmSync(join(temp, '..'), { recursive: true, force: true })
+      removeScratch(join(temp, '..'))
     }
   })
 
@@ -447,7 +463,7 @@ ${await dumpChromeButtons(app)}`)
         await shutdownApp(app)
       }
     } finally {
-      rmSync(join(temp, '..'), { recursive: true, force: true })
+      removeScratch(join(temp, '..'))
     }
   })
 
@@ -466,7 +482,7 @@ ${await dumpChromeButtons(app)}`)
       const tasklist = spawnSync('tasklist', ['/FI', 'IMAGENAME eq DeepSeekGUI.exe'], { encoding: 'utf8' })
       expect(tasklist.stdout).not.toContain('DeepSeekGUI.exe')
     } finally {
-      rmSync(join(temp, '..'), { recursive: true, force: true })
+      removeScratch(join(temp, '..'))
     }
   })
 })

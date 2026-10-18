@@ -25,6 +25,8 @@ Add Auto review to the current-session permission pickers in a Web profile. Befo
 <a id="use-this-package"></a>
 ## Use this package
 
+The review environment records the Session's current working directory for the pending action.
+
 ### Install into a profile
 
 From this source checkout, install the package into the Web profile through the existing CLI:
@@ -33,7 +35,7 @@ From this source checkout, install the package into the Web profile through the 
 pnpm dsh plugin --profile web add ./packages/experimental/auto-review
 ```
 
-The CLI initializes the profile when needed and appends this package's declared patch after the base and Web layers. Reconciliation activates the patch as a profile layer; a package without `dsh.bundle.patch` is only an installed dependency. Select `Auto review` with its superscript `EXP` badge in the composer or `/permission` picker and confirm the current-session risk dialog. An explicit `/permission auto` command switches directly. General settings and future-session defaults do not offer Auto.
+The CLI initializes the profile when needed and appends this package's declared patch after the base and Web layers. Reconciliation activates the patch as a profile layer; a package without `dsh.bundle.patch` is only an installed dependency. Select `Auto review` with its `EXP` badge in the composer menu or `/permission` picker and confirm the current-session risk dialog. An explicit `/permission auto` command switches directly. General settings and future-session defaults do not offer Auto.
 
 Remove the layer through the same CLI:
 
@@ -60,8 +62,6 @@ A final denial uses the ordinary tool card. The collapsed row identifies Auto re
 The reviewer reconstructs five sections from the current Session surface and pending execution: fixed policy, cwd-only environment, sourced project constraints, filtered sourced history, and the complete pending action. Native schema comes from the latest request header. A PTC binding freezes its schema and carries it through the scheduler into transient execution metadata; start and settle events never serialize description or parameters. Main-agent `system/message` nodes, assistant text and reasoning, and tool results are excluded. The outer review input is a frozen `RequestUserInput` without durable identity or source; retained history keeps its original source attribution in the review text. [The decision record](../../../.agents/notes/implemented/feature/2026-08-28-auto-review.md) owns authority, lifecycle, and child-inheritance rationale.
 
 Unloading closes selection and review admission, migrates live Auto Sessions to Full access through the existing preset writer, then aborts and drains reviews before withdrawing the listener and contribution. The migration writes the `never` approval policy through the Session writer without queuing a policy-change notice; the model sees the new policy in the next runtime-context snapshot. The sandbox value and persistent terminals survive the migration. A persisted Auto Session cannot publish without the complete integration; reopening it after installation is an explicit user action. Reinstalling the layer restores the option but does not switch live Sessions back to Auto.
-
-No runtime invariant companion is published: this single effect owns selection admission, review enrollment, cancellation, and cleanup; it has no independent observation that can diverge from those owned operations.
 
 </details>
 

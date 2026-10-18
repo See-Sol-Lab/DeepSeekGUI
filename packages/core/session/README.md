@@ -63,6 +63,18 @@ Append, seed/restore, and event adoption/snapshot reject any `header.system` and
 
 Session log positions use two numeric types. `SessionSeq` identifies an existing event or inclusive event watermark; `SessionLogOffset` identifies a gap, prefix length, or read boundary and may equal the event count. `SessionSeqCursor` adds the `-1` “no event yet” value, while `OptionalSessionSeq` uses `null` when absence is data. The constructors validate non-negative safe integers, and the brands disappear at runtime, so durable JSON and wire values remain ordinary numbers.
 
+<a id="write-experimental-plugin-records"></a>
+
+### Write experimental plugin records
+
+`appendPluginRecord(session, type, data)` appends one plugin record for a package under `packages/experimental/`; the `verify-plugin-record-callers` check rejects any other production caller in this repository. Plugins outside this repository must not call it either, although no repository check can inspect them.
+
+Declare each record in `PluginRecordMap` through `@deepseek-ai/dsh-session/types`, with a description and an explicit payload type annotation in the owning experimental package's `src/`. Names use `plugin:<owner>/<record>`, where `owner` is the suffix of the package name `@deepseek-ai/dsh-experimental-<owner>`; for example, `plugin:pi-extensions/entry`. TypeScript checks each name and payload against its declaration; the writer's runtime JSON snapshot rejects values that cannot be preserved losslessly. Put extension-defined or other dynamic names inside the payload of a declared record.
+
+The [experimental persistence catalog](../../../docs/experimental-persistence-catalog.md) lists current plugin-record declarations with their owners, descriptions, payload type annotations, and source files. These declarations remain separate from `SessionEventMap`, expanded persistence schemas, released type history, and `KNOWN_SESSION_EVENT_TYPES`. Records carry `ignorable: true`: a build that does not recognize one retains and skips it on read. Records never enter the model-visible surface. Resume and fork carry them with the rest of the log; Session format migration keeps them on a best-effort basis.
+
+`pluginRecordOf(event)` returns an event as a record, or `undefined` for any other event; a `ctx.sessionProjections` unit that passes each event to it rebuilds plugin state on resume. Its `data` remains `unknown` even when the current map declares the name. The owner validates it before use because earlier builds can write different payloads, and the V3-to-V4 format edge can rename an unknown ignorable V3 event into the same `plugin:` namespace. Removing or renaming a declaration does not discard stored records. The [ignorable events decision](../../../.agents/notes/implemented/architecture/2026-08-30-retain-ignorable-external-session-events.md) owns the compatibility policy.
+
 ### Fork a session
 
 `ctx.sessions.fork(source, boundary?, childSessionId?)` copies an exact inclusive event prefix (default: the last event) from a live source. `buildForkSeed` in `dsh-session/fork` places an inherited marker after the copied events, adds missing error tool results only for the open step, and closes that step and turn with a `forked` reason. Closed steps and turns remain unchanged, including historical missing results. The marker and closers belong to the child; `inheritedEventCount` counts only the copied prefix.
@@ -101,7 +113,6 @@ The package is built on event sourcing: a `Session` is an append-only log of typ
 | [`src/request-header.ts`](src/request-header.ts) | `request/header` folding and reconstruction |
 | [`dsh-util-values`](../../util/values/README.md) | Shared lossless JSON validation and detached snapshots |
 | [`src/repair.ts`](src/repair.ts) | Shared tool-result recovery for failed steps, interrupted logs, and fork seeds |
-| [`src/invariant.ts`](src/invariant.ts) | Invariant companion: seq, turn/step enclosure, tool call/result pairing |
 
 ### Append validation
 
@@ -109,11 +120,11 @@ Every append uses the shared iterative `snapshotJsonValue()` pass, which reads, 
 
 ### Shared recovery
 
-`ToolCallRecovery` tracks unanswered requests from committed events without retaining event history. AgentLoop observes live steps; crash recovery and fork-seed construction replay their prefixes through `openTurnClosers`. Live failures and crash recovery use interrupted-result wording by default; fork construction passes the fork cause to select its distinct retry guidance. The caller appends recovery results before closing the step ([decision](../../../.agents/notes/implemented/bug-fix/2026-09-19-failed-step-tool-results.md)).
+`ToolCallRecovery` tracks unanswered requests from committed events without retaining event history. AgentLoop observes live steps; crash recovery and fork-seed construction replay their prefixes through `openTurnClosers`. Live failures and crash recovery use interrupted-result wording by default; fork construction passes the fork cause to select its distinct retry guidance. The caller appends recovery results before closing the step ([reference](../agent-loop/README.md)).
 
 ### Derived history
 
-`deriveMessages()` caches deep-frozen projections and returns a fresh array per call. The surface event types (`system/message`, `developer/message`, `user/message`, `assistant/message`, `tool/result`) supply their recorded message identities and content; empty-content system and developer nodes project to no message. Plugin-owned projections change derived content without mutating recorded messages. Replacements and projection decisions invalidate the cache. Embedded Assistant streams and `assistant/attempt` events remain replay and diagnostic data only.
+`deriveMessages()` caches deep-frozen projections and returns a fresh array per call. The surface event types (`system/message`, `developer/message`, `user/message`, `assistant/message`, `tool/result`) supply their recorded message identities and content; empty-content system and developer nodes project to no message. Plugin-owned projections change derived content without mutating recorded messages. Replacements and projection decisions invalidate the cache. Embedded Assistant streams and `assistant/attempt` events remain replay and diagnostic data only. Ordinary prompts and injected context project without automatic type- or source-specific wrappers. Producers own any framing in their recorded content.
 
 ### The request header
 
@@ -157,7 +168,7 @@ Appended surface entries preserve reusable prefixes. A `replace` operation inval
 
 #### What the model sees
 
-If recovery finds an assistant tool request with no durable `tool/call`, its synthetic `TOOL_NOT_STARTED` result says `The tool call was interrupted before the Harness recorded it as started. Retry it if it is still needed.` If a durable `tool/call` has no result, its `TOOL_OUTCOME_UNKNOWN` result says `The tool call was interrupted after it was recorded, but no result was durably recorded. Its outcome is unknown. Decide whether to retry from the tool semantics: retry only if the operation is read-only or idempotent; if it may have side effects, first verify external state or ask the user. Do not retry blindly.` Fork-generated results describe only the inherited records: the parent may have started or completed a call after the selected event. `TOOL_NOT_STARTED` means the prefix contains no start record; `TOOL_OUTCOME_UNKNOWN` means it contains a start but no result. Both tell the model to retry only read-only or idempotent operations without further checks; operations with side effects require external verification or user input. See the [fork decision](../../../.agents/notes/implemented/feature/2026-08-18-arbitrary-seq-session-fork.md).
+If recovery finds an assistant tool request with no durable `tool/call`, its synthetic `TOOL_NOT_STARTED` result says `The tool call was interrupted before the Harness recorded it as started. Retry it if it is still needed.` If a durable `tool/call` has no result, its `TOOL_OUTCOME_UNKNOWN` result says `The tool call was interrupted after it was recorded, but no result was durably recorded. Its outcome is unknown. Decide whether to retry from the tool semantics: retry only if the operation is read-only or idempotent; if it may have side effects, first verify external state or ask the user. Do not retry blindly.` Fork-generated results describe only the inherited records: the parent may have started or completed a call after the selected event. `TOOL_NOT_STARTED` means the prefix contains no start record; `TOOL_OUTCOME_UNKNOWN` means it contains a start but no result. Both tell the model to retry only read-only or idempotent operations without further checks; operations with side effects require external verification or user input. See the [fork reference](src/fork.ts).
 
 #### Token effect
 
@@ -189,7 +200,7 @@ Logging causes no invalidation, and exact reconstruction preserves request-prefi
 These limits define when the session store needs special care. They are current package constraints, not a task backlog.
 
 - **Live-source Store API** — persisted-but-unloaded sources use the Host observation path. Fork closes only the open tail and does not repair missing results in previously closed steps.
-- **`SESSION_FORMAT_VERSION` names the [current logical representation](../../../docs/session-format-status.md)** — the current reader rejects retired `header.system` and validates `system/message` payloads and protected-head rewrites. Historical headers and events belong to adjacent format packages; the [adjacent migration chain](../../session/session-format-catalog/README.md) converts supported history before constructing `Session`, and the write-open path publishes only the current-format successor. Equal-version unknown events require the envelope's explicit `ignorable` marker, which does not promise safe structural migration ([mechanism](../../../.agents/notes/implemented/architecture/2026-08-31-released-session-format-migrations.md)).
+- **`SESSION_FORMAT_VERSION` names the [current logical representation](../../../docs/session-format-status.md)** — the current reader rejects retired `header.system` and validates `system/message` payloads and protected-head rewrites. Historical headers and events belong to adjacent format packages; the [adjacent migration chain](../../session/session-format-catalog/README.md) converts supported history before constructing `Session`, and the write-open path publishes only the current-format successor. Equal-version unknown events require the envelope's explicit `ignorable` marker, which does not promise safe structural migration ([mechanism](../../../.agents/notes/implemented/architecture/2026-08-31-released-session-format-migrations.md)). [Reader compatibility](../../../.agents/notes/implemented/process/2026-10-08-session-reader-compatibility-review.md) determines whether a change needs a version increase.
 - **`TurnEndReasonMap` omits the ACP-named `refusal` / `max_turn_requests` variants** — producer-gated: they land when an adapter or the loop first emits them.
 - **No session tree beyond fork** — a pi-style entry tree over branched sessions is deferred unless a consumer needs more than boundary-based forking.
 

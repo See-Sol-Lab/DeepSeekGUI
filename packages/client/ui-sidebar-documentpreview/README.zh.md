@@ -28,7 +28,7 @@ kind: "package-reference"
 <a id="what-it-registers"></a>
 ## 注册了什么
 
-- **类型** —— `ctx.sidebarRightTabs.register(...)`，id 为 `@deepseek-ai/dsh-client-ui-sidebar-documentpreview`（这个实现在 tab 系统中的身份，也是其正文注册所用的键），kind `text`，pattern `dsh-resource://file/**`，档位 `fallback`。`canOpen` 只接受 Session 地址，其中路径可为相对或绝对路径；不认领裸 `absolute` 地址。在 `extension` 或 `builtin` 档以更窄 pattern（比如 `*.png`）注册的类型接走那些地址；其他受支持文件落到这里。整个地址就是内容身份，所以不同目录下同名的两个文件、或同一路径在两个会话之下，是两个 tab；解码后的 basename 是 tab 标题，keyed slot `sidebar.right.pane.tab.title` 会在标题前放置按扩展名选择的 `FileTypeIcon`。
+- **类型** —— `ctx.sidebarRightTabs.register(...)`，id 为 `@deepseek-ai/dsh-client-ui-sidebar-documentpreview`（这个实现在 tab 系统中的身份，也是其正文注册所用的键），kind `text`，匹配完整文件资源地址的 pattern，档位 `fallback`。`canOpen` 只接受 Session 地址，其中路径可为相对或绝对路径；不认领裸 `absolute` 地址。在 `extension` 或 `builtin` 档以更窄 pattern（比如 `*.png`）注册的类型接走那些地址；其他受支持文件落到这里。整个地址就是内容身份，所以不同目录下同名的两个文件、或同一路径在两个会话之下，是两个 tab；解码后的 basename 是 tab 标题，keyed slot `sidebar.right.pane.tab.title` 会在标题前放置按扩展名选择的 `FileTypeIcon`。
 - **正文** —— keyed slot `sidebar.right.pane.tab`，键为类型的 id。固定头部在可用时显示 Host 的绝对路径，否则显示请求路径；共享的 [`PathLabel`](../ui-primitives/README.zh.md#component-catalog) 弱化目录颜色，以左侧渐隐保留被裁剪路径的尾部字符，并在悬停时展示完整值。有多个受支持的渲染器时才显示下拉菜单。仅文本兼容的源文件提供纯文本选项；只有一个渲染器时不显示查看器控件。已知的二进制容器后缀没有注册渲染器时，在路径头部下方显示文件类型图标和不支持预览的说明，并且不会发起读取。两个 Session 作用域的 list 子 slot 在文件元数据报出 Host 路径后把当前文件交给其他插件，owner prop 为 `absolutePath`：`sidebar.right.tab.document.actions` 在每个显示头部的状态里渲染在头部自有控件之后；`sidebar.right.tab.document.unpreviewable` 渲染在不支持预览的空态里，以及可读但本预览无法渲染的文件（`not-text`、`too-large`）的空态里，占据原本放重试的位置；载体或未分类的读取失败仍保留重试，不存在或非普通文件的路径只给说明。两者已发布的占位者都是 [`ui-open-in-app`](../ui-open-in-app/README.zh.md)。仅当所选渲染器声明 `wrap: true` 时显示换行开关；图标表示点击后切换到的模式，该偏好按 tab 保存，初始开启。重新载入仍在此头部，不放入 Sidebar 的 tab 条。自动刷新默认开启；独立开关暂时隐藏，状态、文案、样式与切换逻辑保留。正文贴合格的每条边，各渲染器自行提供内容留白，并可拥有内部滚动区。这与 Files tab 右侧预留 2px 滚动条间距的布局有意不同：Preview 使用格的完整宽度，使贴边 HTML 与代码滚动区终止于格的边缘。
 - **共享加载与视图状态**，会话作用域、按 tab id 分桶。store 持有累计页或完整字节、读取与观察版本、待处理 Resource 变化、自动刷新状态、加载/失败状态、渲染器选择、滚动位置、换行和已响应的导航 revision。普通 inject face 调用 Remote 读取，并经声明的 store action 写入。重新载入和加载模式变化会淘汰旧请求；tab 的中止信号清理其状态。
 
@@ -39,7 +39,7 @@ kind: "package-reference"
 <a id="addresses"></a>
 ## 地址
 
-tab 使用 `fileAddressFor` 构造的 Session 地址，携带相对或绝对路径。`hostFileOf(address)` 仅从地址取得 Session，不接收外部 Session 参数，也不借用当前或 Tab Session。Host 通过 Session 文件系统解析文件及关联路径，由该后端控制读取权限。任何 UI（包括 Global 组件）都共享同一完整地址的元数据。[Workspace Files README](../../api/workspace-files/README.zh.md) 定义这些规则；渲染器选择不改变导航地址。
+tab 使用 `fileAddressFor` 构造的 Session 地址，携带相对或绝对路径。路由在地址及其内容身份中保留 `.` 与 `..` 路径段，由 Host 解析。`hostFileOf(address)` 仅从地址取得 Session，不接收外部 Session 参数，也不借用当前或 Tab Session。Host 通过 Session 文件系统解析文件及关联路径，由该后端控制读取权限。任何 UI（包括 Global 组件）都共享同一完整地址的元数据。[Workspace Files README](../../api/workspace-files/README.zh.md) 定义这些规则；渲染器选择不改变导航地址。
 
 全部文本分页加载完成后，Markdown 图片通过已鉴权的 `/api/file` 路由读取绝对文件路径，以及相对于源文档所在目录的路径。相对图片等待 Host 返回文档绝对路径。URL 转义只解码一次；查询参数与片段后缀不计入文件名。HTTP(S) 图片保留原始 URL，加载失败的图片显示 alt 文本。本地图片要求应用基址为 HTTP(S) URL；图片文件不加入自动刷新依赖。
 
@@ -64,6 +64,8 @@ PNG、JPEG、GIF、WebP、BMP、ICO 和 SVG 通过 Blob URL 在 `<img>` 静态�
 共享文案来自 `sidebarDocumentPreview`；各内置渲染器拥有自己的本地化标签。PDF 与转换后的 Office 预览在浅色模式下使用冷调浅灰底色，在深色模式下使用哑黑底色，页面带有轻微阴影并保留文档原色。PDF 与图片预览共用浮动控件，提供**适应宽度**、25%、50%、100%、150% 和 200% 选项，并在 25%–400% 固定范围内按 25% 逐级缩放。适应宽度是默认模式并跟随面板尺寸；100% 表示 PDF 的 96 DPI 页面尺寸或图片的固有 CSS 像素尺寸。在精细指针设备上，控件初始隐藏；指针进入底部 72 个 CSS 像素时向上滑入，离开 420 ms 后向下退出；控件悬停、键盘焦点、菜单展开和手势进行期间保持显示，无 hover 的设备则始终显示。Chromium 将 macOS 触控板捏合映射到与 Ctrl+滚轮相同的实时指针锚定路径；控件同步显示手势比例，静止后的值在正文重新挂载后继续保留，直至 tab 关闭。HTML 预览不显示缩放控件。缩放稳定或适应宽度发生变化后，视口附近的 PDF 页面按最终缩放比例乘以设备像素比重绘。新位图完成前保留原有画面和可选文字层；屏幕外的页面在接近视口时更新。
 
 首次读取及渲染器准备（包括 Office 转换）共用居中的 28px ongoing `StateDot`，下方显示本地化状态文字“文档渲染中...”。状态向辅助技术提供相同的名称，并遵循减少动态效果偏好。追加文本页时使用紧凑的行内转圈，同时保留已显示的内容。PDF 正文仅在 PDF 预览挂载时加载包内 `client.pdf.js` chunk；PDF.js、Worker 源码和内嵌支持数据不会进入启动 `client.js`。PDF 与转换后的 Word/PowerPoint 页面组成纵向序列，页间距与四周留白均为 12px，露出当前主题的文档背景色；适应宽度会预留此留白，页面在接近视口时惰性渲染；未渲染的页以安静的 3:4 占位块保持位置。PDF.js 官方 TextLayerBuilder 在与画面重合的文字层上管理选区边界和复制文本规范化。两种主题均使用半透明蓝色选区，画布保留文档文字，空白换行不高亮；对齐同时考虑 PDF 页面单位、页面旋转与视口宽度变化，页面释放时取消两层渲染。纯图片 PDF 不包含可选取的文字。代码预览使用 tertiary 色的语言名称和带提示的复制图标；换行仍由文档工具栏控制。默认显示源码行号，但复制文本不包含行号；纯文本与代码使用相同字号和行高。代码直接坐在分栏自身的背景上，而不是会话卡片的填充色；复制条与占满剩余高度的内部滚动区相邻，因此横纵滚动条都从复制控件下方开始。
+
+文档开头的 YAML frontmatter（首行 `---` 开始，以 `---` 或 `...` 结束）在 Markdown 正文上方显示为键值列表。字符串值显示解析后的文本，包括折叠与多行字符串；其他标量、列表、映射与别名保留原始 YAML 写法。无效 YAML 或非映射文档原样显示整个块，没有内容的块不显示。未闭合的块仍按 Markdown 渲染。YAML 解析器位于包内 `client.frontmatter-fields.js` 分块，仅在文档含 frontmatter 时加载；加载期间或加载失败时显示原样块。源文件不会被修改。
 
 <a id="excel-preview"></a>
 ## Excel 预览
@@ -153,5 +155,3 @@ Office Remote 通过 Connection 的 multipart 二进制传输返回原生 `Uint8
 无。
 
 </details>
-
-**运行时不变式：** 不发布伴生入口。渲染器元数据、文档加载和视图状态归本地注册表与声明的 Slot store 所有，没有可比对的独立运行时来源；注册释放和 tab 生命周期由行为测试覆盖。

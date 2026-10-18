@@ -9,7 +9,7 @@ import {
   closeSync, existsSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, realpathSync,
   renameSync, rmdirSync, statSync, symlinkSync, unlinkSync, writeSync,
 } from 'node:fs'
-import { createConnection } from 'node:net'
+import { createConnection, createServer } from 'node:net'
 import { basename, dirname, join } from 'node:path'
 import { StringDecoder } from 'node:string_decoder'
 import { fileURLToPath } from 'node:url'
@@ -805,6 +805,31 @@ export function createServiceLogWriter(path: string, maxBytes = SERVICE_LOG_MAX_
       }
     },
   }
+}
+
+/**
+ * 选一个能监听的端口：首选端口能绑定（或只是被占用）就原样返回；Windows
+ * 把它划进保留范围（Hyper-V/WinNAT，netsh 的 excludedportrange，绑定报
+ * EACCES）时改由系统分配一个空闲端口。占用仍交给 {@link portInUse} 报错。
+ * 只在保留时才换：端口是页面 origin 的一部分，换了浏览器存储就换了一份。
+ * @param host - 监听主机。
+ * @param port - 首选端口。
+ * @returns 可用端口。
+ */
+export function bindablePort(host: string, port: number): Promise<number> {
+  const tryListen = (candidate: number): Promise<number | NodeJS.ErrnoException> => new Promise((resolve) => {
+    const server = createServer()
+    server.once('error', resolve)
+    server.listen(candidate, host, () => {
+      const address = server.address()
+      server.close(() => { resolve(typeof address === 'object' && address !== null ? address.port : candidate) })
+    })
+  })
+  return tryListen(port).then(async (first) => {
+    if (typeof first === 'number' || first.code !== 'EACCES') return port
+    const fallback = await tryListen(0)
+    return typeof fallback === 'number' ? fallback : port
+  })
 }
 
 /**

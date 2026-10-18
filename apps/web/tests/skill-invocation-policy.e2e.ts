@@ -140,6 +140,7 @@ describe('web e2e: skill invocation policy through the real host', () => {
     await option.click()
     const skill = input.locator('[data-composer-text-ref]').filter({ hasText: '/policy-shared' })
     const file = input.locator('[data-composer-chip]')
+    await file.locator('span').first().waitFor({ state: 'visible' })
     const draft = await input.textContent()
     const alignment = await input.evaluate((el) => {
       const skill = el.querySelector<HTMLElement>('[data-composer-text-ref]')!
@@ -170,6 +171,7 @@ describe('web e2e: skill invocation policy through the real host', () => {
     await skill.click()
     const preview = page.locator('[data-document-markdown]')
     await expect.poll(() => preview.textContent()).toContain('policy-shared')
+    await preview.locator('[data-document-frontmatter] dl').waitFor()
     expect(await input.textContent()).toBe(draft)
     const snapshot = await captureStableAria(page, '[data-document-markdown]', scaffold.workspaceCwd)
     await compareOrRefreshGolden(join(SNAPSHOT_DIR, 'preview.expected.md'), snapshot, MODE)

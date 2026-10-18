@@ -29,6 +29,7 @@ import {
   ensurePluginResolvable,
   inheritedEnv,
   portInUse,
+  bindablePort,
   profileBundlesInclude,
   repoRoot,
   resolveDshLaunch,
@@ -332,6 +333,19 @@ describe('portInUse', () => {
     const port = await listen(createServer())
     await closeAll()
     expect(await portInUse(DEFAULT_HOST, port)).toBe(false)
+  })
+})
+
+describe('bindablePort', () => {
+  it('空闲端口原样返回', async () => {
+    const port = await listen(createServer())
+    await closeAll()
+    expect(await bindablePort(DEFAULT_HOST, port)).toBe(port)
+  })
+
+  it('只是被占用时不换端口（占用由 portInUse 报错）', async () => {
+    const port = await listen(createServer())
+    expect(await bindablePort(DEFAULT_HOST, port)).toBe(port)
   })
 })
 

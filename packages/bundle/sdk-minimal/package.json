@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-sdk-minimal",
   "description": "The standalone minimal SDK profile bundle: JSON-RPC, one DeepSeek adapter, persistent shell, and JSONL sessions",
-  "version": "0.2.0-rc.2",
+  "version": "0.2.1-rc.2",
   "publishConfig": {
     "access": "public"
   },
@@ -37,8 +37,10 @@
     "@deepseek-ai/cordis-plugin-timer": "workspace:~",
     "@deepseek-ai/dsh-agent": "workspace:*",
     "@deepseek-ai/dsh-agent-loop": "workspace:*",
+    "@deepseek-ai/dsh-attachment-local": "workspace:*",
+    "@deepseek-ai/dsh-compaction-basic": "workspace:*",
+    "@deepseek-ai/dsh-compaction-image-offload": "workspace:*",
     "@deepseek-ai/dsh-deepseek-llm-api-extensions": "workspace:*",
-    "@deepseek-ai/dsh-invariants": "workspace:*",
     "@deepseek-ai/dsh-jobs-local": "workspace:*",
     "@deepseek-ai/dsh-llm": "workspace:*",
     "@deepseek-ai/dsh-llm-deepseek-api-key": "workspace:*",
@@ -47,7 +49,6 @@
     "@deepseek-ai/dsh-plugin-package-inventory-deepseek": "workspace:*",
     "@deepseek-ai/dsh-sandbox-local": "workspace:*",
     "@deepseek-ai/dsh-sandbox-policy": "workspace:*",
-    "@deepseek-ai/dsh-scope": "workspace:*",
     "@deepseek-ai/dsh-sdk-app": "workspace:*",
     "@deepseek-ai/dsh-sdk-jsonrpc-server": "workspace:*",
     "@deepseek-ai/dsh-session": "workspace:*",
@@ -59,9 +60,14 @@
     "@deepseek-ai/dsh-system-prompt": "workspace:*",
     "@deepseek-ai/dsh-terminal": "workspace:*",
     "@deepseek-ai/dsh-terminal-bash": "workspace:*",
+    "@deepseek-ai/dsh-token-meter": "workspace:*",
     "@deepseek-ai/dsh-tool-bash-persistent": "workspace:*",
+    "@deepseek-ai/dsh-tool-fs": "workspace:*",
     "@deepseek-ai/dsh-tool-pwsh-persistent": "workspace:*",
-    "@deepseek-ai/dsh-tools": "workspace:*"
+    "@deepseek-ai/dsh-tools": "workspace:*",
+    "@deepseek-ai/dsh-working-directory": "workspace:*",
+    "@deepseek-ai/dsh-tool-working-directory": "workspace:*",
+    "@deepseek-ai/dsh-fs-local": "workspace:*"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:~"

@@ -31,7 +31,7 @@ kind: "package-reference"
 
 `ctx.jobs` 镜像的 `job.list` 流是唯一名册：每个 `JobView` 行携带生命周期、时长、实时 `progress` 行或终态 `detail`，以及其保留字节数——进行中的 job，或留有保留输出的已结束 job，就是行可展开的依据。不存在需要 join 的第二份名册。
 
-运行中的 job 行还带一个两击式停止控件：首击武装，三秒内的确认击调用 `ctx.jobs.kill`，行状态经名册流收敛（先 `stopping`，再入已结束分组，其 detail 携带 `cancelled by the user`）。该 kill 不在模型的播报台账里认领任何东西，任务的 owner agent 因此照常收到标准完成通知——模型被明确告知用户停止了它的任务，而不是留给它去猜（[决策](../../../.agents/notes/implemented/feature/2026-08-26-human-job-kill.zh.md)）。已结束分组在有进行中工作时折叠在其计数之后，并可在客户端清空。
+运行中的 job 行还带一个两击式停止控件：首击武装，三秒内的确认击调用 `ctx.jobs.kill`，行状态经名册流收敛（先 `stopping`，再入已结束分组，其 detail 携带 `cancelled by the user`）。该 kill 不在模型的播报台账里认领任何东西，任务的 owner agent 因此照常收到标准完成通知——模型被明确告知用户停止了它的任务，而不是留给它去猜（[参考](../../jobs/tool-jobs/README.zh.md)）。已结束分组在有进行中工作时折叠在其计数之后，并可在客户端清空。
 
 ### 展开的面板
 
@@ -45,13 +45,15 @@ kind: "package-reference"
 <details>
 <summary>实现内幕——点击展开</summary>
 
-头部操作带里的一个 slot 条目（preset 标签之后）渲染触发器与弹出层；弹出层通过测量锚点把自己收进视口。所有数据经 `ctx.jobs` 到达——组件不持有任何传输状态。名册跟随挂载：一个 `useEffect` 在控件存活期间保持会话的 `job.list` 流打开。观测跟随可见性：另一个 `useEffect` 为展开行的 job 打开流，并在收起、卸载或弹出层关闭时关闭它。
+头部操作带里的一个 slot 条目（preset 标签之后）渲染触发器；弹出层通过挂载到 body 的 `MenuSurface` 固定定位，避免被停靠面板遮挡或被祖先容器裁剪。共享锚点 hook 跟踪滚动、窗口尺寸及面板尺寸变化。所有数据经 `ctx.jobs` 到达——组件不持有任何传输状态。名册跟随挂载：一个 `useEffect` 在控件存活期间保持会话的 `job.list` 流打开。观测跟随可见性：另一个 `useEffect` 为展开行的 job 打开流，并在收起、卸载或弹出层关闭时关闭它。
 
 | 文件 | 角色 |
 |---|---|
 | [`src/client/JobListAction.tsx`](src/client/JobListAction.tsx) | 任务列表：分组、时长、面板 |
 | [`src/client/index.ts`](src/client/index.ts) | slot 注册与词典 |
 | [`src/client/locales.ts`](src/client/locales.ts) | `job` 命名空间文案（zh 为事实源） |
+
+后台任务行遵循[标准菜单边缘几何](../../../docs/ui-radius.zh.md#nested-hover)；带底色运行行内的控件保留紧凑圆角。
 
 </details>
 
@@ -92,5 +94,3 @@ kind: "package-reference"
 无。
 
 </details>
-
-**运行时不变式：** 不发布伴生入口。本包只把 `ctx.jobs` 的名册与视图只读投影到一个 header slot，不发出 Cordis 事件，也不持有跨插件可变状态；其唯一的 slot 注册通过 HMR（热模块替换）安全性规范验证了资源释放行为。

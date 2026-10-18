@@ -75,7 +75,6 @@ kind: "package-reference"
 |---|---|
 | [`src/index.ts`](src/index.ts) | `TerminalSessionService`：后端注册表、spawn/send/read/signal/kill/list、所有者清理与 dispose |
 | [`src/types.ts`](src/types.ts) | 共享约定：后端接口、会话类型、等待原因、信号集合、错误码 |
-| — | 不发布运行时不变式伴生入口；后端与限定所有者范围的会话注册表均为私有可变状态，且服务既不暴露独立的生命周期流，也不暴露不限定范围的快照。 |
 
 ### 数据模型与生命周期
 
@@ -103,7 +102,7 @@ kind: "package-reference"
 - [终端子系统参考](../../../docs/subsystems/terminal.zh.md)——共享类型、后端与会话约定，以及生成的 `ctx.terminals` 接口面。
 - [terminal/ 包映射](../README.zh.md)——三包家族及其组合方式。
 - [terminal-bash 后端](../terminal-bash/README.zh.md)——提供 `shell` 类型的随附 shell 后端。
-- [tool-terminal 工具](../tool-terminal/README.zh.md)——操作会话的 6 个面向模型工具。
+- [tool-terminal 工具](../../experimental/tool-terminal/README.zh.md)——操作会话的 6 个面向模型工具。
 - [持久 PTY Agent Note](../../../.agents/notes/implemented/feature/2026-07-16-persistent-pty-sessions.zh.md)——设计理由、备选方案与暂缓边界。
 
 -----

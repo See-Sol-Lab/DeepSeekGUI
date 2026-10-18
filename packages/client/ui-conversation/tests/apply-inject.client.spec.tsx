@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { render, cleanup } from '@testing-library/react'
 import { $getRoot, $isTextNode, PASTE_COMMAND } from 'lexical'
-import { projectUserText } from '@deepseek-ai/dsh-client-ui-primitives'
+import { createUserTextFixture } from './user-text-component-fixture.client.tsx'
 import { registerComposerKeymap } from '../src/client/input/editor/keymap.ts'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
@@ -20,6 +20,7 @@ import {
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import { createConversationStore } from '../src/client/stores.ts'
+import type { SessionInputShell } from '../src/client/input/facade.ts'
 import { RemoteError } from '@deepseek-ai/dsh-client-test-runtime'
 
 usePinnedBrowserLanguages('zh-CN')
@@ -192,7 +193,7 @@ describe('Conversation inject API', () => {
     const b = await bench()
     const { injected } = b.conversationApi(ROOT)
     expect(b.sessionFake.loadOlder).not.toHaveBeenCalled()
-    expect(Object.keys(injected)).toEqual(['hooks', 'bindDraftMirror', 'openView'])
+    expect(Object.keys(injected)).toEqual(['hooks', 'bindDraftPersistence', 'openView'])
     expect(b.viewSource(ROOT).getSnapshot()).toEqual([])
     await b.runtime.dispose()
   })
@@ -364,7 +365,7 @@ describe('Conversation inject API', () => {
     expect(state.getSnapshot().draft).toBe('retry me')
 
     const mirrored: string[] = []
-    const unbind = injected.bindDraftMirror(text => mirrored.push(text))
+    const unbind = injected.bindDraftPersistence(draft => mirrored.push(draft.text))
     actions.setDraft('mirrored text')
     expect(mirrored).toEqual(['mirrored text'])
     unbind()
@@ -466,7 +467,8 @@ describe('Conversation inject API', () => {
     } })
     editor.update(() => { editor.dispatchCommand(PASTE_COMMAND, event) }, { discrete: true })
     expect(state.getSnapshot().draft).toBe('读取 @a.txt @"my project/" @b.txt ')
-    const view = render(<div>{projectUserText(state.getSnapshot().draft, [])}</div>)
+    const renderText = createUserTextFixture()
+    const view = render(<div>{renderText({ text: state.getSnapshot().draft, facts: {} })}</div>)
     expect(view.container.querySelector('[data-ref-chip="folder"]')?.textContent).toBe('my project')
     expect(view.container.querySelector('[data-ref-chip="folder"]')?.getAttribute('title')).toBe('@"my project/"')
   })
@@ -541,6 +543,26 @@ describe('Conversation inject API', () => {
     expect(b.inputApi(other).state.getSnapshot().draft).toBe('carry me')
     await vi.waitFor(() => { expect(targetUpload).toHaveBeenCalledOnce() })
     expect(b.inputApi(other).state.getSnapshot().attachmentIds).toHaveLength(1)
+    await b.runtime.dispose()
+  })
+
+  it('carries structured references through Workspace selection without flattening them', async () => {
+    const b = await bench()
+    const draft = {
+      text: 'carry @one.ts',
+      references: [{ source: 'reference', ref: '@one.ts', label: 'one.ts', appearance: 'file' as const,
+        clipboardText: '@one.ts', offset: 6, length: 7 }],
+    }
+    const shell = b.inputApi(ROOT).actions as SessionInputShell
+    shell.setDraft(draft)
+    const other = 'structured-target' as SessionId
+    await b.runtime.sessions.add({ id: other, session: {} })
+    b.connectWorkspace.mockResolvedValueOnce(other)
+    await b.residentApi(ROOT).selectWorkspace('workspace-structured' as WorkspaceId)
+    expect(b.inputApi(other).state.getSnapshot().draft).toBe(draft.text)
+    expect(b.inputApi(other).state.getSnapshot().occurrences).toMatchObject(draft.references)
+    expect(b.inputApi(ROOT).state.getSnapshot().draft).toBe('')
+    expect(b.inputApi(ROOT).state.getSnapshot().occurrences).toEqual([])
     await b.runtime.dispose()
   })
 

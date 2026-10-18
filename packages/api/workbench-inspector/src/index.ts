@@ -10,10 +10,17 @@ import type { FsTarget } from '@deepseek-ai/dsh-fs'
 import type {} from '@deepseek-ai/dsh-git'
 import type { DiffResult, DiffScope } from '@deepseek-ai/dsh-git/types'
 import Schema from '@deepseek-ai/schemastery'
-import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
+import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { installDesktopAccountBridge } from './desktop-account.ts'
 import { renderSessionMarkdown, untitledSessionTitle } from './session-markdown.ts'
-import { projectMemoryFileName, type WorkbenchExportLanguage, type WorkbenchExportMarkdown, type WorkbenchFileText, type WorkbenchLastReply, type WorkbenchMemory, type WorkbenchOverview, type WorkbenchRepository, type WorkbenchSandboxClean, type WorkbenchWorktree } from './types.ts'
+import { ArchiveMemoryRunner, projectFileProblem, routeOf } from './archive-memory-runner.ts'
+import { DEFAULT_LIMITS, type ArchiveMemoryLimits } from './archive-memory.ts'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import type {} from '@deepseek-ai/dsh-llm'
+import type {} from '@deepseek-ai/dsh-workspace'
+import { chatOnlyReason, isElevatedHost, zoneOfPath } from '@deepseek-ai/dsh-sandbox'
+import { projectMemoryFileName, type ArchiveMemoryRecord, type MemoryInjection, type MemorySuggestion, type WorkbenchArchiveMemory, type WorkbenchExportLanguage, type WorkbenchExportMarkdown, type WorkbenchFileText, type WorkbenchLastReply, type WorkbenchMemory, type WorkbenchOverview, type WorkbenchRepository, type WorkbenchSandboxClean, type WorkbenchWorktree } from './types.ts'
 
 export type * from './types.ts'
 export { projectMemoryFileName } from './types.ts'
@@ -27,6 +34,8 @@ export interface Config {
   maxTextBytes: number
   /** Inclusive UTF-8 byte limit for a rendered Markdown export. */
   maxExportBytes: number
+  /** Archive notes budgets and thresholds (code points; see ArchiveMemoryLimits). */
+  archiveMemory?: ArchiveMemoryLimits
 }
 
 /** Whether two git-reported paths name the same directory (git prints forward slashes; Windows is case-insensitive). */
@@ -45,6 +54,17 @@ declare module '@deepseek-ai/cordis' {
   }
 }
 
+declare module '@deepseek-ai/dsh-typert-protocol' {
+  interface RemoteErrorDetailsMap {
+    /**
+     * The Session's working directory is an ordinary folder, not inside a Git
+     * repository. A normal state for the Changes and Git views, told apart
+     * from a failed read by this code.
+     */
+    'workbench/not-a-repository': { readonly cwd: string }
+  }
+}
+
 /** Read-only workspace inspection plus desktop-authorized Session deletion. */
 export class WorkbenchInspector extends TypertRemoteService {
   static inject = ['fs', 'git', 'typert', 'sessionQuery', 'sessionController']
@@ -52,6 +72,19 @@ export class WorkbenchInspector extends TypertRemoteService {
     logLimit: Schema.natural().min(1).default(30),
     maxTextBytes: Schema.natural().min(1).default(512 * 1024),
     maxExportBytes: Schema.natural().min(1).default(20 * 1024 * 1024),
+    // 归档整理的预算与门槛：经过校验的配置，默认值是起点、不是统计校准过的数。
+    archiveMemory: Schema.object({
+      autoMinUserTurns: Schema.natural().min(1).default(DEFAULT_LIMITS.autoMinUserTurns),
+      autoMinChars: Schema.natural().min(1).default(DEFAULT_LIMITS.autoMinChars),
+      maxTranscriptChars: Schema.natural().min(1_000).default(DEFAULT_LIMITS.maxTranscriptChars),
+      maxMemoryChars: Schema.natural().min(1_000).default(DEFAULT_LIMITS.maxMemoryChars),
+      maxRequestChars: Schema.natural().min(4_000).default(DEFAULT_LIMITS.maxRequestChars),
+      maxProjectItems: Schema.natural().min(1).max(20).default(DEFAULT_LIMITS.maxProjectItems),
+      maxGlobalItems: Schema.natural().max(10).default(DEFAULT_LIMITS.maxGlobalItems),
+      maxItemChars: Schema.natural().min(20).default(DEFAULT_LIMITS.maxItemChars),
+      maxBatchChars: Schema.natural().min(100).default(DEFAULT_LIMITS.maxBatchChars),
+      autoAreaMaxChars: Schema.natural().min(500).default(DEFAULT_LIMITS.autoAreaMaxChars),
+    }).default({ ...DEFAULT_LIMITS }),
   })
 
   /**
@@ -74,6 +107,146 @@ export class WorkbenchInspector extends TypertRemoteService {
       this.sandbox = sandboxCtx.get('sandbox')
       sandboxCtx.effect(() => () => { this.sandbox = undefined })
     })
+    // 归档整理（Phase 2）：llm 服务可选挂载；没有它时整理记为 no-model。
+    ctx.inject(['llm'], (llmCtx) => {
+      this.llm = llmCtx.llm
+      llmCtx.effect(() => () => { this.llm = undefined })
+    })
+    this.archiveMemory = new ArchiveMemoryRunner({
+      home: () => dshHome(),
+      limits: () => this.config.archiveMemory ?? DEFAULT_LIMITS,
+      observe: async (sessionId, signal) => {
+        using observation = await this.ctx.sessionQuery.observeSession(sessionId, { signal, projectionMode: 'none' })
+        const events = [...observation.events]
+        return { events, cwd: observation.header.cwd, route: routeOf(events) }
+      },
+      isGone: error => error instanceof RemoteError ? error.code === 'session/not-found' : /not found|does not exist/iu.test(String(error)),
+      llm: () => this.llm,
+      // 位置保护沿用现有规则：仅聊天目录（主目录、盘符根、系统/应用根）、受保护位置（系统、应用、
+      // DeepSeekGUI 自己的代码）、管理员令牌运行（这些写入本来就要逐次批准），再核真实路径与可写。
+      protection: (cwd, projectPath) => {
+        const chatOnly = chatOnlyReason(cwd)
+        if (chatOnly !== undefined) return `chat-only workspace (${chatOnly})`
+        const zone = zoneOfPath(projectPath)
+        if (zone !== undefined) return `protected location (${zone})`
+        if (isElevatedHost()) return 'the desktop runs with an administrator token; file changes need approval'
+        return projectFileProblem(cwd, projectPath)
+      },
+      log: (line) => { ctx.logger.warn(line) },
+    })
+    // 卸载：停掉在途整理并等它们收尾（不再写项目记忆）。
+    ctx.effect(() => () => this.archiveMemory.dispose(), 'workbench inspector: archive memory')
+    // 官方归档写入之后由工作区注册表发出（本仓库加的事件）。界面、接口的每一个归档入口都经过
+    // 注册表，所以都走这同一个收尾；监听器自己不抛错。
+    ctx.on('workspace/session-archived', (sessionId) => { this.archiveMemory.onArchived(sessionId) })
+  }
+
+  /** The mounted llm service, when there is one. */
+  private llm: Context['llm'] | undefined
+
+  /** 归档整理的执行面。 */
+  private readonly archiveMemory: ArchiveMemoryRunner
+
+  /**
+   * 记忆视图读的归档整理事实：开关、这段会话的整理记录、是否正在整理。
+   * @param sessionId - 会话。
+   * @param signal - Request cancellation.
+   * @returns 归档整理事实。
+   */
+  @Remote
+  archiveMemoryState(sessionId: SessionId, signal: AbortSignal): Promise<WorkbenchArchiveMemory> {
+    // A then-callback keeps an aborted signal a rejection, never a synchronous throw.
+    return Promise.resolve().then(() => {
+      signal.throwIfAborted()
+      return {
+        settings: this.archiveMemory.settings(),
+        record: this.archiveMemory.record(sessionId),
+        running: this.archiveMemory.isRunning(sessionId),
+      }
+    })
+  }
+
+  /**
+   * 手动整理一段会话（不看长度门槛）：短会话、上次失败、整理区清理之后都从这里再来一次。
+   * 对仍在使用的会话也可以：只读、不带工具，不改会话本身。请求被取消（页面关闭）就停掉这一次。
+   * @param sessionId - 会话。
+   * @param signal - Request cancellation.
+   * @returns 本次的记录。
+   */
+  @Remote
+  async summarizeSession(sessionId: SessionId, signal: AbortSignal): Promise<ArchiveMemoryRecord> {
+    signal.throwIfAborted()
+    return await this.archiveMemory.summarize(sessionId, true, signal)
+  }
+
+  /**
+   * 改归档整理的开关或标记首次说明已读。
+   * @param auto - 归档时自动整理；null = 不改。
+   * @param noticeSeen - 首次说明已读；null = 不改。
+   * @param signal - Request cancellation.
+   * @returns 改后的设置。
+   */
+  @Remote
+  setArchiveMemorySettings(auto: boolean | null, noticeSeen: boolean | null, signal: AbortSignal): Promise<WorkbenchArchiveMemory['settings']> {
+    return Promise.resolve().then(() => {
+      signal.throwIfAborted()
+      return this.archiveMemory.saveSettings({ ...auto === null ? {} : { auto }, ...noticeSeen === null ? {} : { noticeSeen } })
+    })
+  }
+
+  /**
+   * 等用户确认的全局记忆建议（来自归档整理）。
+   * @param signal - Request cancellation.
+   * @returns 建议列表。
+   */
+  @Remote
+  memorySuggestions(signal: AbortSignal): Promise<MemorySuggestion[]> {
+    return Promise.resolve().then(() => {
+      signal.throwIfAborted()
+      return this.archiveMemory.suggestions()
+    })
+  }
+
+  /**
+   * 从列表里拿掉一条建议：用户已经把它加进全局记忆（由桌面的全局记忆保存命令写入），或者忽略了它。
+   * 建议文件只由本进程读写。
+   * @param id - 建议 id。
+   * @param signal - Request cancellation.
+   * @returns 是否找到并拿掉了。
+   */
+  @Remote
+  async resolveMemorySuggestion(id: string, signal: AbortSignal): Promise<boolean> {
+    signal.throwIfAborted()
+    return await this.archiveMemory.resolveSuggestion(id)
+  }
+
+  /**
+   * 这段会话每次加载时带入了哪些记忆（见 MemoryInjection；最后一条是当前这次加载在用的）。
+   * 没有记录就是 null：会话还没发过第一条，或是本功能之前的老会话。
+   * @param sessionId - 会话。
+   * @param signal - Request cancellation.
+   * @returns 带入事实，或 null。
+   */
+  @Remote
+  memoryInjection(sessionId: SessionId, signal: AbortSignal): Promise<MemoryInjection | null> {
+    return Promise.resolve().then(() => {
+      signal.throwIfAborted()
+      return this.readMemoryInjection(sessionId)
+    })
+  }
+
+  /** The recorded memory injection for one Session, read synchronously; see {@link memoryInjection}. */
+  private readMemoryInjection(sessionId: SessionId): MemoryInjection | null {
+    const home = dshHome()
+    if (home === undefined || !/^[A-Za-z0-9_-]{1,128}$/u.test(sessionId)) return null
+    let raw: unknown
+    try {
+      raw = JSON.parse(readFileSync(join(home, 'deepseekgui', 'memory-injections', `${sessionId}.json`), 'utf8'))
+    } catch {
+      return null
+    }
+    if (typeof raw !== 'object' || raw === null || !('entries' in raw) || !Array.isArray(raw.entries)) return null
+    return { sessionId, entries: raw.entries }
   }
 
   /** The mounted sandbox provider, when there is one. */
@@ -121,6 +294,25 @@ export class WorkbenchInspector extends TypertRemoteService {
     return cwd
   }
 
+  /**
+   * The Git identity of a Session folder. Only the confirmed "not inside a
+   * repository" answer becomes the `workbench/not-a-repository` failure;
+   * a missing git, a broken repository, or a permission error keep their own
+   * message. Matched by error name because the class crosses package copies.
+   * @param cwd - The Session working directory.
+   * @returns the repository identity.
+   */
+  private async repoIdentity(cwd: string): ReturnType<Context['git']['repoIdentity']> {
+    try {
+      return await this.ctx.git.repoIdentity(cwd)
+    } catch (error) {
+      if (error instanceof Error && error.name === 'GitNotARepositoryError') {
+        throw new RemoteError('workbench/not-a-repository', error.message, { cwd })
+      }
+      throw error
+    }
+  }
+
   private async target(rootPath: string, path: string, signal: AbortSignal): Promise<FsTarget> {
     const root = await this.ctx.fs.resolve(rootPath, { signal })
     const target = await this.ctx.fs.resolve(path, { cwd: rootPath, signal })
@@ -139,7 +331,7 @@ export class WorkbenchInspector extends TypertRemoteService {
   @Remote
   async text(sessionId: SessionId, path: string, repository: boolean, signal: AbortSignal): Promise<WorkbenchFileText> {
     const cwd = await this.cwd(sessionId, signal)
-    const root = repository ? (await this.ctx.git.repoIdentity(cwd)).root : cwd
+    const root = repository ? (await this.repoIdentity(cwd)).root : cwd
     return { path, text: await this.readText(await this.target(root, path, signal), signal) }
   }
 
@@ -181,7 +373,7 @@ export class WorkbenchInspector extends TypertRemoteService {
   @Remote
   async status(sessionId: SessionId, signal: AbortSignal): Promise<WorkbenchRepository> {
     signal.throwIfAborted()
-    const identity = await this.ctx.git.repoIdentity(await this.cwd(sessionId, signal))
+    const identity = await this.repoIdentity(await this.cwd(sessionId, signal))
     const status = await this.ctx.git.status(identity.root)
     signal.throwIfAborted()
     return { root: identity.root, status }
@@ -198,7 +390,7 @@ export class WorkbenchInspector extends TypertRemoteService {
   @Remote
   async diff(sessionId: SessionId, scope: DiffScope, path: string, signal: AbortSignal): Promise<DiffResult> {
     signal.throwIfAborted()
-    const root = (await this.ctx.git.repoIdentity(await this.cwd(sessionId, signal))).root
+    const root = (await this.repoIdentity(await this.cwd(sessionId, signal))).root
     if (path !== '') await this.target(root, path, signal)
     const value = await this.ctx.git.diff(root, scope, path === '' ? undefined : path, true, this.config.maxTextBytes)
     signal.throwIfAborted()
@@ -296,7 +488,7 @@ export class WorkbenchInspector extends TypertRemoteService {
   @Remote
   async overview(sessionId: SessionId, signal: AbortSignal): Promise<WorkbenchOverview> {
     signal.throwIfAborted()
-    const identity = await this.ctx.git.repoIdentity(await this.cwd(sessionId, signal))
+    const identity = await this.repoIdentity(await this.cwd(sessionId, signal))
     const [status, remotes, commits, trees] = await Promise.all([
       this.ctx.git.status(identity.root),
       this.ctx.git.remotes(identity.root),
@@ -323,6 +515,12 @@ export class WorkbenchInspector extends TypertRemoteService {
     }
     return { root: identity.root, status, remotes, commits, worktrees }
   }
+}
+
+/** DSH_HOME（宿主进程的环境变量）。 */
+function dshHome(): string | undefined {
+  const home = process.env.DSH_HOME
+  return home === undefined || home === '' ? undefined : home
 }
 
 export default WorkbenchInspector

@@ -55,7 +55,7 @@ const definition = {
 
 ### 注册与读取
 
-`register(definition)` 安装单元；具有相同 key 和 `stateVersion` 的注册方共享其 cell，版本不兼容或 `stateVersion` 非法时会 throw。注册是挂在调用方 fiber 上的 effect，因此最后一个注册方卸载后会移除 key 及其缓存 cell。载体用 `snapshot(session)` 对每个客户端可见单元读取一致的同步切面——`{ asOfSeq, values }`，其中 `asOfSeq` 是所有值共同反映到的最后一个事件的 seq——并用 `onChanged(listener)` 订阅逐变更通知。`stateOf(session, key)` 读取一个单元的实时只读 host 状态，不计算无关视图。
+`register(definition)` 安装单元；具有相同 key 和 `stateVersion` 的注册方共享其 cell，版本不兼容或 `stateVersion` 非法时会 throw。注册是挂在调用方 fiber 上的 effect，因此最后一个注册方卸载后会移除 key 及其缓存 cell。返回的 disposer 可以 yield 到同一 fiber 上的复合 `ctx.effect()` 中，使单元在依赖它的清理完成前保持可用。载体用 `snapshot(session)` 对每个客户端可见单元读取一致的同步切面——`{ asOfSeq, values }`，其中 `asOfSeq` 是所有值共同反映到的最后一个事件的 seq——并用 `onChanged(listener)` 订阅逐变更通知。`stateOf(session, key)` 读取一个单元的实时只读 host 状态，不计算无关视图。
 
 ```text
 const dispose = ctx.sessionProjections.register(definition)
@@ -88,7 +88,6 @@ const { asOfSeq, values } = ctx.sessionProjections.snapshot(session)
 |---|---|
 | [`src/index.ts`](src/index.ts) | 插件入口：`SessionProjectionRegistry` 服务、`ProjectionDefinition`、快照与检查点机制 |
 | [`src/types.ts`](src/types.ts) | 可合并扩展的 `SessionProjectionMap` 与 `SessionProjectionStateMap` 类型表 |
-| — | 不发布运行时不变式伴生入口；注册表自身的约定（拒绝重复键和非法 stateVersion、随 effect 移除、以 `Object.is` 把守变更）由服务同步强制执行并经其规范验证；驱动关系若要检查就必须重新运行驱动，从而重复实现逻辑；所服务值之间的关系由载体协议路径负责。同步单元纪律则尽可能由边界 `schema.parse` 强制执行。 |
 
 ### 驱动与检查点流程
 

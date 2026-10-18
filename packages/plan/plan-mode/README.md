@@ -60,7 +60,7 @@ You can attach images and generic files to a `/plan` message, and they are inclu
 
 When the agent has a finished plan, it calls `exit_plan_mode` with the plan written as markdown and starting with a heading. You review that exact plan and choose `Approve` to leave plan mode, or `Keep planning` to send the agent back with feedback.
 
-Choosing `Keep planning` (optionally with free-text feedback) sends the agent back to revise the plan; closing the review to type a message instead tells the agent to wait for your next message. If no interactive review is available, `exit_plan_mode` cannot run and you can still leave plan mode with `/plan off`.
+Choosing `Keep planning` (optionally with free-text feedback) sends the agent back to revise the plan; closing the review to type a message instead ends the agent's turn, and your next message starts the next request. If no interactive review is available, `exit_plan_mode` cannot run and you can still leave plan mode with `/plan off`.
 
 ### Observing plan state
 
@@ -103,7 +103,6 @@ When `ctx.sessionProjections` is composed, the package registers the `plan` unit
 | [`src/index.ts`](src/index.ts) | Plugin entry: `Config` schema, the `ctx.planMode` service, `plan:policy` section, `/plan` command, `exit_plan_mode` tool |
 | [`src/types.ts`](src/types.ts) | The `plan` projection-key declaration and `PlanProjection` wire value |
 | [`src/client.ts`](src/client.ts) | Client-namespace re-export of the types outlet |
-| [`src/invariant.ts`](src/invariant.ts) | Invariant companion: validates the `plan/mode` payload shape |
 
 The review intent carries the originating tool-call id, so the Web client can reopen the same submitted plan after the review closes. The complete Markdown remains in the existing native call or PTC dispatch log.
 
@@ -120,7 +119,7 @@ Read these pages when the package-level contract is not enough. They move from t
 - [plan/ package map](../README.md) — the group and its single package.
 - [exit_plan_mode tool catalog entry](../../../docs/tool-catalog.md#deepseek-aidsh-plan-mode) — the exact schema the model receives.
 - [Generated configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-plan-mode) — every accepted config field and its meaning.
-- [Plan-specific collaboration state](../../../.agents/notes/implemented/simplification/2026-07-22-plan-specific-collaboration-state.md) — the design decision behind plan mode.
+- [archived Plan-specific collaboration state](../../../.agents/notes/archived/simplification/2026-07-22-plan-specific-collaboration-state.md) — the design decision behind plan mode.
 
 -----
 
@@ -165,7 +164,7 @@ The user block is append-only conversation growth. Entering or leaving plan mode
 
 #### What the model sees
 
-The [`exit_plan_mode` schema](../../../docs/tool-catalog.md#deepseek-aidsh-plan-mode) remains available in both states; execution outside plan mode fails, while an approved in-mode review returns the canonical `{ approved: true }` value and renders the existing confirmation text. Rejection remains a failed call carrying review feedback, and a dismissed review a failed call naming the user's takeover.
+The [`exit_plan_mode` schema](../../../docs/tool-catalog.md#deepseek-aidsh-plan-mode) remains available in both states; execution outside plan mode fails, while an approved in-mode review returns the canonical `{ approved: true }` value and renders the existing confirmation text. Rejection remains a failed call carrying review feedback. A dismissed review returns `{ approved: false }`, renders a note that the user will reply, and concludes the turn without another model request.
 
 #### Token effect
 

@@ -22,6 +22,57 @@ Read-only workspace inspection plus desktop-authorized Session deletion.
 
 ```ts cordis-catalog
 /**
+ * 记忆视图读的归档整理事实：开关、这段会话的整理记录、是否正在整理。
+ * @param sessionId - 会话。
+ * @param signal - Request cancellation.
+ * @returns 归档整理事实。
+ */
+@Remote archiveMemoryState(sessionId: SessionId, signal: AbortSignal): Promise<WorkbenchArchiveMemory>
+
+/**
+ * 手动整理一段会话（不看长度门槛）：短会话、上次失败、整理区清理之后都从这里再来一次。
+ * 对仍在使用的会话也可以：只读、不带工具，不改会话本身。请求被取消（页面关闭）就停掉这一次。
+ * @param sessionId - 会话。
+ * @param signal - Request cancellation.
+ * @returns 本次的记录。
+ */
+@Remote async summarizeSession(sessionId: SessionId, signal: AbortSignal): Promise<ArchiveMemoryRecord>
+
+/**
+ * 改归档整理的开关或标记首次说明已读。
+ * @param auto - 归档时自动整理；null = 不改。
+ * @param noticeSeen - 首次说明已读；null = 不改。
+ * @param signal - Request cancellation.
+ * @returns 改后的设置。
+ */
+@Remote setArchiveMemorySettings(auto: boolean | null, noticeSeen: boolean | null, signal: AbortSignal): Promise<WorkbenchArchiveMemory['settings']>
+
+/**
+ * 等用户确认的全局记忆建议（来自归档整理）。
+ * @param signal - Request cancellation.
+ * @returns 建议列表。
+ */
+@Remote memorySuggestions(signal: AbortSignal): Promise<MemorySuggestion[]>
+
+/**
+ * 从列表里拿掉一条建议：用户已经把它加进全局记忆（由桌面的全局记忆保存命令写入），或者忽略了它。
+ * 建议文件只由本进程读写。
+ * @param id - 建议 id。
+ * @param signal - Request cancellation.
+ * @returns 是否找到并拿掉了。
+ */
+@Remote async resolveMemorySuggestion(id: string, signal: AbortSignal): Promise<boolean>
+
+/**
+ * 这段会话每次加载时带入了哪些记忆（见 MemoryInjection；最后一条是当前这次加载在用的）。
+ * 没有记录就是 null：会话还没发过第一条，或是本功能之前的老会话。
+ * @param sessionId - 会话。
+ * @param signal - Request cancellation.
+ * @returns 带入事实，或 null。
+ */
+@Remote memoryInjection(sessionId: SessionId, signal: AbortSignal): Promise<MemoryInjection | null>
+
+/**
  * Remove the Windows ACL sandbox's marks from a folder the desktop user
  * chose (DeepSeekGUI 2026-09-29): its grant, the delete deny, and the Low
  * label that make programs started there run at Low integrity. The sandbox

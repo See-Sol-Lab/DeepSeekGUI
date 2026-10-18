@@ -14,6 +14,8 @@ import { AssistantMarkdown, type AssistantMarkdownProps } from '../src/client/ch
 import type { ChatTextDisplayInput } from '../src/client/contract/slots.ts'
 import { useDisclosure } from '../src/client/chat/use-disclosure.ts'
 import { useDetailedPresentation } from './presentation-fixture.client.ts'
+import { unusedImageLoader } from './reasoning-component-fixture.tsx'
+import { useSearchableHidden } from '../src/client/chat/searchable-hidden.ts'
 
 afterEach(() => {
   cleanup()
@@ -21,7 +23,7 @@ afterEach(() => {
 })
 
 const t = makeTranslate(zh, commonZh)
-const renderMessageImages: AssistantMarkdownProps['renderMessageImages'] = () => null
+const renderSlot: AssistantMarkdownProps['renderSlot'] = () => null
 
 /** A smoother that releases one more character on every frame. */
 function stepSmoother() {
@@ -44,7 +46,9 @@ describe('AssistantMarkdown streaming display', () => {
         t={t}
         blocks={[{ kind: 'text', text: '你好世界' }]}
         streaming
-        renderMessageImages={renderMessageImages}
+        renderSlot={renderSlot}
+        useGroupAction={useSearchableHidden}
+        loadImage={unusedImageLoader}
         displayKeyPrefix="n1:"
         displayText={displayText}
         releaseText={releaseText}
@@ -66,7 +70,9 @@ describe('AssistantMarkdown streaming display', () => {
         t={t}
         blocks={[{ kind: 'text', text: '你好世界' }]}
         streaming={false}
-        renderMessageImages={renderMessageImages}
+        renderSlot={renderSlot}
+        useGroupAction={useSearchableHidden}
+        loadImage={unusedImageLoader}
         displayKeyPrefix="n1:"
         displayText={displayText}
         releaseText={releaseText}
@@ -88,7 +94,9 @@ describe('AssistantMarkdown streaming display', () => {
         t={t}
         blocks={[{ kind: 'reasoning', text: '思考中' }, { kind: 'text', text: '正文' }]}
         streaming
-        renderMessageImages={renderMessageImages}
+        renderSlot={renderSlot}
+        useGroupAction={useSearchableHidden}
+        loadImage={unusedImageLoader}
       />,
     )
     expect(view.getByText('思考中')).toBeTruthy()
@@ -113,7 +121,9 @@ describe('AssistantMarkdown streaming display', () => {
         t={t}
         blocks={[{ kind: 'text', text: 'streaming prose' }]}
         streaming
-        renderMessageImages={renderMessageImages}
+        renderSlot={renderSlot}
+        useGroupAction={useSearchableHidden}
+        loadImage={unusedImageLoader}
         displayKeyPrefix="n2:"
         displayText={displayText}
         textDisplayActive={() => true}
@@ -138,7 +148,9 @@ describe('AssistantMarkdown streaming display', () => {
         t={t}
         blocks={[{ kind: 'text', text: 'settled prose' }]}
         streaming
-        renderMessageImages={renderMessageImages}
+        renderSlot={renderSlot}
+        useGroupAction={useSearchableHidden}
+        loadImage={unusedImageLoader}
         displayKeyPrefix="n3:"
         displayText={displayText}
         textDisplayActive={() => true}
@@ -158,7 +170,9 @@ describe('AssistantMarkdown streaming display', () => {
         t={t}
         blocks={[{ kind: 'text', text: 'a' }]}
         streaming
-        renderMessageImages={renderMessageImages}
+        renderSlot={renderSlot}
+        useGroupAction={useSearchableHidden}
+        loadImage={unusedImageLoader}
         displayKeyPrefix="row-a:"
         displayText={displayText}
         textDisplayActive={() => true}
@@ -173,7 +187,9 @@ describe('AssistantMarkdown streaming display', () => {
         t={t}
         blocks={[{ kind: 'text', text: 'b' }]}
         streaming
-        renderMessageImages={renderMessageImages}
+        renderSlot={renderSlot}
+        useGroupAction={useSearchableHidden}
+        loadImage={unusedImageLoader}
         displayKeyPrefix="row-b:"
         displayText={displayText}
         textDisplayActive={() => true}

@@ -155,10 +155,11 @@ declare module '@deepseek-ai/cordis' {
  * Abstract credential service over two key spaces that answer two questions.
  *
  * A {@link CredentialRef} answers "what is behind this environment-variable
- * name", layered over the process environment, the provider-managed store, and
- * `.env` files. One seam-wide rule binds that half: an empty stored value is
- * absent everywhere — `resolve` skips it, `describe` reports it unconfigured —
- * so a blank never masquerades as a configured secret.
+ * name": the provider-managed store first, then ambient fallbacks such as the
+ * process environment and `.env` files. One seam-wide rule binds that half: an
+ * empty stored value is absent everywhere — `resolve` skips it, `describe`
+ * reports it unconfigured — so a blank never masquerades as a configured
+ * secret.
  *
  * A {@link CredentialKey} answers "what credential does this plugin hold for
  * this id". Nothing can layer here — an authorization grant has no
@@ -191,10 +192,9 @@ export abstract class CredentialProvider extends Service {
   abstract describe(ref: CredentialRef): Promise<CredentialInfo>
 
   /**
-   * Durably store one value in the provider-managed writable source. Rejects
-   * while a read-only source shadows the reference — the write would appear
-   * to succeed while resolution keeps returning the shadowing value — and
-   * rejects an empty value (use {@link unset}).
+   * Durably store one value in the provider-managed writable source. The stored
+   * value takes precedence over ambient fallbacks, and empty values are
+   * rejected (use {@link unset}).
    * @param ref - the reference to store.
    * @param value - the non-empty secret value.
    */
@@ -202,8 +202,8 @@ export abstract class CredentialProvider extends Service {
 
   /**
    * Remove one reference from the provider-managed writable source; removing
-   * an absent reference is a no-op. Rejects while a read-only source shadows
-   * the reference, like {@link set}.
+   * an absent reference is a no-op. Ambient fallback layers may become
+   * effective again after removal.
    * @param ref - the reference to remove.
    */
   abstract unset(ref: CredentialRef): Promise<void>
@@ -258,10 +258,7 @@ export abstract class CredentialProvider extends Service {
   /**
    * Fan `credentials/reference-updated` out with contained listener failures: every
    * listener runs, and a sync throw or async rejection is logged without
-   * changing the committed operation's outcome — except `INVARIANT`-coded
-   * failures, which rethrow after every listener ran (the rethrow reaches the
-   * caller only from synchronous listeners, so invariant checks on this event
-   * must not be async functions). Providers call this only after the write or
+   * changing the committed operation's outcome. Providers call this only after the write or
    * reload actually committed, so a broken observer can never make a durable
    * change look failed.
    * @param ref - the reference whose stored value changed.
@@ -284,7 +281,6 @@ export abstract class CredentialProvider extends Service {
      contract, and extracting it would couple the two seams' event semantics. */
   /** The contained dispatch both notifications run through; see {@link notifyUpdated}. */
   private fanOut(event: 'credentials/reference-updated' | 'credentials/record-updated', subject: string): void {
-    let invariantFailure: unknown
     const args = [event, subject]
     for (const listener of this.ctx.events.dispatch('emit', args) as Array<(...listenerArgs: unknown[]) => unknown>) {
       try {
@@ -295,14 +291,9 @@ export abstract class CredentialProvider extends Service {
           })
         }
       } catch (error) {
-        if ((error as { code?: unknown } | null)?.code === 'INVARIANT') {
-          invariantFailure ??= error
-          continue
-        }
         this.warnListenerFailure(event, subject, error)
       }
     }
-    if (invariantFailure !== undefined) throw invariantFailure as Error
   }
   /* jscpd:ignore-end */
 

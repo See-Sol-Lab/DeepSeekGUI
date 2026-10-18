@@ -22,7 +22,7 @@ The required result is one raw Session journal and one Client presentation owner
 
 ## Decision
 
-The visual-equivalence requirements below exclude the separately approved [nested terminal-card fix](../bug-fix/2026-09-05-nested-terminal-cards.md) and [compact tool details](2026-09-10-compact-tool-details.md); all other presentation and ownership constraints remain.
+The visual-equivalence requirements below exclude the separately approved [nested terminal-card fix](../../../../packages/client/ui-tool/README.md), [recorded tool details](../../../../packages/client/ui-tool/README.md), and [background Shell command display](../bug-fix/2026-10-10-background-shell-command-display.md); all other presentation and ownership constraints remain.
 
 The Session Remote journal sends only raw, validated, persistable Session events. `session.page` and `session.follow` do not parse tool arguments, query the Tools registry, restore a presenter scope, execute `presentCall` or `presentResult`, or construct or clone any tool view.
 
@@ -51,7 +51,7 @@ The Host `ToolDefinition.presentCall`, `ToolDefinition.presentResult`, `ToolCall
 | Retained | the Session log format, Remote journal lifecycle, and Conversation identity/topology |
 | Retained | the existing keyed slot, Generic fallback, and Chat, Details, and Trajectory structure |
 | Forbidden | a new Client presenter service, parallel registry, or wire renderer id |
-| Forbidden | new cards, visual redesign, interaction redesign, or PTC dispatch rich-card enhancements except the [nested terminal-card exception](../bug-fix/2026-09-05-nested-terminal-cards.md) and [compact tool details](2026-09-10-compact-tool-details.md) |
+| Forbidden | new cards, visual redesign, interaction redesign, or PTC dispatch rich-card enhancements except the [nested terminal-card exception](../../../../packages/client/ui-tool/README.md), [recorded tool details](../../../../packages/client/ui-tool/README.md), and [background Shell command display](../bug-fix/2026-10-10-background-shell-command-display.md) |
 | Forbidden | compatibility dual-writing, version negotiation, or retention of the old `view` field |
 
 ## Terminology
@@ -294,15 +294,16 @@ Unknown tools continue to use `GenericToolCard` with the name, raw arguments, re
 
 The title, kind, rawInput, content, and locations from Generic Host `presentCall` do not currently drive an ordinary Web row. Generic `presentResult.content` also does not drive Web output, so the Client need not copy these unconsumed values.
 
+<a id="terminal-card"></a>
 ### Terminal card
 
-The Client terminal model derives existing `TerminalBlock` props from the tool name, call arguments, result content, error, and Session cwd, independently of `parentCallId`.
+The Client terminal model derives existing `TerminalBlock` props from the tool name, call arguments, result content, error, and Session cwd, independently of `parentCallId`. [Background Shell command display](../bug-fix/2026-10-10-background-shell-command-display.md) governs explicit background `bash`/`pwsh` launches; the remaining ownership and fallback rules below stay in force.
 
 | Input | Preserved result |
 |---|---|
 | running standard `bash`/`pwsh` foreground call | terminal prompt, description, cwd, and running state |
 | successful standard foreground call | terminal output, exit code/signal, and settled state presentation |
-| `run_in_background:true` | Generic row and raw result |
+| explicit background standard `bash`/`pwsh` | original `background` flag with call `running` at Start; acknowledgement clears `running` and retains a static command without output or job status |
 | tool execution error | Generic IN/OUT and error summary |
 | running persistent `bash`/`pwsh` | terminal prompt |
 | settled persistent `bash`/`pwsh` | Generic flattened result, with no new exit card |
@@ -310,7 +311,7 @@ The Client terminal model derives existing `TerminalBlock` props from the tool n
 | background/error `terminal_send` | Generic result |
 | PTC dispatch child | same terminal eligibility and fallback rules as a root call |
 
-Standard shell results parse trailing `[exit code: N]` and `[killed by signal: X]` markers. A final recognized spill-policy notice selects Generic output instead: expandable in shell rows and raw in Details, because the exit marker may be displaced or omitted. A parsed marker is removed from the terminal body; timeout, sandbox denial, and markers without a pill remain in the body.
+Foreground standard shell results parse trailing `[exit code: N]` and `[killed by signal: X]` markers; explicit background launch acknowledgements do not enter output or exit-status parsing. A final recognized spill-policy notice selects Generic output instead: expandable in shell rows and raw in Details, because the exit marker may be displaced or omitted. A parsed marker is removed from the terminal body; timeout, sandbox denial, and markers without a pill remain in the body.
 
 Call `description` remains above the card and overrides the collapsed summary. Workdir continues handling absolute, relative, and missing values. Relative paths resolve against the Session cwd while preserving normalization for `.`, `..`, drive letters, and UNC roots.
 
@@ -318,7 +319,7 @@ For `terminal_send`, non-empty input and the session id remain verbatim tool dat
 
 Standard and persistent providers sharing the same tool name are a special compatibility point. The Client uses currently valid argument and result features to preserve their delivered differences. Input that cannot be identified unambiguously uses a Generic settled result rather than gaining new presentation.
 
-`TerminalBlock` ANSI handling, cursor replay, wide characters, line limits, expansion, copying, and assistive text remain unchanged.
+Outside the explicit background command-only presentation, `TerminalBlock` ANSI handling, cursor replay, wide characters, line limits, expansion, copying, and assistive text remain unchanged.
 
 ### Diff card
 
@@ -412,7 +413,7 @@ The scenario does not import Host tool packages to compute page presentation and
 | orphan result | callId title and Generic output |
 | interrupted call | warning/stopped state |
 | foreground bash/pwsh | current terminal prompt, body, cwd, and state |
-| background/error bash/pwsh | current Generic IN/OUT |
+| explicit background bash/pwsh | terminal Start and static command-only acknowledgement; launch errors retain Generic IN/OUT |
 | persistent shell | current running terminal and settled Generic form |
 | terminal_send | current foreground terminal and background/error Generic form |
 | write/edit | current intended/applied diff and error fallback |
@@ -634,7 +635,7 @@ An on-demand RPC would turn one page read into N network calls and would still r
 
 ### Allow presentation enhancements
 
-Bundling richer PTC dispatch cards, missing-call-head inference, or other historical presentation enhancements with the ownership change would prevent snapshots from proving equivalence. This decision rejects that coupling; the [nested terminal-card exception](../bug-fix/2026-09-05-nested-terminal-cards.md) does not relax nonterminal child restrictions.
+Bundling richer PTC dispatch cards, missing-call-head inference, or other historical presentation enhancements with the ownership change would prevent snapshots from proving equivalence. This decision rejects that coupling; the [nested terminal-card exception](../../../../packages/client/ui-tool/README.md) does not relax nonterminal child restrictions.
 
 ### Accept temporary Generic degradation
 
@@ -686,7 +687,7 @@ The absence of optional `view` is a prerelease wire-type decision shared by all 
 
 ## Relationship to Existing Decisions
 
-[Nested terminal cards](../bug-fix/2026-09-05-nested-terminal-cards.md) partially supersedes only the terminal child-card prohibition and its visual-equivalence requirement. This note remains active for raw-journal ownership, Client derivation, and the diff/read/search/web child restrictions.
+The current [terminal-card rules](../../../../packages/client/ui-tool/README.md) permit nested terminal cards, replacing only the terminal child-card prohibition and its visual-equivalence requirement. This note remains active for raw-journal ownership, Client derivation, and the diff/read/search/web child restrictions.
 
 This note partially supersedes the implementation fact in [Client tool presentation ownership](../../archived/architecture/2026-08-08-client-tool-presentation-ownership.md) that “card models receive Host views.” Its core decisions remain: `ui-tool` owns presentation, business plugins use keyed slots, and Conversation owns only lifecycle and topology.
 
@@ -698,12 +699,12 @@ This note updates the entry contract from [Session history and Remote event tran
 
 This note follows [Conversation Node assembly](2026-08-09-client-conversation-node-assembly.md): the Tool Definition owns event pairing and the call tree, while concrete card models remain in `ui-tool`.
 
-This note preserves result metadata from the [canonical tool output contract](2026-07-20-canonical-tool-output-contract.md), because it is the lossless, replayable input to Client derivation.
+This note preserves result metadata from the [canonical tool output contract](../../../../packages/core/tools/README.md), because it is the lossless, replayable input to Client derivation.
 
 ## Deferred
 
 - A separate explicit decision may evaluate deleting Host presenters if they remain without production consumers; this decision does not prejudge it.
-- Specialized diff, read, search, and web cards for PTC dispatch subcalls require a separate design and visible-snapshot updates; terminal calls are covered by the linked partial supersession.
+- Specialized diff, read, search, and web cards for PTC dispatch subcalls require a separate design and visible-snapshot updates; terminal calls follow the linked current card rules.
 - A third-party mutation tool that joins Deliverables requires a new Client-owned contribution; this decision does not create a registry for an absent consumer.
 - Distinct Client presentation for same-named providers first requires a stable, non-presentational identity; it must not restore per-page Host views.
 - If Client card-model performance needs measurement, an immutable-block microbenchmark can be added; the shipped architecture already prohibits scanning the Session window.

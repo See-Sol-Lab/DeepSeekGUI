@@ -444,7 +444,7 @@ export async function apply(ctx: ClientContext): Promise<void> {
         order: MEMORY_SECTION_ORDER,
         locale: NS_MEMORY,
         label: () => tm('nav.memory'),
-        inject: () => ({ bridge }),
+        inject: () => ({ bridge, inspector: scoped.remote.workbenchInspector }),
       }, MemorySettingsSection))
   })
 }

@@ -238,7 +238,10 @@ describe('DeepSeekAdapter against a mock server', () => {
       prepareExtensions: () => Promise.reject(new Error('metadata unavailable')),
     })
     await expect(drain(failed.stream({ provider: 'deepseek-official', model: 'm', messages: [] })))
-      .rejects.toMatchObject({ code: 'REQUEST_EXTENSION' })
+      .rejects.toMatchObject({
+        code: 'REQUEST_EXTENSION',
+        message: 'DeepSeek request extension preparation failed: metadata unavailable',
+      })
 
     const collision = new DeepSeekAdapter({
       ...base,
@@ -333,10 +336,11 @@ describe('DeepSeekAdapter against a mock server', () => {
     expect(accept).toHaveBeenCalledOnce()
   })
 
-  it('reports a post-2xx extension acceptance failure without relabelling it as transport', async () => {
-    const server = await mockServer([{ kind: 'sse', events: textEvents }])
+  it('reports a post-2xx extension acceptance failure and continues the stream', async () => {
+    const server = await mockServer([{ kind: 'sse', events: textEvents }, { kind: 'sse', events: textEvents }])
     const failure = new Error('watermark append failed')
-    const adapter = new DeepSeekAdapter({
+    const unaccepted = vi.fn()
+    const base = {
       options: () => resolveAdapterOptions({ baseURL: server.url }),
       resolveAuth: () => Promise.resolve({ headers: { 'x-api-key': 'k' } }),
       resolveUserId: () => TEST_USER_ID,
@@ -344,11 +348,13 @@ describe('DeepSeekAdapter against a mock server', () => {
         fields: { dsh_test: 1 },
         accept: () => Promise.reject(failure),
       }) as never,
-    })
+    }
+    const request = { provider: 'deepseek-official', model: 'm', messages: [] }
 
-    await expect(drain(adapter.stream({ provider: 'deepseek-official', model: 'm', messages: [] })))
-      .rejects.toMatchObject({ code: 'REQUEST_EXTENSION', cause: failure })
-    expect(server.requests).toHaveLength(1)
+    await expect(drain(new DeepSeekAdapter({ ...base, onExtensionsUnaccepted: unaccepted }).stream(request))).resolves.toBeUndefined()
+    expect(unaccepted).toHaveBeenCalledWith({ provider: 'deepseek-official', model: 'm', error: failure })
+    await expect(drain(new DeepSeekAdapter(base).stream(request))).resolves.toBeUndefined()
+    expect(server.requests).toHaveLength(2)
   })
 
   it('streams a text generation end to end through the assembler', async () => {
@@ -2239,7 +2245,7 @@ describe('plugin registration and config', () => {
     await ctx.plugin(LlmRuntime)
     await ctx.plugin(LlmDeepSeek, { baseURL: 'http://127.0.0.1:1' })
     expect(ctx.llm.listProviders()).toEqual([{ id: 'deepseek-official', name: 'DeepSeek' }])
-    await expect(ctx.llm.listModels('deepseek-official')).resolves.toHaveLength(4) // DeepSeekGUI catalog
+    await expect(ctx.llm.listModels('deepseek-official')).resolves.toEqual([])
     const first = await assemble(ctx, { model: 'deepseek-flash', messages: [] })
     expect(first.finish).toMatchObject({ kind: 'error', failure: { code: 'MISSING_CREDENTIAL' } })
     // The guidance leads with the managed credential store.

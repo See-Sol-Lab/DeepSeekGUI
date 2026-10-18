@@ -27,7 +27,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-[`@deepseek-ai/dsh-api-session-controller`](../session-controller/README.zh.md) 拥有 agent（智能体）与会话身份策略，包括供其他 namespace 使用的 Typert lookup 解析器。本包只选择并挂载生成的会话 contribution，不复制激活策略。
+[`@deepseek-ai/dsh-api-session-controller`](../session-controller/README.zh.md) 拥有 agent（智能体）与会话身份策略，包括供其他 namespace 使用的 Typert lookup 解析器。本包选择并挂载生成的会话 contribution，无需直接依赖 `@deepseek-ai/dsh-session` 的运行时；激活策略由会话控制器负责。
 
 Client 组合挂载 Office 转换、Commands、凭据、settings、Goal、Schedule、动态 Cordis、文件与会话引用、只读 Host 插件清单、插件安装源响应比较、消息反馈、权限预设、会话控制器、subagents 和 Workspace 控制器 contribution。`permissionPresets` namespace 返回 current-session 控件使用的完整进程级目录。该组合卸载时，Cordis effect 的所有权机制会撤回所有贡献；`@deepseek-ai/dsh-api-gateway/client` 负责描述符校验、可追踪的 namespace 服务、直接与作用域方法、调用、流与取消。Client 入口通过 Cordis 消费共享的 `TypertClientRemote` 接口，不导入具体 Gateway；它只以 type-only 形式重新导出 Gateway Client face 的声明合并，因此消费端经由本外观取到转发事件词汇时，运行时不会多出一条通往 Gateway 实现的边。
 
@@ -43,6 +43,8 @@ Client 组合挂载 Office 转换、Commands、凭据、settings、Goal、Schedu
 `src/remote-events.ts` 持有 `API_REMOTE_FORWARDED_EVENTS`，即本应用不改名转发给消费端的 Host Cordis 事件名单；每个条目还会选择普通发送或 agent-scoped waterfall（瀑布式事件）投递。该名单同时就是 `ctx.remote.$on` 的合法键集，只含类型的 `src/types.ts` 派生其选择面。多转发一个事件只需在该数组里加一项：类型投影、消费端键面与 Host 转发循环全部由它派生。
 
 监听器签名不在此处重写。名单内每条事件的 Cordis `Events` 声明都住在其 owner 包 client-safe 的 `./types` 导出，本包两个 face 都把那些声明纳入编译面。Host face 还会把每个条目断言给 `TypertForwardableEventEntry`：`emit` 条目必须是已声明的单向事件，`waterfall` 条目则必须是已声明的 agent-scoped waterfall，且其最后一个参数是返回相同结果类型的 `next()` 回调。
+
+`emit` 条目可以声明 `resources`：以 `TypertResourceMap` 种类为键、类型由该事件自身参数决定的读取函数，例如 `api-session/added` 上的 `resources: { session: summary => summary.sessionId }`。Host entry 把它们原样附在每个转发帧上；只有访问控制在它们给出的资源上允许该事件时，Gateway 才把通知转发给非 owner Peer，未声明 `resources` 的通知触及内置的 `global` 资源。`api-session/activity`、`api-session/added`、`api-session/error`、`api-session/removed` 与 `api-session/status` 声明其 Session。一个通知只携带一个资源身份或不携带；集合类变化改走 follow 类流。
 
 Host entry 为每条 Client 流独立注册一组 allowlist listener 和一个队列，并在普通事件入队前拒绝非 JSON 参数。对于 waterfall，它只投影顶层 agent 身份与 JSON 请求字段；Client 结果也必须能无损表示为 JSON，而 `next()` 会委托给后续 Host listener。每个作用域 waterfall 请求都必须以 `request.agent` 直接携带路由所用的 agent；Host 会在转发前拒绝缺失或不匹配的身份。该 source 在 `ctx.typertGateway.registerRemoteEvents()` 暴露 Gateway 内部的 `$events` 逻辑流前同步挂好所有 listener，因此首个 `ready` 项既能证明增量投递已就绪，也会携带供 Client 显示路径的 Host home。撤回注册会中止活动流。
 
@@ -86,7 +88,5 @@ Host entry 为每条 Client 流独立注册一组 allowlist listener 和一个�
 无。
 
 </details>
-
-**运行时不变式：** 不发布伴生入口。被观察的关系由 Typert、agent 注册表和会话注册表负责。
 
 客户端组装包含 account 命名空间，用于登录操作和可重连的账号快照。

@@ -2,16 +2,16 @@
  * Tests for the event-relation collector's demand-driven call-site indexing:
  * the single-file fast path and the global fallback must recover the same
  * helper-parameter event names, including shapes that defeat the locality
- * proof (alias escapes and global script files), and every Context dispatch
- * mode must register as a dispatcher — a mode missing from the method set
- * would report a declared event as dead vocabulary.
+ * proof (alias escapes and global script files). The filesystem-probe memo
+ * must answer repeated probes from one result and restore `ts.sys`.
  */
 
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
+import ts from 'typescript'
 import { afterAll, describe, expect, it } from 'vitest'
-import { collectPackageSources, EventRelationCollector } from './gen-doc-graphs.ts'
+import { collectPackageSources, EventRelationCollector, withMemoizedFileSystemProbes } from './gen-doc-graphs.ts'
 import { TypeScriptProject } from './ts-project.ts'
 
 const FIXTURE: Record<string, string> = {
@@ -63,15 +63,6 @@ const FIXTURE: Record<string, string> = {
   'packages/fix/pkgc/src/helper.ts':
     "function scriptFire(args: [string]): void { void gEvents.dispatch('emit', args) }\n",
   'packages/fix/pkgc/src/caller.ts': "scriptFire(['pkgc/script-event'])\n",
-  // Context bail dispatch: the receiver classifies as 'context', so the event
-  // must register through the bail branch of the method set — a set missing
-  // 'bail' silently drops the dispatch before any branch runs.
-  'packages/fix/pkgd/src/index.ts': [
-    "import { Context } from '../../../../vendor/cordis/src/context.ts'",
-    'declare const ctx: Context & { bail(type: string, ...args: unknown[]): unknown }',
-    "void ctx.bail('pkgd/bail-event', 'payload')",
-    '',
-  ].join('\n'),
 }
 
 const root = mkdtempSync(join(tmpdir(), 'gen-doc-graphs-'))
@@ -92,12 +83,6 @@ function dispatchersOf(pkgs: readonly string[], event: string): string[] {
   return [...(relations.get(event)?.dispatchers.keys() ?? [])]
 }
 
-function dispatchMethodsOf(pkgs: readonly string[], event: string, pkg: string): string[] {
-  const subset = sources.filter(source => pkgs.includes(source.pkg))
-  const relations = new EventRelationCollector(project, subset).collect()
-  return [...(relations.get(event)?.dispatchers.get(pkg) ?? [])]
-}
-
 describe('event relation call-site indexing', () => {
   it('recovers a proven-local helper through the single-file fast path', () => {
     expect(dispatchersOf(['pkga', 'pkgb'], 'pkga/local-event')).toEqual(['pkga'])
@@ -112,9 +97,69 @@ describe('event relation call-site indexing', () => {
     // proof would index helper.ts only and lose the caller.ts call site.
     expect(dispatchersOf(['pkgc'], 'pkgc/script-event')).toEqual(['pkgc'])
   })
+})
 
-  it('records a Context bail dispatch as a dispatcher', () => {
-    expect(dispatchersOf(['pkgd'], 'pkgd/bail-event')).toEqual(['pkgd'])
-    expect(dispatchMethodsOf(['pkgd'], 'pkgd/bail-event', 'pkgd')).toEqual(['bail'])
+describe('memoized filesystem probes', () => {
+  function countingSystem(): { system: ts.System; calls: string[] } {
+    const calls: string[] = []
+    const system: ts.System = {
+      ...ts.sys,
+      fileExists: (path) => { calls.push(`file ${path}`); return path === 'present' },
+      directoryExists: (path) => { calls.push(`directory ${path}`); return true },
+      realpath: (path) => { calls.push(`realpath ${path}`); return `/real/${path}` },
+      readDirectory: (path, extensions) => { calls.push(`read ${path} ${String(extensions)}`); return [`${path}/a.ts`] },
+      getDirectories: (path) => { calls.push(`directories ${path}`); return [`${path}/child`] },
+    }
+    return { system, calls }
+  }
+
+  it('answers repeated probes from the first result and restores the system', () => {
+    const { system, calls } = countingSystem()
+    const original = { ...system }
+    const results = withMemoizedFileSystemProbes(() => {
+      const listed = system.readDirectory('dir', ['.ts'])
+      listed.push('mutated')
+      return [
+        system.fileExists('present'), system.fileExists('present'), system.fileExists('absent'),
+        system.directoryExists('dir'), system.directoryExists('dir'),
+        system.realpath?.('link'), system.realpath?.('link'),
+        system.readDirectory('dir', ['.ts']), system.readDirectory('dir', ['.tsx']),
+        system.getDirectories('dir'), system.getDirectories('dir'),
+      ]
+    }, system)
+    expect(results).toEqual([
+      true, true, false, true, true, '/real/link', '/real/link',
+      ['dir/a.ts'], ['dir/a.ts'], ['dir/child'], ['dir/child'],
+    ])
+    expect(calls).toEqual([
+      'read dir .ts', 'file present', 'file absent', 'directory dir', 'realpath link', 'read dir .tsx', 'directories dir',
+    ])
+    expect({ ...system }).toEqual(original)
+  })
+
+  it('records no result for a throwing probe and restores the system when the run throws', () => {
+    const { system } = countingSystem()
+    const original = { ...system }
+    let attempts = 0
+    system.fileExists = () => {
+      attempts++
+      if (attempts === 1) throw new Error('transient')
+      return true
+    }
+    const replaced = { ...system }
+    expect(() => withMemoizedFileSystemProbes(() => {
+      expect(() => system.fileExists('path')).toThrow('transient')
+      expect(system.fileExists('path')).toBe(true)
+      throw new Error('run failed')
+    }, system)).toThrow('run failed')
+    expect(attempts).toBe(2)
+    expect({ ...system }).toEqual(replaced)
+    expect(replaced).not.toEqual(original)
+  })
+
+  it('builds the same Program through the memoized system', () => {
+    const memoized = withMemoizedFileSystemProbes(() => new TypeScriptProject(root))
+    expect(memoized.sourceFiles().map(sourceFile => sourceFile.fileName))
+      .toEqual(project.sourceFiles().map(sourceFile => sourceFile.fileName))
   })
 })

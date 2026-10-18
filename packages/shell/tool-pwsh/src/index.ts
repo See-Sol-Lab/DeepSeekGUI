@@ -21,13 +21,13 @@
  */
 
 import { isAbsolute, resolve as resolvePath } from 'node:path'
+import type {} from '@deepseek-ai/dsh-working-directory'
 import { FiberState } from '@deepseek-ai/cordis'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { defineTool, TOOL_ABORTED } from '@deepseek-ai/dsh-tools'
 import type { GenericCallView, TerminalCallView, ToolDefinition, ToolExecution, ToolResult, ToolResultView } from '@deepseek-ai/dsh-tools'
 import { HarnessError } from '@deepseek-ai/dsh-llm'
-import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { JobId, JobRegistry, JobView } from '@deepseek-ai/dsh-jobs'
 import type {} from '@deepseek-ai/dsh-shell-env'
 import type {} from '@deepseek-ai/dsh-user-approval'
@@ -47,7 +47,7 @@ declare module '@deepseek-ai/dsh-jobs' {
 }
 
 export const name = 'tool-pwsh'
-export const inject = ['tools', 'shell', 'systemPrompt', 'shellEnv']
+export const inject = ['tools', 'shell', 'systemPrompt', 'shellEnv', 'workingDirectory']
 
 /* jscpd:ignore-start -- the pwsh Config mirrors tool-bash's by design, like render/background. */
 /** Configuration for the pwsh tool. */
@@ -89,6 +89,7 @@ interface PwshToolArgs {
 
 /** The canonical foreground result of one pwsh call (the `output.schema` value shape). */
 interface PwshForegroundResult {
+  cwd: string
   kind: 'foreground'
   exitCode: number | null
   signal: NodeJS.Signals | null
@@ -126,6 +127,7 @@ function pwshDescription(windowsSandbox: boolean): string {
     + 'Managed `$env:DSH_*` variables expose current harness environment facts. '
     + 'Long output is truncated to its tail; the full output is saved to a file whose path is reported when available. '
     + 'On Windows a force-killed command settles as `[exit code: 1]` without a signal marker — treat it as an interruption, not a command failure. '
+    + 'Provide `description` before `command` in the arguments. '
     + 'Before any delete or move, verify that the resolved absolute target path is the intended one; never run it against a computed path you have not checked. '
     + 'Do not assign to automatic variables such as `$HOME`; variable names are case-insensitive, so `$home` is the same read-only variable. '
     + 'Commands may run under a file sandbox; a blocked file operation is reported as `[sandbox: file access denied under <mode> mode]`, a policy denial: do not retry another way.'
@@ -148,27 +150,24 @@ function pwshDescription(windowsSandbox: boolean): string {
     + 'avoid capturing output.'
 }
 
-/**
- * Resolve an explicit workdir first, making a relative one session-workspace-relative;
- * otherwise use the session header cwd and leave executor defaulting as the fallback.
- */
-function resolveWorkdir(modelWorkdir: string | undefined, exec: { agent?: Agent }): string | undefined {
-  const headerCwd = exec.agent?.session.header.cwd
-  if (modelWorkdir === undefined) return headerCwd
-  if (headerCwd !== undefined && !isAbsolute(modelWorkdir)) {
-    return resolvePath(headerCwd, modelWorkdir)
+/** Resolve a relative per-call override against the Session's current directory. */
+function resolveWorkdir(modelWorkdir: string | undefined, sessionCwd: string | undefined): string | undefined {
+  if (modelWorkdir === undefined) return sessionCwd
+  if (sessionCwd !== undefined && !isAbsolute(modelWorkdir)) {
+    return resolvePath(sessionCwd, modelWorkdir)
   }
   return modelWorkdir
 }
 
 /** Detach the executor DTO from readonly Service Definition types into plain JSON data. */
-function canonicalPwshResult(result: ShellRunResult): PwshForegroundResult {
+function canonicalPwshResult(result: ShellRunResult, cwd: string): PwshForegroundResult {
   const output = (stream: ShellRunResult['stdout']) => ({
     text: stream.text,
     truncated: stream.truncated,
     ...stream.spillPath !== undefined ? { spillPath: stream.spillPath } : {},
   })
   return {
+    cwd,
     kind: 'foreground',
     exitCode: result.exitCode,
     signal: result.signal,
@@ -207,6 +206,7 @@ interface StartedJob {
 const BACKGROUND_OUTPUT_PROPERTIES = {
   kind: { type: 'string', required: true, const: 'background' },
   jobId: { type: 'string', required: true },
+  cwd: { type: 'string', required: true },
 } as const
 /* jscpd:ignore-end */
 
@@ -288,6 +288,7 @@ export function apply(ctx: Context, config: Config = {}): void {
       const id = registry.start({
         kind: 'pwsh',
         label: args.command,
+        toolCall: { callId: exec.callId, rootCallId: exec.rootCallId },
         ...exec.agent ? { owner: exec.agent.id } : {},
         output: processSources(() => proc),
         run: () => {
@@ -344,6 +345,7 @@ export function apply(ctx: Context, config: Config = {}): void {
         await stop('timed out during preparation')
         return {
           kind: 'foreground' as const,
+          cwd: spec.workdir,
           exitCode: null,
           signal: null,
           timedOut: true,
@@ -361,6 +363,7 @@ export function apply(ctx: Context, config: Config = {}): void {
         const read = registry.read(attached.id, owner)
         return {
           kind: 'promoted' as const,
+          cwd: spec.workdir,
           jobId: attached.id,
           timeoutMs,
           output: renderPwshJobRead(
@@ -379,7 +382,7 @@ export function apply(ctx: Context, config: Config = {}): void {
       if (process === undefined) throw new Error(view.detail)
       const result = await process.result()
       const stopped = attached.stopped()
-      return { ...canonicalPwshResult(result), ...stopped !== undefined ? { stopped } : {} }
+      return { ...canonicalPwshResult(result, spec.workdir), ...stopped !== undefined ? { stopped } : {} }
     }
     /* jscpd:ignore-end */
     return defineTool({
@@ -387,7 +390,6 @@ export function apply(ctx: Context, config: Config = {}): void {
       description: pwshDescription(escalationModes.length > 0),
       /* jscpd:ignore-start -- deliberate mirror of dsh-tool-bash's parameter surface (pwsh-tool-and-executor Agent Note). */
       parameters: {
-        command: { type: 'string', required: true, description: 'The PowerShell command to execute.' },
         description: {
           type: 'string',
           required: true,
@@ -395,6 +397,7 @@ export function apply(ctx: Context, config: Config = {}): void {
             + '5-10 words (shown in the UI). Examples: "ls" → "List files in current directory"; '
             + '"git status" → "Show working tree status"; "Get-Process" → "List running processes".',
         },
+        command: { type: 'string', required: true, description: 'The PowerShell command to execute.' },
         timeoutMs: {
           type: 'number',
           description: promote
@@ -436,6 +439,7 @@ export function apply(ctx: Context, config: Config = {}): void {
               additionalProperties: false,
               properties: {
                 kind: { type: 'string', required: true, const: 'promoted' },
+                cwd: { type: 'string', required: true },
                 jobId: { type: 'string', required: true },
                 timeoutMs: { type: 'number', required: true },
                 output: { type: 'string', required: true },
@@ -446,6 +450,7 @@ export function apply(ctx: Context, config: Config = {}): void {
               additionalProperties: false,
               properties: {
                 kind: { type: 'string', required: true, const: 'foreground' },
+                cwd: { type: 'string', required: true },
                 exitCode: { required: true, oneOf: [{ type: 'integer' }, { type: 'null' }] },
                 signal: { required: true, oneOf: [{ type: 'string' }, { type: 'null' }] },
                 timedOut: { type: 'boolean', required: true },
@@ -495,6 +500,7 @@ export function apply(ctx: Context, config: Config = {}): void {
               ? renderPwshPromoted(value)
               : renderPwshResult(value as RenderablePwshResult, escalationModes),
         }],
+        presentationMeta: (_args, value) => ({ cwd: value.cwd }),
       },
       /* jscpd:ignore-start -- the execute path mirrors dsh-tool-bash's by design (see the pwsh-tool-and-executor Agent Note). */
       async execute(args: PwshToolArgs, exec) {
@@ -502,7 +508,8 @@ export function apply(ctx: Context, config: Config = {}): void {
         // Description is display metadata; workdir defaults to the caller's session.
         const standingPolicy = resolveSandboxPolicy(exec)
         // The directory the command really runs in: its relative paths land there.
-        const workdir = resolveWorkdir(args.workdir, exec)
+        const cwd = exec.agent === undefined ? undefined : await ctx.workingDirectory.ensure(exec.agent, exec.signal)
+        const workdir = resolveWorkdir(args.workdir, cwd)
         const approvedMode = args.sandbox_permissions !== undefined && args.justification !== undefined
           ? await approvePwshEscalation(args.sandbox_permissions, args.justification, exec, standingPolicy, args.command, workdir)
           : undefined
@@ -537,7 +544,8 @@ export function apply(ctx: Context, config: Config = {}): void {
           }
           // The caller owns cancellation until ctx.jobs commits detached ownership.
           if (exec.signal.aborted) throw toolAborted()
-          return { kind: 'background' as const, jobId: startJob(jobs, args, exec, ctx.shell.resolve({ ...request, onExpiry: 'none' })).id }
+          const spec = ctx.shell.resolve({ ...request, onExpiry: 'none' })
+          return { kind: 'background' as const, jobId: startJob(jobs, args, exec, spec).id, cwd: spec.workdir }
         }
         // A foreground call is a job the tool waits on, so the command is
         // visible and killable from the moment it starts and outlives the wait
@@ -554,10 +562,11 @@ export function apply(ctx: Context, config: Config = {}): void {
           }
           if (attached !== undefined) return waitOnJob(jobs, attached, exec, spec)
         }
-        const foreground = await ctx.shell.execute(ctx.shell.resolve({ ...request, signal: exec.signal }))
+        const spec = ctx.shell.resolve({ ...request, signal: exec.signal })
+        const foreground = await ctx.shell.execute(spec)
         const result = await foreground.result()
         if (result.aborted) throw toolAborted()
-        return canonicalPwshResult(result)
+        return canonicalPwshResult(result, spec.workdir)
       },
       /* jscpd:ignore-end */
       /* jscpd:ignore-start -- the background call card mirrors presentBashCall's by design (Agent Note). */

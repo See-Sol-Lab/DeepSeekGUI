@@ -29,6 +29,8 @@ This package gives a keyless test a real agent with a fixed model transcript: mo
 
 ### Mounting it
 
+Prepared callers require the routed adapter mode. Configure `models[].reasoningEfforts` from least to greatest selectable effort. Configuration functions receive that order during preparation; `defaultReasoningEffort` remains independent of the first entry.
+
 With `providers` configured, the plugin registers a replay-only adapter whose catalog is available to scenarios that exercise model discovery; without `providers`, it installs the catch-all `llm/stream` waterfall used by tests that do not need discovery:
 
 ```yaml
@@ -107,7 +109,6 @@ The [committed-corpus test](tests/session-format-corpus.spec.ts) restores each v
 |---|---|
 | [`src/index.ts`](src/index.ts) | Types, fixture derivation, override validation, placeholder resolution, session binding, `installLlmReplay`, and the plugin export |
 | [`tests/session-format-corpus.spec.ts`](tests/session-format-corpus.spec.ts) | Committed-generation restoration and exact historical refusal checks |
-| — | No runtime invariant companion is published; this test-only adapter consumes a fixed replay script; its stream grammar is checked by the LLM companion and fixture derivation tests. |
 
 ### Binding and stream flow
 

@@ -25,11 +25,11 @@ Web GUI 的 goal 界面同时显示持久 goal 状态及当前的进程本地激
 <a id="use-this-package"></a>
 ## 使用本包
 
-与 `ui-conversation` 及 goal 领域包一起挂载本插件；只要会话存在目标，条带就会作为 composer 上下文堆栈的第二张卡片出现（位于 Todo 之后、Queue 之前）。Todo 与 Goal 使用相同的面板 elevation，使其位于 composer 层级之上。已 armed 的 active goal 提供暂停动作；active-but-disarmed 或 paused 的 goal 提供恢复；编辑重写目标文本；清除移除目标，并在投影追上之前抑制条带。
+与 `ui-conversation` 及 goal 领域包一起挂载本插件；只要会话存在目标，条带就会作为 composer 上下文堆栈的第二张卡片出现（位于 Todo 之后、Queue 之前）。Todo 与 Goal 使用相同的面板 elevation，使其位于 composer 层级之上。已 armed 的 active goal 提供暂停动作；active-but-disarmed 或 paused 的 goal 提供恢复；编辑在 ui-primitives 的 `InlineEditor` 中重写目标文本，多行目标编辑后仍保留换行；清除移除目标，并在投影追上之前抑制条带。
 
 ### 指令输入气泡
 
-每条持久的 `/goal` 运行都投影为一个右对齐的用户样式气泡，标签为 `Command input`（或 `指令输入`），渲染在通用命令结果行之前；开头的 `/goal` token 经 ui-primitives 的 `projectUserText` 以等宽代码字体渲染为指令引用 chip，目标文本保持正文字体。它不含时间戳、复制或分支操作，重新加载时会依据运行记录重建。
+每条持久的 `/goal` 运行都投影为一个右对齐的用户样式气泡，标签为 `Command input`（或 `指令输入`），渲染在通用命令结果行之前；开头的 `/goal` token 经共享的 `conversation.user.text` Factory 与 Goal 自有的 `command` renderer，使用 `facts.commands` 中的实际执行 token 范围， 以等宽代码字体渲染为指令引用 chip，目标文本保持正文字体。它不含时间戳、复制或分支操作，重新加载时会依据运行记录重建。
 
 ### 失败
 
@@ -89,5 +89,3 @@ Web GUI 的 goal 界面同时显示持久 goal 状态及当前的进程本地激
 无。
 
 </details>
-
-**运行时不变式：** 不发布伴生入口。插件只注册一个 GoalBar dock，其释放已由 HMR（热模块替换）安全性用例证明；持久状态来自 goal projection，进程本地 activation 来自入口私有钩子源，且该源只在框架钩子观察期间订阅。

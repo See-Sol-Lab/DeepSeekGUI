@@ -98,7 +98,6 @@ kind: "package-reference"
 | [`src/index.ts`](src/index.ts) | 服务：配置、openAt 生命周期、串行化对账、查询执行、游标 |
 | [`src/query.ts`](src/query.ts) | 请求规范化、参数化谓词、摘录、谓词与绑定预算 |
 | [`src/schema.ts`](src/schema.ts) | 数据库 schema、application id 归属、原地重置、仅所有者文件创建 |
-| — | 不发布运行时不变式伴生入口；系统会在每次串行化查询边界校验对账、游标世代与派生索引归属。 |
 
 ### 索引生命周期
 
@@ -119,7 +118,7 @@ kind: "package-reference"
 
 - [会话查询子系统参考](../../../docs/subsystems/session-query.zh.md)——本后端实现的完整类型级约定。
 - [dsh-session-query](../session-query/README.zh.md)——服务定义：本后端继承的精确读取、过滤与追踪。
-- [dsh-tool-session-query](../tool-session-query/README.zh.md)——调用这些搜索方法的面向模型消费方。
+- [dsh-tool-session-query](../../experimental/tool-session-query/README.zh.md)——调用这些搜索方法的面向模型消费方。
 - [SQLite FTS5 会话搜索](../../../.agents/notes/archived/feature/2026-07-10-sqlite-session-query-provider.md)——搜索语义、对账与 tokenizer 决策。
 - [JSONL 会话持久化](../../session/session-persistence-jsonl/README.zh.md)——本可丢弃索引观察的权威 Session store；其 root 必须与本包的数据库路径分开。
 

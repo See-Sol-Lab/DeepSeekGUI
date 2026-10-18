@@ -31,6 +31,8 @@ kind: "package-reference"
 
 设置面板使用[框架共享的浮层起点](../ui-layout/README.zh.md#window-chrome-seat)，视口边距至少为 24px。其遮罩不绘制 Windows 顶栏区域，覆盖整个视口的模态层仍阻挡背景点击。
 
+页面重连到运行另一个 release 的 Host 时，会弹出**服务版本变化**对话框，画出两条线：**服务**从 Host 之前的 release（灰色）指向它当前的 release，用细的绿色实线箭头连接，表示 Host 已经切换；**页面**从页面启动时的 release 指向 Host 的 release（灰色），用同样细的灰色虚线箭头连接，表示要刷新后才完成。每行两端版本号不同时显示版本号，否则显示 commit。页面不应用该 release 的任何插件更新。**刷新以加载新版本**加载它；**暂不刷新**、关闭按钮、点击遮罩和 Escape 都让页面保持自己的 release，并不再为该 Host release 提示。Host 回到页面的 release 时，对话框关闭，热更新恢复。
+
 当分区导航超出面板可用高度时，列表独立于设置内容滚动，并保持「设置」标题固定。
 
 在 Desktop 中，账户行更新控件显示可用版本、进度、验证、就绪和持久重试反馈。它与连接指示器共用 28px 高度、8px 圆角、14px 图标占位、4px 图文间距，以及 12px 中等字重文字和 18px 行高；更新状态的边框、填充和文字颜色独立定义。重试文字及其圆点与其他更新文案使用相同的品牌蓝色；数字下载进度不带省略号。预加载仅传递语义化阶段、版本、进度和失败类别；组件从当前 `settings` locale 解析全部可见与无障碍文案，并在应用内语言变化后同步更新。选择可用更新即开始下载；安装需要独立的壳拥有的确认。侧栏收起时，其顶部展开按钮以品牌蓝色圆点显示相同状态，包括失败状态。连接反馈通常优先展示，但壳报告正在安装时，预期的后端断开不能遮盖更新状态；失败后恢复连接反馈。两个控件共用一次载体订阅；浏览器代码不能选择安装包或授权安装。[Desktop 更新](https://github.com/deepseek-ai/deepseek-harness/blob/dsh-v0.2.0-rc.2/apps/desktop/README.md)负责发布流程。检查中、校验中和准备重启状态的悬浮提示只显示已提供的版本号；没有版本号时保留状态文案。桌面更新提示完整保留版本号及预发布后缀，不额外添加 v 或 V；错误提示与桌面升级弹窗保持一致。
@@ -47,7 +49,7 @@ Web 与桌面端的通用设置底部显示当前发布版本，使用构建注�
 
 ### 打开配置文件
 
-在回环浏览器上，只有当宿主确认可准备好一份由提供方持有的本地文档时，外壳才渲染**打开配置文件**。该操作会在原生文本编辑器中打开该文档（macOS 上绕过浏览器文件关联）。远程浏览器从不注册该操作，也从不发起这项特权设置读取。
+在回环浏览器上，只有当宿主确认可准备好一份由提供方持有的本地文档时，外壳才渲染**打开配置文件**。该操作会在原生文本编辑器中打开该文档（macOS 上绕过浏览器文件关联）。远程浏览器从不注册这项原生打开操作，配置了公共 URL 的部署也不例外；它们的偏好通过 Host settings 服务持久化。
 
 ### 引导步骤
 
@@ -73,9 +75,13 @@ Web 与桌面端的通用设置底部显示当前发布版本，使用构建注�
 
 外壳是明确的恢复功能消费方，因此直接注入 Connection，而不把生命周期控制放进 `ctx.remote`。它的私有 hooks compartment 绑定 `ctx.connection.state`，组件只接收选出的状态与调用 `ctx.connection.reconnect()` 的注入回调。`ConnectionIndicator` 拥有内联展示并从 `settings` locale namespace 接收全部可见与无障碍文案；连接中状态的 800ms 最短可见驻留与 2 秒恢复确认计时器归外壳所有；恢复计时从驻留结束、恢复药丸实际可见时开始。
 
+### Host release 变化
+
+`shell.overlay` 条目 `host-release-change` 在其 hooks compartment 中绑定 `ctx.modules.entries.releaseChange`，并接收两个回调：一个调用 `ctx.modules.entries.dismissRelease()`，另一个刷新页面。release 身份是 Host 数据，按原样显示；哪个 release 算当前由 [Client Modules](../modules/README.zh.md#host-release-changes) 决定。
+
 ### 文档可用性
 
-在 loopback 页面上，Client 通过 `settings/describe` 加载提供方的 `hasDocument` 能力，且只有在 Host 确认可准备好一份由提供方持有的本地文档时才渲染**打开配置文件**操作。该操作调用无路径参数且经浏览器认证的 `settings/openSettingsDocument` Remote；Host 会再次解析提供方路径、在文档缺失时将其创建出来，并交给原生文本编辑器（macOS 上使用 `open -t`，绕过浏览器文件关联；Linux 和 Windows 上使用桌面文件关联；WSL 上经 `wslpath -w` 转换后使用 Windows 文件关联）。打开失败时该操作仍可使用，并渲染本地化错误。临时读取失败或 Host 拓扑变化后，重新打开对话框或重新连接会刷新可用性。非 loopback 页面保留 Client 策略，不提供该原生操作及其 settings 读取。
+在 loopback 页面上，Client 通过 `settings/describe` 加载提供方的 `hasDocument` 能力，且只有在 Host 确认可准备好一份由提供方持有的本地文档时才渲染**打开配置文件**操作。该操作调用无路径参数且经浏览器认证的 `settings/openSettingsDocument` Remote；Host 会再次解析提供方路径、在文档缺失时将其创建出来，并交给原生文本编辑器（macOS 上使用 `open -t`，绕过浏览器文件关联；Linux 和 Windows 上使用桌面文件关联；WSL 上经 `wslpath -w` 转换后使用 Windows 文件关联）。打开失败时该操作仍可使用，并渲染本地化错误。临时读取失败或 Host 拓扑变化后，重新打开对话框或重新连接会刷新可用性。非 loopback 页面通过 Client 策略拦下该原生操作。
 
 ### 宿主端
 
@@ -126,5 +132,3 @@ Web 与桌面端的通用设置底部显示当前发布版本，使用构建注�
 无。
 
 </details>
-
-**运行时不变式：** 不发布伴生入口。settings seam 校验并发布持久 onboarding section，slot core 会拒绝冲突；本地 document action 由 store 与组件测试覆盖。

@@ -150,6 +150,42 @@ it('reports a deleted workspace folder on every read surface instead of a Git fa
   await expect(api.status(sid, signal)).rejects.toThrow(missing)
   await expect(api.overview(sid, signal)).rejects.toThrow(missing)
 })
+it('answers an ordinary folder with the not-a-repository code on every Git surface, and keeps plain file reads working', async () => {
+  const { api, root, signal } = await setup()
+  writeFileSync(join(root, 'a.txt'), 'plain')
+  const reads = [
+    () => api.status(sid, signal),
+    () => api.diff(sid, 'unstaged', '', signal),
+    () => api.overview(sid, signal),
+    () => api.text(sid, 'a.txt', true, signal),
+  ]
+  for (const read of reads) {
+    await expect(read()).rejects.toMatchObject({
+      code: 'workbench/not-a-repository',
+      details: { cwd: root },
+      message: expect.stringContaining('is not inside a Git repository') as string,
+    })
+  }
+  expect(await api.text(sid, 'a.txt', false, signal)).toEqual({ path: 'a.txt', text: 'plain' })
+})
+it('keeps every other Git failure as a plain error with its own message', async () => {
+  const { api, ctx, signal } = await setup()
+  vi.spyOn(ctx.git, 'repoIdentity').mockRejectedValue(new Error('git is unavailable: spawn git ENOENT'))
+  const failure = await api.status(sid, signal).catch((error: unknown) => error)
+  expect(failure).toBeInstanceOf(Error)
+  expect((failure as Error).message).toBe('git is unavailable: spawn git ENOENT')
+  expect(failure).not.toHaveProperty('code', 'workbench/not-a-repository')
+})
+it('reports a damaged repository (invalid gitfile, real git exit 128) with git\'s own stderr, not as an ordinary folder', async () => {
+  const { api, root, signal } = await setup()
+  writeFileSync(join(root, '.git'), 'this is not a gitfile\n')
+  for (const read of [() => api.status(sid, signal), () => api.overview(sid, signal)]) {
+    const failure = await read().catch((error: unknown) => error)
+    expect(failure).toBeInstanceOf(Error)
+    expect(failure).not.toHaveProperty('code', 'workbench/not-a-repository')
+    expect((failure as Error).message).toMatch(/gitfile/u)
+  }
+})
 it('reports binary and oversized text without clipping', async () => {
   const { api, root, signal } = await setup(6)
   writeFileSync(join(root, 'large.txt'), '汉字文')

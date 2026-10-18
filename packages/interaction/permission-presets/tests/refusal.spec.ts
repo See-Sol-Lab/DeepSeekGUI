@@ -73,10 +73,10 @@ describe('switching to full access', () => {
     expect(() => { ctx.permissionPresets.set(session(project), 'danger-full-access') }).toThrow(/permission refused: administrator/)
   })
 
-  it('works in an ordinary project, and narrower presets are never refused', async () => {
+  it('works in an ordinary project, and a writable preset is still allowed on an administrator desktop', async () => {
     vi.stubEnv(ELEVATED_ENV, '1')
     const ctx = await mounted()
-    expect(() => { ctx.permissionPresets.set(session(homedir()), 'workspace-write') }).not.toThrow()
+    expect(() => { ctx.permissionPresets.set(session(project), 'workspace-write') }).not.toThrow()
     vi.stubEnv(ELEVATED_ENV, '')
     const active = session(project)
     ctx.permissionPresets.set(active, 'danger-full-access')
@@ -102,8 +102,52 @@ describe('switching to full access', () => {
 
     await expect(ctx.commands.execute(agent, '/permission danger-full-access', [], new AbortController().signal))
       .rejects.toThrow(/permission refused: chat-only workspace/)
-    expect(ctx.permissionPresets.current(active)).toBe('workspace-write')
+    // The home directory runs read-only (no read-only preset is configured here), so the picker never reads workspace-write.
+    expect(ctx.permissionPresets.current(active)).not.toBe('workspace-write')
+    expect(ctx.permissionPresets.current(active)).not.toBe('danger-full-access')
     expect(active.snapshotEvents().find(event => event.type === 'command/done')?.data).toMatchObject({ kind: 'error' })
+  })
+})
+
+describe('a workspace the sandbox policy runs read-only (2026-10-04)', () => {
+  const READ_ONLY = { sandbox: 'read-only', approval: 'ask', name: 'read-only', description: 'Read-only.' } as const
+
+  it('refuses workspace-write in a chat-only workspace and in DeepSeekGUI code, and accepts read-only there', async () => {
+    const ctx = await mounted({ presets: { 'read-only': READ_ONLY, 'workspace-write': { sandbox: 'workspace-write', approval: 'ask', name: 'workspace-write', description: 'w' } } })
+    expect(() => { ctx.permissionPresets.set(session(homedir()), 'workspace-write') }).toThrow(/permission refused: chat-only workspace/)
+    expect(() => { ctx.permissionPresets.set(session(install), 'workspace-write') }).toThrow(/permission refused: DeepSeekGUI code/)
+    const home = session(homedir())
+    expect(() => { ctx.permissionPresets.set(home, 'read-only') }).not.toThrow()
+    expect(ctx.permissionPresets.current(home)).toBe('read-only')
+  })
+
+  it('records read-only for a new session there, so the picker shows what the sandbox enforces', async () => {
+    const ctx = await mounted({ presets: { 'read-only': READ_ONLY, 'workspace-write': { sandbox: 'workspace-write', approval: 'ask', name: 'workspace-write', description: 'w' } }, defaultPreset: 'workspace-write' })
+    for (const cwd of [homedir(), install]) {
+      const active = ctx.sessions.create(SessionId(`ro-${cwd.length}`), { meta: { cwd } })
+      expect(ctx.permissionPresets.current(active)).toBe('read-only')
+      expect(active.snapshotEvents().find(event => event.type === 'sandbox/mode')?.data).toEqual({ mode: 'read-only' })
+    }
+    const ordinary = ctx.sessions.create(SessionId('ro-ordinary'), { meta: { cwd: project } })
+    expect(ctx.permissionPresets.current(ordinary)).toBe('workspace-write')
+  })
+
+  it('corrects an existing session whose log still says workspace-write when it is published', async () => {
+    const ctx = await mounted({ presets: { 'read-only': READ_ONLY, 'workspace-write': { sandbox: 'workspace-write', approval: 'ask', name: 'workspace-write', description: 'w' } } })
+    const stale = session(homedir())
+    stale.append('permission/preset', { preset: 'workspace-write' })
+    stale.append('sandbox/mode', { mode: 'workspace-write' })
+    stale.append('approval/policy', { policy: 'ask' })
+    expect(ctx.permissionPresets.current(stale)).toBe('workspace-write')
+    ctx.emit('session/created', stale)
+    expect(ctx.permissionPresets.current(stale)).toBe('read-only')
+  })
+
+  it('without a read-only preset it still records the read-only sandbox and never claims workspace-write', async () => {
+    const ctx = await mounted()
+    const active = ctx.sessions.create(SessionId('ro-no-preset'), { meta: { cwd: homedir() } })
+    expect(active.snapshotEvents().find(event => event.type === 'sandbox/mode')?.data).toEqual({ mode: 'read-only' })
+    expect(ctx.permissionPresets.current(active)).not.toBe('workspace-write')
   })
 })
 

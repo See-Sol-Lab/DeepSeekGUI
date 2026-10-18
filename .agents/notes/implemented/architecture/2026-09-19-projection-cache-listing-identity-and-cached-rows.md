@@ -12,7 +12,7 @@ This is neither cache corruption nor a version mismatch. The projcache record's 
 
 ### Mechanism
 
-A cache record (record format and predecessor recovery: [Projection-cache predecessor recovery and Session-format binding](2026-09-02-projcache-cross-version-read-compat.md)) is bound to a lifecycle identity: `formatVersion + createdAt + cwd + isSeeded + inheritedEventCount`, matched by `identityMatches` on full equality. Since #3346, `inheritedEventCount` (the length of the event prefix a fork inherits, the cut below) no longer appears in the logical header: the header keeps only the `isSeeded` bit and the exact cut follows the body. Since Session format v2 (#3398) the physical header line no longer stores `seedLength` either; the reader derives the cut from the seq of the `session/end-seed {inherited: true}` marker in the body.
+A cache record (record format and predecessor recovery: [Projection-cache predecessor recovery and Session-format binding](../../../../packages/session/session-projection-cache/README.md)) is bound to a lifecycle identity: `formatVersion + createdAt + cwd + isSeeded + inheritedEventCount`, matched by `identityMatches` on full equality. Since #3346, `inheritedEventCount` (the length of the event prefix a fork inherits, the cut below) no longer appears in the logical header: the header keeps only the `isSeeded` bit and the exact cut follows the body. Since Session format v2 (#3398) the physical header line no longer stores `seedLength` either; the reader derives the cut from the seq of the `session/end-seed {inherited: true}` marker in the body.
 
 A header-only read therefore cannot obtain the cut: the JSONL backend's `fromHeaderLine` hard-codes `inheritedEventCount: 0` for header-only reads, and `SessionPersistenceSnapshot` carries only the header, the revision, and an optional eventCount. The Session-list and reference consumers grew the same guard:
 
@@ -97,7 +97,7 @@ Writer classification:
 | the `projections` block of an `api-session/added` summary (`manager.handleSessionAdded`) | by the block's `kind`; the summary comes from a live session, so in practice `sequenced` |
 | the history first page's `projections` (`projections.seed` in `session.ts`) | sequenced |
 | the control baseline, live sessions only (`manager.replaceControlBaseline`) | sequenced |
-| the `session.projections` result of `refreshProjections` (a body observation) | sequenced |
+| the `session.projections` result of `refreshProjections` | sequenced for an exact read; cached only when [migration is required](2026-09-29-explicit-session-history-preparation.md) |
 | push frames (the `projection` frame handled by `manager`) | sequenced |
 | the `title` after a successful rename (`session.ts`) | sequenced |
 

@@ -5,51 +5,51 @@
 /:
   en: f783038c7258d592
   zh: f783038c7258d592
-/deepseekgui-v1-2-0:
-  en: fc707af7da426048
-  zh: 83b30210c409cb73
-/deepseekgui-v1-2-0/download:
-  en: 2c0ae63a04bb91b5
-  zh: 70380e7098d902eb
-/deepseekgui-v1-2-0/quick-start:
+/deepseekgui-v1-2-1:
+  en: e81e942a69fa60b2
+  zh: ac774aad032bfa2b
+/deepseekgui-v1-2-1/download:
+  en: 43a07c39e91cb6ee
+  zh: 47d1ad43ce9f14fc
+/deepseekgui-v1-2-1/quick-start:
   en: 201d41a4919a88a7
   zh: c9ec28bb8cb47408
-/deepseekgui-v1-2-0/screenshots:
+/deepseekgui-v1-2-1/screenshots:
   en: 67bdccb67ac6067c
   zh: 8c31aca5f4a37cc8
-/deepseekgui-v1-2-0/workbench-features:
+/deepseekgui-v1-2-1/workbench-features:
   en: 4b624912ae25e40d
   zh: 77cc9c80f46270d1
-/deepseekgui-v1-2-0/workbench-features/local-projects-and-git-collaboration:
+/deepseekgui-v1-2-1/workbench-features/local-projects-and-git-collaboration:
   en: 2f67ee7742e1be52
   zh: 311b0ef47e30a982
-/deepseekgui-v1-2-0/workbench-features/memory-and-collaboration-rules:
+/deepseekgui-v1-2-1/workbench-features/memory-and-collaboration-rules:
   en: e1fba42657852d32
   zh: d0b0136a8c170bd7
-/deepseekgui-v1-2-0/workbench-features/models-and-desktop-tools:
-  en: 8f3ee2806689537f
-  zh: 59b69cfe2e49a7c3
-/deepseekgui-v1-2-0/documentation:
+/deepseekgui-v1-2-1/workbench-features/models-and-desktop-tools:
+  en: 0de0da5ff50a3b03
+  zh: e30ad9d1d9b6a165
+/deepseekgui-v1-2-1/documentation:
   en: b8c94921899f36d7
   zh: 3c2d710508c55e6a
-/deepseekgui-v1-2-0/data-and-privacy:
+/deepseekgui-v1-2-1/data-and-privacy:
   en: dc42e362363d057e
   zh: 1eb122c33b7b03f0
-/deepseekgui-v1-2-0/build-from-source:
+/deepseekgui-v1-2-1/build-from-source:
   en: ec70be593a7af015
   zh: d310e0af0d4eaf43
-/deepseekgui-v1-2-0/build-from-source/run-deepseekgui-from-source:
+/deepseekgui-v1-2-1/build-from-source/run-deepseekgui-from-source:
   en: ab6458ece33c0e86
   zh: 90dacf4905e05068
-/deepseekgui-v1-2-0/build-from-source/run-harness-from-npm:
+/deepseekgui-v1-2-1/build-from-source/run-harness-from-npm:
   en: e0bb6d4e7a56d547
   zh: 934f9bdd46c524b0
-/deepseekgui-v1-2-0/build-from-source/run-harness-from-source:
+/deepseekgui-v1-2-1/build-from-source/run-harness-from-source:
   en: aa42adc935ca6d7c
   zh: 9188dd4a1c97bdd7
-/deepseekgui-v1-2-0/contributing-and-support:
+/deepseekgui-v1-2-1/contributing-and-support:
   en: 594bca4b86af3c9e
   zh: 3b7e2d5ffd53c9cc
-/deepseekgui-v1-2-0/license:
+/deepseekgui-v1-2-1/license:
   en: 3be7f6c3ba6abf70
   zh: 5783b11fba3a1d20

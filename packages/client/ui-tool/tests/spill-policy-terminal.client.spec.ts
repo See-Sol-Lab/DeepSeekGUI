@@ -12,6 +12,7 @@ import * as SpillPolicy from '@deepseek-ai/dsh-spill-policy'
 import { formatSpillNotice } from '@deepseek-ai/dsh-spill-policy/notice'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { defineContentToolFixture } from '@deepseek-ai/dsh-tools'
+import { PartialArguments } from '@deepseek-ai/dsh-util-values'
 import { describe, expect, it } from 'vitest'
 import { isSpilledShellCall, terminalCardModel } from '../src/client/tool/models/terminal-card-model.ts'
 
@@ -39,7 +40,8 @@ async function executeShell(text: string, nested: boolean, name = 'bash', maxInl
   const ctx = new Context()
   try {
     await ctx.plugin(SystemPrompt)
-    await ctx.plugin(ToolRuntime, { mode: 'both' })
+    await ctx.plugin(ToolRuntime, { mode: nested ? 'ptc' : 'native' })
+    ctx.provide('workingDirectory', { ensure: async () => process.cwd() })
     await ctx.plugin(MemorySpillStore)
     await ctx.plugin(SpillPolicy, { maxInlineTokens })
     if (nested) {
@@ -70,8 +72,8 @@ async function executeShell(text: string, nested: boolean, name = 'bash', maxInl
       async execute() { return [{ type: 'text', text }] },
     })))
     const session = Session.create(SessionId('spill-terminal'))
-    // The tool pipeline reads only the owner session; no agent loop runs here.
-    const agent = { session } as Agent
+    // Nested PTC registers retained-environment cleanup on the owning context.
+    const agent = { ctx, session } as Agent
     const callId = ToolCallId('shell-call')
     const result = await ctx.tools.execute({
       callId,
@@ -95,6 +97,7 @@ async function executeShell(text: string, nested: boolean, name = 'bash', maxInl
       block = {
         kind: 'tool-result', seq: event.seq, time: event.time, callTime: null,
         callId: event.data.subCallId, parentCallId: event.data.parentCallId,
+        name: event.data.name, args: PartialArguments.fromText(JSON.stringify(event.data.arguments)),
         call: { name: event.data.name, argsRaw: JSON.stringify(event.data.arguments) },
         content: event.data.content, isError: event.data.isError, subCalls: [],
       }
@@ -102,6 +105,7 @@ async function executeShell(text: string, nested: boolean, name = 'bash', maxInl
       expect(result.value).toEqual([{ type: 'text', text }])
       block = {
         kind: 'tool-result', seq: 1, time: 1, callTime: null, callId,
+        name, args: PartialArguments.fromText(JSON.stringify(shellArgs)),
         call: { name, argsRaw: JSON.stringify(shellArgs) },
         content: result.content, isError: result.isError, subCalls: [],
       }

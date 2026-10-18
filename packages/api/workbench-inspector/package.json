@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-workbench-inspector",
-  "version": "0.2.0-rc.2",
+  "version": "0.2.1-rc.2",
   "private": true,
   "repository": {
     "type": "git",
@@ -43,12 +43,15 @@
   ],
   "license": "SEE LICENSE IN LICENSE",
   "dependencies": {
+    "@deepseek-ai/dsh-sandbox": "workspace:*",
     "@deepseek-ai/schemastery": "workspace:~",
     "zod": "^4.4.3"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:~",
     "@deepseek-ai/dsh-api-session-controller": "workspace:*",
+    "@deepseek-ai/dsh-llm": "workspace:*",
+    "@deepseek-ai/dsh-workspace": "workspace:*",
     "@deepseek-ai/dsh-session": "workspace:*",
     "@deepseek-ai/dsh-session-query": "workspace:*",
     "@deepseek-ai/dsh-session-persistence": "workspace:*",
@@ -61,6 +64,8 @@
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:~",
     "@deepseek-ai/dsh-api-session-controller": "workspace:*",
+    "@deepseek-ai/dsh-llm": "workspace:*",
+    "@deepseek-ai/dsh-workspace": "workspace:*",
     "@deepseek-ai/dsh-session": "workspace:*",
     "@deepseek-ai/dsh-session-query": "workspace:*",
     "@deepseek-ai/dsh-session-persistence": "workspace:*",

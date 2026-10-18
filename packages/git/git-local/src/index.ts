@@ -57,6 +57,9 @@ export function classifyPushFailure(stderr: string): 'non-fast-forward' | 'prote
 /** Bound on the staged diff unstageFile re-applies in reverse. */
 export const STAGED_PATCH_MAX_BYTES = 8 * 1024 * 1024
 
+/** git's discovery verdict, e.g. "fatal: not a git repository (or any of the parent directories): .git". */
+const NOT_A_REPOSITORY = /^fatal: not a git repository\b/m
+
 /** A hung git query must not block the harness forever. */
 const GIT_QUERY_TIMEOUT_MS = 30_000
 
@@ -586,7 +589,7 @@ export class LocalGitCapability extends GitCapability {
     let stderr = ''
     let lossy = false
     try {
-      const handle = this.spawn(cwd, git, args, options.maxBytes, options.stdin, signal)
+      const handle = this.spawn(cwd, git, args, options.maxBytes, options.stdin, signal, options.notARepository === true)
       outcome = await handle.done
       const read = handle.collected.stdout?.readFrom(0)
       stdout = read?.text ?? ''
@@ -602,7 +605,10 @@ export class LocalGitCapability extends GitCapability {
     }
     if (signal.aborted) throw new GitCommandFailedError([git, ...args], cwd, outcome.exitCode, `Git exceeded ${timeoutMs}ms; outcome must be checked before retrying. ${stderr}`, true)
     if (outcome.exitCode !== 0) {
-      if (options.notARepository === true && outcome.exitCode === 128) {
+      // Exit 128 is git's generic fatal code: a broken gitfile, an unreadable
+      // .git or a permission error share it. Only git's own discovery verdict
+      // (messages forced untranslated below) means "not inside a repository".
+      if (options.notARepository === true && outcome.exitCode === 128 && NOT_A_REPOSITORY.test(stderr)) {
         throw new GitNotARepositoryError(cwd)
       }
       // No exit code means git never finished: the timeout (or a signal) killed
@@ -622,11 +628,12 @@ export class LocalGitCapability extends GitCapability {
     maxBytes: number | undefined,
     stdin?: string,
     signal = AbortSignal.timeout(GIT_QUERY_TIMEOUT_MS),
+    untranslated = false,
   ): ReturnType<SubprocessRuntime['spawn']> {
     return this.ctx.subprocess.spawn({
       argv: [git, ...args],
       cwd,
-      env: { GIT_OPTIONAL_LOCKS: '0' },
+      env: untranslated ? { GIT_OPTIONAL_LOCKS: '0', LC_ALL: 'C' } : { GIT_OPTIONAL_LOCKS: '0' },
       stdio: {
         stdin: stdin === undefined ? 'ignore' : { data: stdin },
         stdout: { maxBytes: maxBytes ?? READ_MODEL_MAX_BYTES },

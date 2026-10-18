@@ -35,8 +35,37 @@
 
     # Shared projection registry: sandbox-policy and terminal-bash fold
     # sandbox-mode state through its units and require it as a hard injection.
+    - id: filesystem
+      name: '@deepseek-ai/dsh-fs-local'
+
+    - id: attachment-local
+      name: '@deepseek-ai/dsh-attachment-local'
+
+    - id: tool-fs
+      name: '@deepseek-ai/dsh-tool-fs'
+      config:
+        read: false
+        readImage: true
+        write: false
+        edit: false
+
+    - id: working-directory
+      name: '@deepseek-ai/dsh-working-directory'
+
+    - id: tool-working-directory
+      name: '@deepseek-ai/dsh-tool-working-directory'
+
     - id: session-projection
       name: '@deepseek-ai/dsh-session-projection'
+
+    - id: token-meter
+      name: '@deepseek-ai/dsh-token-meter'
+
+    - id: compaction-basic
+      name: '@deepseek-ai/dsh-compaction-basic'
+
+    - id: image-offload
+      name: '@deepseek-ai/dsh-compaction-image-offload'
 
     - id: sandbox-policy
       name: '@deepseek-ai/dsh-sandbox-policy'
@@ -102,21 +131,6 @@
 
     - id: jobs
       name: '@deepseek-ai/dsh-jobs-local'
-
-    - id: invariants
-      name: '@deepseek-ai/dsh-invariants'
-
-    - id: session-invariant
-      name: '@deepseek-ai/dsh-session/invariant'
-
-    - id: agent-invariant
-      name: '@deepseek-ai/dsh-agent/invariant'
-
-    - id: scope-invariant
-      name: '@deepseek-ai/dsh-scope/invariant'
-
-    - id: agent-loop-invariant
-      name: '@deepseek-ai/dsh-agent-loop/invariant'
 
     - id: agent-loop
       name: '@deepseek-ai/dsh-agent-loop'

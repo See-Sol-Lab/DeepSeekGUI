@@ -11,6 +11,7 @@ import type { GoalMessageSource, GoalRef, GoalView } from '@deepseek-ai/dsh-goal
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { ContentBlock, MessageId, MessageSource } from '@deepseek-ai/dsh-llm'
 import type { Session, SessionEvent, UserMessage } from '@deepseek-ai/dsh-session'
+import type {} from '@deepseek-ai/dsh-subagent'
 import { renderGoalRoundPrompt } from './prompt.ts'
 
 export { renderGoalRoundPrompt } from './prompt.ts'
@@ -75,6 +76,8 @@ function renderThrown(value: unknown): string {
 /** Install automatic same-session continuation and its race fences. */
 export function apply(ctx: Context): void {
   const states = new Map<Agent, DriverState>()
+  // Releases drivers still joining subagents when the plugin unloads.
+  const unloading = Promise.withResolvers<void>()
 
   /** Create state for an exact currently live agent. */
   function stateFor(agent: Agent): DriverState {
@@ -97,6 +100,11 @@ export function apply(ctx: Context): void {
   function currentGoal(state: DriverState): GoalView | undefined {
     if (ctx.agents.get(state.agent.id) !== state.agent) return undefined
     return ctx.goals.get(state.agent)
+  }
+
+  /** Whether a goal may receive automatic rounds. */
+  function drivable(goal: GoalView | undefined): goal is GoalView {
+    return goal !== undefined && goal.phase === 'active' && goal.activation === 'armed'
   }
 
   /** Whether this exact lifecycle is quiescent with no competing prompt. */
@@ -162,7 +170,15 @@ export function apply(ctx: Context): void {
     }
 
     const goal = currentGoal(state)
-    if (goal === undefined || goal.phase !== 'active' || goal.activation !== 'armed') return
+    if (!drivable(goal)) return
+    // A round started while descendants progress would only wait for them.
+    // Every goal mutation requests a checkpoint, so passing the recheck
+    // proves this goal view is still current.
+    const subagents = ctx.get('subagents')
+    if (subagents !== undefined) {
+      await Promise.race([subagents.waitForChildren(agent), unloading.promise])
+      if (!readyAfterCheckpoint(state)) return
+    }
     if (goal.roundsStarted >= goal.maxGoalRounds) {
       ctx.goals.block(agent, goalRef(goal), {
         code: 'round-limit',
@@ -264,15 +280,19 @@ export function apply(ctx: Context): void {
         // Fence the pause to the exact dropped attempt's ref. A resume bumps
         // the revision, so a host pause followed by an immediate resume (before
         // the aborted turn converges to idle) must not re-pause the resumed goal.
-        if (attempt !== undefined
+        const pause = attempt !== undefined
           && (attempt.phase === 'queued' || attempt.phase === 'claimed' || attempt.cancelled)
           && goal !== undefined && goal.phase === 'active' && goal.activation === 'armed'
-          && attempt.goalId === goal.id && attempt.revision === goal.revision) {
+          && attempt.goalId === goal.id && attempt.revision === goal.revision
+        // A reservation still queued when the agent reaches idle cannot run:
+        // withdraw it so human input queued behind it is not stranded.
+        if (pause || attempt?.phase === 'queued') {
           state.attempt = undefined
           try {
-            ctx.goals.pause(agent, goalRef(goal))
+            if (attempt.phase === 'queued') agent.inbox.remove(attempt.messageId)
+            if (pause) ctx.goals.pause(agent, goalRef(goal))
           } catch (error: unknown) {
-            ctx.logger.warn(`goal-round-driver: could not pause cancelled goal for agent "${agent.id}": ${renderThrown(error)}`)
+            ctx.logger.warn(`goal-round-driver: could not settle cancelled goal round for agent "${agent.id}": ${renderThrown(error)}`)
             disarm(state)
           }
         }
@@ -434,6 +454,7 @@ export function apply(ctx: Context): void {
     // Yielded after listener registration, so this close runs first and the
     // composite effect removes listeners only after its promise settles.
     yield async () => {
+      unloading.resolve()
       const waits: Promise<void>[] = []
       for (const state of states.values()) {
         state.stopping = true

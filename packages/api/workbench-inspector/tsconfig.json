@@ -13,6 +13,9 @@
     { "path": "../../git/git" },
     { "path": "../../typert/protocol" },
     { "path": "../../credentials/deepseek-account" },
-    { "path": "../../host/webserver" }
+    { "path": "../../host/webserver" },
+    { "path": "../../sandbox/sandbox" },
+    { "path": "../../llm/llm" },
+    { "path": "../../workspace/workspace" }
   ]
 }

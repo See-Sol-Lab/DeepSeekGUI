@@ -14,7 +14,7 @@ function dialogProps(attempt: AccountView['attempt'], copy: typeof en | typeof z
   const close = vi.fn()
   const useApiKey = vi.fn()
   return { start, cancel, close, useApiKey, colorScheme, t: (key: keyof typeof en) => copy[key],
-    account: { view: { status: 'signed-out' as const, attempt, links: { usageUrl: 'https://platform.deepseek.com/usage', topUpUrl: 'https://platform.deepseek.com/top_up' } }, details: undefined, failed: false } }
+    account: { view: { status: 'signed-out' as const, attempt, links: { usageUrl: 'https://platform.deepseek.com/usage', topUpUrl: 'https://platform.deepseek.com/top_up' } }, details: undefined, avatar: undefined, failed: false } }
 }
 function mount(attempt: AccountView['attempt'], copy: typeof en | typeof zh = en, colorScheme: 'light' | 'dark' = 'dark') {
   const props = dialogProps(attempt, copy, colorScheme)
@@ -190,4 +190,25 @@ it('does not report workspace login views or login choices', async () => {
   await act(async () => { fireEvent.click(screen.getByRole('button', { name: en.addApiKey })) })
   expect(props.useApiKey).toHaveBeenCalledOnce()
   expect(track).not.toHaveBeenCalled()
+})
+
+it.each([en, zh])('shows network advice only when the login request received no response', async (copy) => {
+  const props = mount({ id, phase: 'failed', errorCode: 'no-response' }, copy)
+  await expect(`${screen.getByRole('dialog').textContent}\n`).toMatchFileSnapshot(`./expected/login-no-response-${copy === en ? 'en' : 'zh'}.txt`)
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: copy.retry })) })
+  expect(props.start).toHaveBeenCalledOnce()
+})
+
+it.each(['network', 'protocol', 'storage'] as const)('keeps generic copy for %s failures', (errorCode) => {
+  mount({ id, phase: 'failed', errorCode })
+  expect(screen.getByText(en.failed)).toBeTruthy()
+  expect(screen.queryByText(en.noResponse)).toBeNull()
+})
+
+it('does not reuse network advice for a subsequent start failure', async () => {
+  const props = mount({ id, phase: 'failed', errorCode: 'no-response' })
+  props.start.mockRejectedValueOnce(new Error('RPC failed'))
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: en.retry })) })
+  expect(screen.getByText(en.failed)).toBeTruthy()
+  expect(screen.queryByText(en.noResponse)).toBeNull()
 })

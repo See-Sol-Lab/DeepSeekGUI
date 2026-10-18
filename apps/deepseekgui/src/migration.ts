@@ -19,6 +19,7 @@ import {
   accessSync, closeSync, constants, copyFileSync, existsSync, lstatSync, mkdirSync, openSync, readFileSync,
   readdirSync, realpathSync, rmdirSync, statSync, statfsSync, unlinkSync,
 } from 'node:fs'
+import { lstat, readdir } from 'node:fs/promises'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { atomicWriteFile } from './atomic-write.ts'
 
@@ -239,6 +240,28 @@ export function collectMigrationItems(sourceHome: string): MigrationItem[] {
   }
   walk(sourceHome)
   return items.sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0))
+}
+
+/**
+ * 一棵目录树按迁移清单的同一条规则要占多少字节（整体搬家的空间预检用，Sol P1-05）：
+ * 只算真目录和真文件，链接（符号链接、junction）一律不跟进、不计入——迁移本身也不复制
+ * 它们（见 {@link collectMigrationItems} 的 Dirent 判断）。异步逐层读，不卡主进程；读不到
+ * 就抛错，宁可预检失败也不少算。
+ * @param root - 树根。
+ * @returns 字节数。
+ */
+export async function measureMigrationTree(root: string): Promise<number> {
+  let total = 0
+  const walk = async (dir: string): Promise<void> => {
+    const entries = await readdir(dir, { withFileTypes: true })
+    for (const entry of entries) {
+      const absolute = join(dir, entry.name)
+      if (entry.isDirectory()) await walk(absolute)
+      else if (entry.isFile()) total += (await lstat(absolute)).size
+    }
+  }
+  await walk(root)
+  return total
 }
 
 /** 清单总字节数（空间检查用）。 */

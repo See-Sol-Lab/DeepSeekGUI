@@ -15,15 +15,16 @@ import {
 } from '@deepseek-ai/dsh-client-store'
 import type { LexicalEditor } from 'lexical'
 import type {
-  CommandClaim, ConsumeTokenRequest, DraftAttachmentId,
+  CommandClaim, ConsumeTokenRequest, DraftAttachmentId, DraftInitializationOptions, DraftInitializationResult,
   InputActions, InputEffect, InputNotice, InputState, InputTriggerController, PickOutcome,
   SessionInput, SubmitAttempt, SubmitAttachment, SubmitOutcome,
 } from '../contract/input.ts'
 import type {
-  ArbitrateKey, ArbitrateOutcome, ComposerKeyboard, Occurrence, ReferenceInsert, TokenSpan,
+  ArbitrateKey, ArbitrateOutcome, ComposerKeyboard, DraftInput, DraftSnapshot, Occurrence, ReferenceInsert, TokenSpan,
 } from '../contract/draft-editor.ts'
 import type { InputSubmitMode, MessageSubmission, MessageSubmissionState } from '../contract/composer-submission.ts'
 import { SubmitMachine } from './machine.ts'
+import { resolveDraftInput, snapshotDraft } from '../draft.ts'
 import { DraftEditorRuntime } from './editor/runtime.ts'
 import type { EditorProjection } from './editor/projection.ts'
 
@@ -33,10 +34,9 @@ export interface PopupDismissFace {
 }
 
 /**
- * Construction dependencies of one facade. The slash/popup faces are THUNKS: the
- * shell is created inside the sessions provide materialization (before the
- * scope record is queryable), where `slash.sessionOf`/`command.popupFor`
- * cannot resolve yet — resolution defers to first interactive use.
+ * Construction dependencies of one input model. Trigger and popup callbacks
+ * resolve the currently available Session-scoped services on demand. InputHub
+ * owns the lexicon subscription through the Session scope's inject lifecycle.
  */
 export interface SessionInputDeps {
   /** Session-scope ctx handed to claim.submit transactions. */
@@ -86,6 +86,7 @@ function guardOf(phase: InputState['phase']): 'plain' | 'claimed' | 'frozen' {
 /** Whether two projections differ in content (selection and caret excluded). */
 function projectionContentChanged(prev: EditorProjection, next: EditorProjection): boolean {
   if (prev.clipboardText !== next.clipboardText || prev.detectText !== next.detectText) return true
+  if (prev.command !== next.command) return true
   if (prev.occurrences.length !== next.occurrences.length) return true
   return next.occurrences.some((occ, i) => {
     const old = prev.occurrences[i]
@@ -95,7 +96,7 @@ function projectionContentChanged(prev: EditorProjection, next: EditorProjection
 
 const EMPTY_QUEUE: InboxState['next-turn'] = []
 
-/** No-pipeline lexicon: zero text-ref decorations. */
+/** Unavailable catalogs contain no named text references. */
 const EMPTY_LEXICON: ReadonlyMap<'/' | '@', readonly string[]> = new Map()
 
 /** Editor and attachment snapshot owned by one detached default send. */
@@ -128,6 +129,7 @@ export class SessionInputShell implements SessionInput {
       return this.draftEditor.insertAsyncText(span, text)
     },
     setDraft: (text) => { this.setDraft(text) },
+    persistDraft: () => { this.persistCurrentDraft() },
     addAttachments: ids => this.addAttachments(ids),
     removeAttachment: (id) => { this.removeAttachment(id) },
     pruneAttachments: (ids) => { this.pruneAttachments(ids) },
@@ -142,11 +144,16 @@ export class SessionInputShell implements SessionInput {
   private rev = 0
   private readonly unregister: () => void
   private noticeSeq = 0
-  private lastMirroredDraft = ''
+  private lastPublishedDraft: DraftSnapshot | undefined
+  private draftSnapshotCache: { revision: number; value: DraftSnapshot } | undefined
   private attachmentIds: readonly DraftAttachmentId[] = []
   private disposed = false
-  /** Draft persistence mirror (Conversation store write; receives the clipboard projection). */
-  private mirrorFn: ((text: string) => void) | undefined
+  /** Conversation store writer for the current semantic document. */
+  private persistDraft: ((draft: DraftSnapshot) => void) | undefined
+  /** A restored draft's command token waiting for the trigger pipeline, with the revision its restore produced. */
+  private pendingCommand: { readonly token: string; readonly rev: number } | undefined
+  /** The in-flight claim resolution for a restored command chip. */
+  private commandRestore: AbortController | undefined
   /** The mounted composer's file-picker opener (scoped pick-files event target). */
   private filePicker: Parameters<ComposerKeyboard['bindFilePicker']>[0] | undefined
   /** Default sends retained until admission settles or scope disposal releases their attachments. */
@@ -170,7 +177,6 @@ export class SessionInputShell implements SessionInput {
       onUpdate: () => { this.onEditorUpdate() },
       openReference: (source, reference) =>
         this.deps.inputTriggers?.()?.openReference(source, reference) ?? false,
-      activeClaimToken: () => this.activeClaimToken(),
       lexicon: () => this.lexicon.getSnapshot(),
       resolveLexicon: () => this.deps.inputTriggers?.()?.lexicon,
     })
@@ -181,7 +187,7 @@ export class SessionInputShell implements SessionInput {
 
   // ---- editor plumbing ----
 
-  /** Re-project, run the claim watch, publish, and feed trigger tracking after every editor commit. */
+  /** Re-project, sync the claim with the leading command chip, publish, and feed trigger tracking after every editor commit. */
   private onEditorUpdate(): void {
     const prev = this.draftEditor.refreshProjection()
     // Selection-only commits advance neither the revision nor the published
@@ -194,7 +200,7 @@ export class SessionInputShell implements SessionInput {
         this.failedDetached.clear()
         this.failedRestoreRev = undefined
       }
-      this.dispatchRun(({ type: 'draft-changed', draft: this.projection.clipboardText }))
+      this.dispatchRun(({ type: 'draft-changed', command: this.projection.command }))
     }
     const caret = this.projection.caret
     if (caret !== null) {
@@ -210,10 +216,92 @@ export class SessionInputShell implements SessionInput {
    * Replace the whole draft (persisted-draft seed and programmatic writes).
    * Placeholder-sanitized; newlines split paragraphs; the caret lands at the
    * end. Merged into history so a seed is not an undoable step of its own.
-   * @param text - the full next draft.
+   * @param text - plain text or the complete semantic document.
    */
-  setDraft(text: string): void {
-    this.draftEditor.setDraft(text)
+  setDraft(text: DraftInput): void {
+    const draft = resolveDraftInput(text)
+    this.cancelCommandRestore()
+    if (draft.references.length === 0) this.draftEditor.setDraft(draft.text)
+    else this.draftEditor.restoreDraft(draft.text, draft.references)
+    if (draft.command === undefined) return
+    this.pendingCommand = { token: draft.command.token, rev: this.rev }
+    this.restoreCommand()
+  }
+
+  /**
+   * Reconnect optional catalog notifications and resume a pending command
+   * chip restore without waiting for another edit.
+   */
+  refreshLexiconSubscription(): void {
+    if (this.disposed) return
+    this.draftEditor.refreshLexiconSubscription()
+    this.restoreCommand()
+  }
+
+  /**
+   * Rebuild the command chip a restored draft carried once the trigger
+   * pipeline can resolve its claim. The rebuild applies only at the revision
+   * the restore produced: an edit made while the claim resolves keeps the
+   * literal token, which Enter still adjudicates as the command.
+   */
+  private restoreCommand(): void {
+    const pending = this.pendingCommand
+    const inputTriggers = this.deps.inputTriggers?.()
+    if (pending === undefined || inputTriggers === undefined || this.disposed) return
+    this.pendingCommand = undefined
+    const restore = new AbortController()
+    this.commandRestore = restore
+    const spelling = pending.token.trimEnd()
+    inputTriggers.resolveClaim(spelling, restore.signal).then((claim) => {
+      if (restore.signal.aborted) return
+      this.commandRestore = undefined
+      if (claim !== undefined) this.applyClaim(claim, { start: 0, end: spelling.length, draftRev: pending.rev }, true)
+    }, (_error: unknown) => {
+      // A catalog warmup failure or an abort leaves the literal token, which Enter still adjudicates.
+      if (this.commandRestore === restore) this.commandRestore = undefined
+    })
+  }
+
+  /** Drop a pending or in-flight command chip restore. */
+  private cancelCommandRestore(): void {
+    this.pendingCommand = undefined
+    this.commandRestore?.abort()
+    this.commandRestore = undefined
+  }
+
+  /** Current semantic document, stable until its content revision changes. */
+  get draftSnapshot(): DraftSnapshot {
+    if (this.draftSnapshotCache?.revision === this.rev) return this.draftSnapshotCache.value
+    const value = snapshotDraft(this.projection.clipboardText, this.projection.occurrences, this.projection.command?.token)
+    this.draftSnapshotCache = { revision: this.rev, value }
+    return value
+  }
+
+  /** Persist the latest document without changing the editor or binding a writer. */
+  persistCurrentDraft(): void {
+    this.persistDraft?.(this.draftSnapshot)
+  }
+
+  /**
+   * Apply one new-task request to this already-initialized input model.
+   * @param options - replacement content and explicit permission to clear existing text.
+   * @returns applied when the requested text is adopted, even if unchanged;
+   * preserved when the current draft is kept; blocked after disposal or during a pending submission.
+   */
+  requestDraftInitialization(options: DraftInitializationOptions): DraftInitializationResult {
+    if (this.draftInitializationBlocked()) return 'blocked'
+    if (options.prompt === undefined && options.clearPreviousDraft !== true) return 'preserved'
+    if (options.clearPreviousDraft !== true && (this.snapshot.draft !== '' || this.attachmentIds.length > 0)) {
+      return 'preserved'
+    }
+    this.setDraft(options.prompt ?? '')
+    return 'applied'
+  }
+
+  private draftInitializationBlocked(): boolean {
+    const { phase } = this.core.state
+    return this.disposed || phase === 'adjudicating' || phase === 'submitting'
+      || this.detachedDrafts.size > 0 || this.attachmentFlights.size > 0
   }
 
   /** Append ordered attachment ids unless an admission transaction is locked. */
@@ -405,20 +493,30 @@ export class SessionInputShell implements SessionInput {
 
   /**
    * Apply one command claim (scoped begin-command event listener body): the
-   * editor replaces [0, span.end) with the claim token, then the machine
-   * enters claimed.
+   * editor replaces [0, span.end) with the command chip and its separator,
+   * then the machine enters claimed.
    * @param claim - the command claim from the pick path.
    * @param span - pick-time span snapshot (detect coordinates).
    * @returns whether the edit applied (phase, span CAS, and leading guard passed).
    */
   beginCommand(claim: CommandClaim, span: TokenSpan): boolean {
+    return this.applyClaim(claim, span, false)
+  }
+
+  /**
+   * Replace [0, span.end) with the command chip and enter claimed.
+   * @param mergeHistory - merge the edit into the previous history entry.
+   * @returns whether the edit applied.
+   */
+  private applyClaim(claim: CommandClaim, span: TokenSpan, mergeHistory: boolean): boolean {
     const phase = this.core.state.phase
     if (phase !== 'plain' && phase !== 'claimed') return false
     if (span.draftRev !== this.rev) return false
     // Leading-trigger contract: only whitespace may precede the span; the
-    // whitespace prefix is dropped so the claimed watch (startsWith) holds.
+    // whitespace prefix is dropped so the chip takes the leading seat.
     if (this.projection.detectText.slice(0, span.start).trim() !== '') return false
-    const applied = this.draftEditor.replaceText({ start: 0, end: span.end }, claim.token)
+    const tail = this.projection.detectText.slice(span.end, span.end + 1)
+    const applied = this.draftEditor.insertCommand({ start: 0, end: span.end }, claim, tail, mergeHistory)
     if (!applied) return false
     this.dispatchRun(({ type: 'claim', claim }))
     return true
@@ -514,6 +612,7 @@ export class SessionInputShell implements SessionInput {
       flight.controller.abort()
     }
     this.disposed = true
+    this.cancelCommandRestore()
     this.dispatchRun(({ type: 'release' }))
     this.unsubscribeInbox?.()
     this.unregister()
@@ -529,17 +628,14 @@ export class SessionInputShell implements SessionInput {
   }
 
   /**
-   * Bind the draft persistence mirror (Conversation store write). Adopt-on-bind: the
-   * store draft may hold a persisted value from a previous mount; the caller
-   * seeds it via setDraft BEFORE binding, and afterwards every editor-adopted
-   * draft mirrors out.
-   * @param write - store draft write.
+   * Bind the Conversation store writer without importing or saving content.
+   * @param write - semantic draft writer; persistCurrentDraft flushes the initial value.
    * @returns the unbind disposer.
    */
-  bindMirror(write: (text: string) => void): () => void {
-    this.mirrorFn = write
+  bindDraftPersistence(write: (draft: DraftSnapshot) => void): () => void {
+    this.persistDraft = write
     return () => {
-      if (this.mirrorFn === write) this.mirrorFn = undefined
+      if (this.persistDraft === write) this.persistDraft = undefined
     }
   }
 
@@ -575,20 +671,9 @@ export class SessionInputShell implements SessionInput {
 
   // ---- effect executor ----
 
-  /** The claim token the decoration transform styles; null while unclaimed. */
-  private activeClaimToken(): string | null {
-    const core = this.core.state
-    return (core.phase === 'claimed' || core.phase === 'submitting') && core.claim !== undefined
-      ? core.claim.token
-      : null
-  }
-
-  /** Dispatch + execute, refreshing the claim decoration when the styled token flips. */
+  /** Dispatch one machine event and execute its effects. */
   private dispatchRun(ev: Parameters<SubmitMachine['dispatch']>[0]): void {
-    const beforeToken = this.activeClaimToken()
-    const effects = this.core.dispatch(ev)
-    this.run(effects)
-    if (this.activeClaimToken() !== beforeToken) this.draftEditor.refreshClaimDecoration()
+    this.run(this.core.dispatch(ev))
   }
 
   private run(effects: readonly InputEffect[]): void {
@@ -816,7 +901,7 @@ export class SessionInputShell implements SessionInput {
           }
           this.dispatchRun(({
             type: 'submit-settled', attempt, ok: outcome.kind === 'success',
-            draft: this.projection.clipboardText, outcome,
+            command: this.projection.command, outcome,
             ...(outcome.kind === 'error' && outcome.text === undefined ? { message: 'command failed' } : {}),
           }))
         },
@@ -825,7 +910,7 @@ export class SessionInputShell implements SessionInput {
           const message = error instanceof Error ? error.message : String(error)
           this.dispatchRun(({
             type: 'submit-settled', attempt, ok: false,
-            draft: this.projection.clipboardText, message,
+            command: this.projection.command, message,
           }))
         },
       )
@@ -852,9 +937,10 @@ export class SessionInputShell implements SessionInput {
   private publish(): void {
     const next = this.compose()
     this.state.set(next)
-    if (next.draft !== this.lastMirroredDraft) {
-      this.lastMirroredDraft = next.draft
-      this.mirrorFn?.(next.draft)
+    const draft = this.draftSnapshot
+    if (draft !== this.lastPublishedDraft) {
+      this.lastPublishedDraft = draft
+      this.persistDraft?.(draft)
     }
   }
 }

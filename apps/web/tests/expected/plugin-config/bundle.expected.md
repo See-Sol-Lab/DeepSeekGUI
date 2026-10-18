@@ -1,4 +1,4 @@
-- button "返回插件列表": 插件列表
+- button "返回插件": 插件
 - button "夹具操作"
 - button "卸载 @fixture/live-client": 卸载
 - switch "启用 @fixture/live-client" [checked]
@@ -14,6 +14,12 @@
     - code: fixture-live-client
     - text: 运行中
     - switch "启用组件 @fixture/live-client" [checked]
+- heading "来源信息" [level=4]
+- term: 代码来源
+- definition:
+  - code: file:{{fixtures}}/fixture-live-client
+- term: 当前版本
+- definition: 0.0.1
 - region "夹具区块":
   - heading "夹具区块" [level=4]
   - paragraph: 来自夹具的区块内容

@@ -4,7 +4,7 @@ import type { EditorConfig, LexicalEditor, SerializedTextNode } from 'lexical'
 import { TextNode } from 'lexical'
 import { registerLexicalTextEntity } from '@lexical/text'
 import { mergeRegister } from '@lexical/utils'
-import { $getRoot } from 'lexical'
+import { $getRoot, HISTORY_MERGE_TAG } from 'lexical'
 import { scanTextRefs } from '../decorations.ts'
 import css from './composer-editor.module.css'
 
@@ -70,28 +70,18 @@ export class TextRefNode extends TextNode {
 }
 
 /**
- * Register the plain-text reference entity transform. The claim decoration
- * has precedence on the leading-token seat: while a command claim holds, the
- * claimed token must stay a plain TextNode (transforms register per concrete
- * node class, so a TextRefNode would never receive the TextNode claim
- * transform and the warn color would be lost).
+ * Register the plain-text reference entity transform.
  * @param editor - the shell-owned editor.
  * @param lexiconOf - live per-trigger name-roll accessor (the controller's aggregated store).
- * @param activeToken - live claim token accessor; null while unclaimed.
  * @returns the unregister disposer.
  */
 export function registerTextRefDecoration(
   editor: LexicalEditor,
   lexiconOf: () => ReadonlyMap<'/' | '@', readonly string[]>,
-  activeToken: () => string | null,
 ): () => void {
   const getMatch = (text: string): { start: number; end: number } | null => {
-    const claim = activeToken()
-    for (const range of scanTextRefs(text, lexiconOf())) {
-      if (claim !== null && range.start === 0 && text.slice(range.start, range.end) === claim.trimEnd()) continue
-      return { start: range.start, end: range.end }
-    }
-    return null
+    const range = scanTextRefs(text, lexiconOf())[0]
+    return range === undefined ? null : { start: range.start, end: range.end }
   }
   return mergeRegister(
     ...registerLexicalTextEntity(
@@ -112,5 +102,5 @@ export function registerTextRefDecoration(
 export function rescanTextRefs(editor: LexicalEditor): void {
   editor.update(() => {
     for (const node of $getRoot().getAllTextNodes()) node.markDirty()
-  })
+  }, { tag: HISTORY_MERGE_TAG })
 }

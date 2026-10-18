@@ -2,17 +2,17 @@
   "initial": [
     {
       "name": "bash",
-      "description": "Execute a bash command (`bash -c`) and return its stdout/stderr. Each call runs in a fresh shell; pass `workdir` instead of using `cd`. Managed `$DSH_*` variables expose current harness environment facts. Long output is truncated to its tail; the full output is saved to a file whose path is reported when available. Before any delete or move, verify that the resolved absolute target path is the intended one; never run it against a computed path you have not checked. An unset variable expands to an empty string, so guard variables in such paths with `${VAR:?}`. Commands may run under a file sandbox; a blocked file operation is reported as `[sandbox: file access denied under <mode> mode]`, a policy denial: do not retry another way.",
+      "description": "Execute a bash command (`bash -c`) and return its stdout/stderr. Each call runs in a fresh shell; pass `workdir` instead of using `cd`. Managed `$DSH_*` variables expose current harness environment facts. Long output is truncated to its tail; the full output is saved to a file whose path is reported when available. Provide `description` before `command` in the arguments. Before any delete or move, verify that the resolved absolute target path is the intended one; never run it against a computed path you have not checked. An unset variable expands to an empty string, so guard variables in such paths with `${VAR:?}`. Commands may run under a file sandbox; a blocked file operation is reported as `[sandbox: file access denied under <mode> mode]`, a policy denial: do not retry another way.",
       "parameters": {
         "type": "object",
         "properties": {
-          "command": {
-            "type": "string",
-            "description": "The bash command to execute."
-          },
           "description": {
             "type": "string",
             "description": "Clear, concise description of what this command does in active voice, 5-10 words (shown in the UI). Examples: \"ls\" → \"List files in current directory\"; \"git status\" → \"Show working tree status\"; \"npm install\" → \"Install package dependencies\"."
+          },
+          "command": {
+            "type": "string",
+            "description": "The bash command to execute."
           },
           "timeoutMs": {
             "type": "number",
@@ -40,8 +40,8 @@
           }
         },
         "required": [
-          "command",
-          "description"
+          "description",
+          "command"
         ]
       }
     },
@@ -73,7 +73,7 @@
         "properties": {
           "file_path": {
             "type": "string",
-            "description": "Path to edit, resolved by the filesystem backend."
+            "description": "Path to edit, resolved by the filesystem backend. Provide `file_path` before `old_string` and `new_string` in the arguments."
           },
           "old_string": {
             "type": "string",
@@ -293,7 +293,7 @@
     },
     {
       "name": "send_message",
-      "description": "Send one durable message to another Team member. A running target receives it at the nearest step boundary; an inactive target starts or resumes a turn.",
+      "description": "Send one message to another Team member. A running target receives it at the nearest step boundary; an inactive target starts or resumes a turn.",
       "parameters": {
         "type": "object",
         "properties": {
@@ -595,7 +595,7 @@
     },
     {
       "name": "wait_agent",
-      "description": "Wait for the next teammate status, mailbox, or shared-task change after this call starts. This never wakes inactive members and returns noProgress immediately when no other member is running or provisioning. Re-list after wakeup or timeout instead of polling.",
+      "description": "Wait for the next teammate status, message, or shared-task change after this call starts. This never wakes inactive members and returns noProgress immediately when no other member is running or provisioning. Re-list after wakeup or timeout instead of polling.",
       "parameters": {
         "type": "object",
         "properties": {
@@ -720,6 +720,19 @@
       }
     },
     {
+      "name": "working_directory",
+      "description": "Read the current working directory, or change it with cd. Relative paths use the current directory. Existing shells and running processes keep their own directories.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "cd": {
+            "type": "string",
+            "description": "Existing directory to enter. Omit to read the current directory."
+          }
+        }
+      }
+    },
+    {
       "name": "write",
       "description": "Create or fully replace a UTF-8 text file.",
       "parameters": {
@@ -727,7 +740,7 @@
         "properties": {
           "file_path": {
             "type": "string",
-            "description": "Path to write, resolved by the filesystem backend."
+            "description": "Path to write, resolved by the filesystem backend. Provide `file_path` before `content` in the arguments."
           },
           "content": {
             "type": "string",

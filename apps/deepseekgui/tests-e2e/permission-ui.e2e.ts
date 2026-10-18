@@ -133,7 +133,7 @@ describe.runIf(packagedExists)('S1/S4/S5/S7-8 — 权限 UI（打包态）', () 
   it('S5：Existing Home 权限零暗改——只读显示真实 preset；Use Sandbox 两段确认（Cancel 零写入 / Confirm 官方路径写入）', async () => {
     const temp = isolationRoot('s5')
     const home = join(temp, 'existing-home')
-    stageWebProfile(home, 'web')
+    const patch = join(stageWebProfile(home, 'web'), 'cordis.patch.yml')
     // 用户自己的 Harness 设置：明确 Full Access + 一个不相关命名空间。
     const originalSettings = 'permission:\n  defaultPreset: danger-full-access\nunrelated:\n  keep: true\n'
     writeFileSync(join(home, 'settings.yaml'), originalSettings)
@@ -154,24 +154,31 @@ describe.runIf(packagedExists)('S1/S4/S5/S7-8 — 权限 UI（打包态）', () 
     // （ui-onboarding.welcomeNoticeVersion，2026-08-24 打包首跑实测）。写入者
     // 是官方、写的是官方自己的段——用例要证的是「DeepSeekGUI 不暗改权限」，
     // 拿整份字节当基线会把官方的正常行为算到我们头上。
-    expect(userSections(join(home, 'settings.yaml'))).toBe(originalSettings)
+    // dsh 0.1.7 起 Harness 启动时把 Home 的 settings.yaml 导入当前 profile 的 patch，
+    // 原文件改名为 settings.yaml.imported（官方行为）。零暗改因此分两处证：
+    // 改名的原件逐字节不变；权限只以 profile patch 为准。
+    await expect.poll(() => existsSync(join(home, 'settings.yaml.imported')), { timeout: 30_000 }).toBe(true)
+    expect(userSections(join(home, 'settings.yaml.imported'))).toBe(originalSettings)
+    expect(readFileSync(patch, 'utf8')).toContain('defaultPreset: danger-full-access')
+    const imported = readFileSync(patch, 'utf8')
 
     // Use Sandbox → Cancel：零写入。
     await stubDialogs(instance, [['切换到这个 Existing Home', 1]])
     await clickDeepSeekGUIButton(instance, 'permission-sandbox')
     await new Promise(resolve => setTimeout(resolve, 1_000))
-    expect(userSections(join(home, 'settings.yaml'))).toBe(originalSettings)
+    expect(readFileSync(patch, 'utf8')).toBe(imported)
     expect(await permMode(instance)).toBe('full-access')
 
     // Use Sandbox → Confirm：官方路径写入 workspace-write。
     await stubDialogs(instance, [['切换到这个 Existing Home', 0]])
     await clickDeepSeekGUIButton(instance, 'permission-sandbox')
     await expect.poll(async () => permMode(instance), { timeout: 30_000 }).toBe('sandbox')
-    const after = readFileSync(join(home, 'settings.yaml'), 'utf8')
-    expect(after).toContain('workspace-write')
-    expect(after).not.toContain('danger-full-access')
-    // 不相关命名空间保持原样（官方 settings service 只改 permission 段）。
-    expect(after).toContain('keep: true')
+    const after = readFileSync(patch, 'utf8')
+    // The patch also spells out every preset, danger-full-access included; only the default moves.
+    expect(after).toContain('defaultPreset: workspace-write')
+    expect(after).not.toContain('defaultPreset: danger-full-access')
+    // 不相关命名空间不归任何 entry，导入时只留在改名的原件里；它也不受影响。
+    expect(readFileSync(join(home, 'settings.yaml.imported'), 'utf8')).toContain('keep: true')
   }, 300_000)
 
   it('S7/S8：PS7 检测与面板提示一致；DeepSeekGUI 可启动；Agent sandbox 不因 PS7 缺失降级', async () => {

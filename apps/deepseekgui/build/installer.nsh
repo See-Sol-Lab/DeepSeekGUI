@@ -219,6 +219,18 @@
   FunctionEnd
 !endif
 
+# 整体搬家要用同版本安装包：每次安装把自己留一份，搬家时直接拿，不用下载也不用用户去找
+# （relocation.ts 的 keptInstallerPath 读同一位置）。只留当前版本，约 190 MB；真卸载时删。
+!macro customInstall
+  StrCpy $R0 "$LOCALAPPDATA\${APP_FILENAME}\installer"
+  ${if} "$EXEPATH" != "$R0\${APP_FILENAME}-Setup-${VERSION}.exe"
+    RMDir /r "$R0"
+    CreateDirectory "$R0"
+    CopyFiles /SILENT "$EXEPATH" "$R0\${APP_FILENAME}-Setup-${VERSION}.exe"
+    ClearErrors
+  ${endIf}
+!macroend
+
 !macro customUnInstall
   StrCpy $R8 0
   # updater 下载缓存（2026-08-27 人工验收发现）：electron-updater 把下载好的安装包
@@ -227,6 +239,10 @@
   # 改包名时这里要跟着改。它是程序的下载缓存、不是用户的东西，所以无条件清掉，
   # 不并进下面那个「要不要删数据目录」的询问。
   !insertmacro DeepSeekGuiRemoveTree "$LOCALAPPDATA\@see-sol-labdeepseekgui-updater"
+  # customInstall 留的安装包：升级与搬家时旧卸载器先跑、新安装器随后重写，只有真卸载才删。
+  ${ifNot} ${isUpdated}
+    !insertmacro DeepSeekGuiRemoveTree "$LOCALAPPDATA\${APP_FILENAME}\installer"
+  ${endIf}
   # P8-D21：卸载器从来没有交代过用户数据留在哪儿。这里问一次，默认保留。
   #
   # 时机说明（这段是本宏唯一的复杂之处，别照直觉改）：一键卸载器在 un.onInit 里
@@ -353,6 +369,98 @@
 !define DEEPSEEKGUI_MAX_INSTDIR_LEN 85
 
 !macro customInit
+  # ── Phase 1（2026-10-05）：安装位置 ──
+  # 应用内「整体搬家」的交接助手用 Start-Process 原样传 /S /D=<目录>（不加引号），这里不必处理。
+  # 全新安装问一次放哪：只在有人看着、不是升级、注册表里还没有安装位置时问。
+  #   选「否」→ 选一个父文件夹 P，程序装进 P\DeepSeekGUI\app；应用首启看到这个布局，
+  #   就把数据放进同一布局的 P\DeepSeekGUI\dsh（relocation.ts 的 layoutHomeOf），不落回
+  #   %APPDATA%。取消选择就按默认位置装。升级和静默安装（含整体搬家）一律不问：
+  #   升级沿用注册表里的位置，搬家由 /D= 指定。
+  ${IfNot} ${Silent}
+  ${AndIfNot} ${isUpdated}
+    ReadRegStr $1 HKCU "${INSTALL_REGISTRY_KEY}" InstallLocation
+    ${If} $1 == ""
+      MessageBox MB_YESNO|MB_ICONQUESTION "DeepSeekGUI 将安装到默认位置：$\r$\n$INSTDIR$\r$\n数据放在 $APPDATA\${APP_FILENAME}。$\r$\n$\r$\n要放到其他位置（例如 D 盘）请选「否」，然后选一个父文件夹：程序装到其中的 ${APP_FILENAME}\app，数据放在 ${APP_FILENAME}\dsh。$\r$\n$\r$\nDeepSeekGUI will be installed in the default location above, with its data in $APPDATA\${APP_FILENAME}.$\r$\nTo use another location (for example drive D), choose No and pick a parent folder: the program goes into ${APP_FILENAME}\app and the data into ${APP_FILENAME}\dsh inside it." IDYES deepseekguiDefaultLocation
+      deepseekguiPickLocation:
+      nsDialogs::SelectFolderDialog "选择安装位置（父文件夹） / Choose the install location (parent folder)" "$PROFILE"
+      Pop $2
+      ${If} $2 != "error"
+      ${AndIf} $2 != ""
+        # 选了盘符根时是 D:\，去掉末尾的分隔符再拼。
+        StrCpy $3 "$2" "" -1
+        ${If} $3 == "\"
+          StrCpy $2 "$2" -1
+        ${EndIf}
+        # Sol P1-04：与应用内整体搬家同一组判断的安装器版本。不合适就说明原因、回去重选；
+        # 取消选择才按默认位置装。
+        StrCpy $4 "$2\${APP_FILENAME}"
+        StrCpy $5 ""
+        # 系统目录：按用户安装写不进去，也不该把程序和数据混进去（StrCmp 不分大小写）。
+        ReadEnvStr $6 "ProgramData"
+        ${ForEach} $7 0 3 + 1
+          ${If} $7 == 0
+            StrCpy $8 "$WINDIR"
+          ${ElseIf} $7 == 1
+            StrCpy $8 "$PROGRAMFILES"
+          ${ElseIf} $7 == 2
+            StrCpy $8 "$PROGRAMFILES64"
+          ${Else}
+            StrCpy $8 "$6"
+          ${EndIf}
+          ${If} $8 != ""
+            StrLen $9 "$8"
+            StrCpy $R1 "$4" $9
+            StrCpy $R2 "$4" 1 $9
+            ${If} $R1 == "$8"
+            ${AndIf} $R2 == "\"
+              StrCpy $5 "系统目录 / a system folder: $8"
+            ${EndIf}
+          ${EndIf}
+        ${Next}
+        ${If} $5 == ""
+        ${AndIf} ${FileExists} "$4\*.*"
+          # 已有的 DeepSeekGUI 文件夹：不能是链接；里面只能有我们自己的 app 与 dsh
+          # （重装时保留下来的数据），出现别的东西就不往里装。
+          System::Call 'kernel32::GetFileAttributesW(w "$4") i .r9'
+          IntOp $R3 $9 & 0x400
+          ${If} $9 != -1
+          ${AndIf} $R3 != 0
+            StrCpy $5 "链接 / a link: $4"
+          ${Else}
+            FindFirst $R4 $R5 "$4\*.*"
+            ${DoWhile} $R5 != ""
+              ${If} $R5 != "."
+              ${AndIf} $R5 != ".."
+              ${AndIf} $R5 != "app"
+              ${AndIf} $R5 != "dsh"
+                StrCpy $5 "已有其他内容 / already has other content: $4\$R5"
+                ${Break}
+              ${EndIf}
+              FindNext $R4 $R5
+            ${Loop}
+            FindClose $R4
+          ${EndIf}
+        ${EndIf}
+        ${If} $5 == ""
+          # 可写：在父文件夹里试写一个文件再删掉。
+          ClearErrors
+          FileOpen $R6 "$2\.deepseekgui-write-test" w
+          ${If} ${Errors}
+            StrCpy $5 "不可写 / not writable: $2"
+          ${Else}
+            FileClose $R6
+            Delete "$2\.deepseekgui-write-test"
+          ${EndIf}
+        ${EndIf}
+        ${If} $5 != ""
+          MessageBox MB_OK|MB_ICONEXCLAMATION "不能装到这里，请换一个文件夹。$\r$\n$5$\r$\n$\r$\nThis location cannot be used; please choose another folder."
+          Goto deepseekguiPickLocation
+        ${EndIf}
+        StrCpy $INSTDIR "$4\app"
+      ${EndIf}
+      deepseekguiDefaultLocation:
+    ${EndIf}
+  ${EndIf}
   # 注意：模板的 .onInit 在本宏之前就执行了 SetOutPath $INSTDIR（installer.nsi），
   # 目录树因此已被建出来。被拒的安装留下的是空目录：没有文件写入，也没有注册表
   # 项。抢在 SetOutPath 之前没有可用挂点，为此再 patch 模板不划算。

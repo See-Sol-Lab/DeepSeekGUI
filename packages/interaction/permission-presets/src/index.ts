@@ -173,23 +173,41 @@ export interface Config {
 }
 
 /**
+ * DeepSeekGUI (2026-10-04): why the sandbox policy runs this workspace
+ * read-only whatever the log records — a chat-only workspace (home directory,
+ * drive root, system location) or DeepSeekGUI's own code. The sandbox policy
+ * clamps the mode with the same two checks at execution time.
+ * @param session - the session.
+ * @returns the reason keyword, or undefined for an ordinary workspace.
+ */
+function standingReadOnlyReason(session: Session): 'chat-only' | 'gui' | undefined {
+  const root = session.header.cwd
+  if (root === undefined) return undefined
+  if (chatOnlyReason(root) !== undefined) return 'chat-only'
+  return zoneOfPath(root) === 'gui' ? 'gui' : undefined
+}
+
+/**
  * DeepSeekGUI (2026-09-24): standing full access is refused where the person
  * decided it must never apply — a chat-only workspace (home directory, drive
  * root, system location), DeepSeekGUI's own code, and an administrator
- * desktop. The message keywords (`chat-only`, `DeepSeekGUI code`,
- * `administrator`) let the picker explain the refusal in the person's language.
+ * desktop. Since 2026-10-04 the first two also refuse every preset above
+ * read-only: the sandbox policy runs those workspaces read-only, so a picker
+ * that accepted them would show a mode that is not in force. The message
+ * keywords (`chat-only`, `DeepSeekGUI code`, `administrator`) let the picker
+ * explain the refusal in the person's language.
  * @param session - the session being switched.
  * @param sandbox - the preset's sandbox mode.
  */
 function refuseFullAccess(session: Session, sandbox: SandboxMode): void {
+  const readOnly = standingReadOnlyReason(session)
+  if (readOnly === 'chat-only' && sandbox !== 'read-only') {
+    throw new Error('permission refused: chat-only workspace — only read-only applies in the home directory, a drive root, or a system location')
+  }
+  if (readOnly === 'gui' && sandbox !== 'read-only') {
+    throw new Error("permission refused: DeepSeekGUI code — the standing mode here is read-only; every change needs the user's approval")
+  }
   if (sandbox !== 'danger-full-access') return
-  const root = session.header.cwd
-  if (root !== undefined && chatOnlyReason(root) !== undefined) {
-    throw new Error('permission refused: chat-only workspace — full access is not available in the home directory, a drive root, or a system location')
-  }
-  if (root !== undefined && zoneOfPath(root) === 'gui') {
-    throw new Error("permission refused: DeepSeekGUI code — every change here needs the user's approval, so full access is not available")
-  }
   if (isElevatedHost()) {
     throw new Error('permission refused: administrator — DeepSeekGUI runs as administrator, so full access is disabled')
   }
@@ -462,16 +480,25 @@ export class PermissionPresetService extends TypertRemoteService {
     }
     if (preset === null && sandbox === null && approval === null && !seeded) {
       let name = this.defaultPreset
-      // DeepSeekGUI: a default of full access falls back where it is refused.
+      // DeepSeekGUI: a default the workspace refuses falls back to the mode in force there.
       try {
         refuseFullAccess(session, this.resolve(name).sandbox)
       } catch {
-        if (Object.hasOwn(this.presets, 'workspace-write')) name = 'workspace-write'
+        const fallback = Object.hasOwn(this.presets, 'workspace-write') ? 'workspace-write' : name
+        name = (standingReadOnlyReason(session) === undefined ? undefined : this.readOnlyPreset()) ?? fallback
       }
       const spec = this.resolve(name)
       session.append('permission/preset', { preset: name })
-      setSandboxMode(session, spec.sandbox)
+      setSandboxMode(session, standingReadOnlyReason(session) === undefined ? spec.sandbox : 'read-only')
       setApprovalPolicy(session, spec.approval)
+      return
+    }
+    if (standingReadOnlyReason(session) !== undefined && (sandbox ?? this.ctx.shell.sandboxMode) !== 'read-only') {
+      // A session opened in a read-only workspace records the mode in force, so the picker and the sandbox agree.
+      const name = this.readOnlyPreset()
+      if (name !== undefined) session.append('permission/preset', { preset: name })
+      setSandboxMode(session, 'read-only')
+      setApprovalPolicy(session, approval ?? (name === undefined ? this.ctx.approval.config.policy ?? 'ask' : this.resolve(name).approval))
       return
     }
 
@@ -485,6 +512,12 @@ export class PermissionPresetService extends TypertRemoteService {
     if (approval === null) {
       setApprovalPolicy(session, this.ctx.approval.config.policy ?? 'ask')
     }
+  }
+
+  /** The configured preset that bundles the read-only sandbox, preferring the one named `read-only`. */
+  private readOnlyPreset(): string | undefined {
+    if (this.presets['read-only']?.sandbox === 'read-only') return 'read-only'
+    return Object.entries(this.presets).find(([, spec]) => spec.sandbox === 'read-only')?.[0]
   }
 
   /** Publish a non-vetoing payload-free catalog invalidation. */

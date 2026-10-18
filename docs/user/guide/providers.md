@@ -16,7 +16,11 @@ Keys are write-only. The page receives a redacted descriptor after saving, never
 
 Choose **Add model provider**. The card opens on **Third-party model provider**: pick a provider dsh ships with — the list shows provider ids such as `anthropic`, `openai`, `moonshotai` for Kimi, or `zai` for GLM — enter its API key, and save. The installed catalog supplies the endpoint, protocol, and model list.
 
-Providers that sign in with OAuth, such as Codex, are not supported here yet.
+The authentication **?** explains saved-credential priority and environment fallbacks. Leave the key blank to use a saved credential or try the listed environment variables. A green hint identifies a detected environment variable. A yellow hint means no credential variable was detected; enter an API key or configure the listed variable. An unconfirmed hint means the status read failed. Detection does not validate the credential or test the connection. Provider-managed credential files, including AWS profiles and Google application-default credentials, are outside this check. Providers without native key authentication, such as `openai-codex`, show no key field unless the profile explicitly names a credential reference.
+
+A saved credential uses the placeholder **Leave blank to use saved credentials**, with no status text below the input. Environment fallback uses **Leave blank to use env as auth** and one detection hint while the input is empty. A nonempty input shows no authentication status text. Address configuration variables appear under **Base URL** and do not count as credentials.
+
+A nonempty key input has an eye button. Select **Show secret** to check what you typed, and **Hide secret** to mask it again. Changing the input masks it again. Stored credentials remain write-only.
 
 ## Add a custom model API
 
@@ -43,7 +47,7 @@ If a saved default names a provider that was deleted, the composer displays **Se
 The generated [plugin configuration catalog](../../config-catalog.md) lists every supported field and default for every plugin; [`dsh-llm-pi-ai`](../../config-catalog.md#deepseek-aidsh-llm-pi-ai) is the provider section this page configures. The [`dsh-llm-pi-ai`](../../../packages/llm/llm-pi-ai/README.md) and [`dsh-llm-deepseek`](../../../packages/llm/llm-deepseek/README.md) references own direct `cordis.patch.yml` configuration, catalog resolution, reasoning controls, credentials, and adapter errors.
 
 ::: tip Additional settings
-The Models page exposes the API key, display name, base URL, API protocol, and each model's id, display name, context window, max output tokens, and input types. Configure reasoning effort levels, request-compatibility switches, headers, timeouts, and retry policy in `$DSH_HOME/profiles/<profile>/cordis.patch.yml`, the same document the page writes. Edit it directly, or, when the browser runs on the same machine as the server, open it with **Open configuration file** in the Settings header; the adapters re-read it on the next request, so nothing needs a restart. The subsections below cover the fields most gateways need.
+The Models page exposes the API key, display name, base URL, API protocol, and each model's id, display name, context window, max output tokens, and input types, plus the reasoning levels of a model on a custom model API provider. Configure the reasoning levels of a built-in provider's models, request-compatibility switches, headers, timeouts, and retry policy in `$DSH_HOME/profiles/<profile>/cordis.patch.yml`, the same document the page writes. Edit it directly, or, when the browser runs on the same machine as the server, open it with **Open configuration file** in the Settings header; the adapters re-read it on the next request, so nothing needs a restart. The subsections below cover the fields most gateways need.
 
 For the standard Web UI launch with `dsh web`, `<profile>` is `web`, so the path is `$DSH_HOME/profiles/web/cordis.patch.yml`. If you launch a custom profile, use the name selected at startup instead.
 :::
@@ -108,9 +112,28 @@ In pi-ai configuration, every list must name at least one modality except a mode
 
 Both fields state a claim about your endpoint rather than checking it. A model that declares images its endpoint does not serve is not caught here; the provider rejects the request instead.
 
+### DeepSeek account models
+
+A signed-in DeepSeek account lists its models from the account service, so the Models page offers no model editor for it. Adjust a single model with `modelOverrides` in `$DSH_HOME/profiles/<profile>/cordis.patch.yml`; the fields match a DeepSeek `models` entry, and unset fields keep the listed values:
+
+```yaml
+- id: llm-deepseek-account
+  config:
+    modelOverrides:
+      deepseek-flash:
+        contextWindow: 524288
+        maxTokens: 131072
+```
+
+A model that needs a newer DeepSeek Harness fails with `CLIENT_UPGRADE_REQUIRED`, which names the version to install. The [account provider reference](../../../packages/llm/llm-deepseek-account/README.md) owns the listing, fallback, and gating rules.
+
 ### Reasoning effort
 
-The model picker offers an **Effort** menu for a model that declares reasoning levels. A built-in provider's models inherit their levels from the installed catalog. A model you enter by hand declares none, so the Effort entry does not appear in the menu and the endpoint's own default decides whether the model thinks. Declare the levels with `reasoningEfforts` in `$DSH_HOME/profiles/<profile>/cordis.patch.yml`:
+The model picker offers an **Effort** menu for a model that declares reasoning levels. A built-in provider's models inherit their levels from the installed catalog, and DeepSeek's models keep the adapter's levels. A model you enter by hand declares none until you add them, so until then the Effort entry does not appear in the menu and the endpoint's own default decides whether the model thinks.
+
+On a custom model API provider, declare the levels in **Settings → Models**: edit the provider, open **Customized settings**, expand the model's **Model options**, and turn on **Reasoning levels**. The rows start with off, low, medium, and high. Each row pairs a level with the **API value** sent for it, which defaults to the level name; change it only where the model provider's API documentation spells the level differently. Add or delete rows to match what the endpoint supports, keep at least one level besides off, and save. Turning the switch off removes the declaration.
+
+The page writes `reasoningEfforts` in `$DSH_HOME/profiles/<profile>/cordis.patch.yml`, where you can also declare the levels directly:
 
 ```yaml
 - id: llm-pi-ai
@@ -197,7 +220,7 @@ Every switch, its accepted values, and the protocols that take it are listed und
 - **Fetching available models reports neither a `data` array nor a `models` object** — The endpoint's listing is in a format discovery does not read. Enter the models by hand.
 - **The gateway refuses every request although the key and URL are right** — Its request shape differs from OpenAI's. Start with `compat.supportsDeveloperRole: false` and `compat.maxTokensField: max_tokens` on the route.
 - **Only reasoning models fail** — pi-ai sends their system prompt as the `developer` role, which the gateway rejects. Set `compat.supportsDeveloperRole: false`.
-- **The Effort menu does not appear for a model you entered by hand** — It declares no levels. Add `reasoningEfforts` to the model in `cordis.patch.yml`.
+- **The Effort menu does not appear for a model you entered by hand** — It declares no levels. On a custom model API provider, turn on **Reasoning levels** in the model's **Model options**; elsewhere, add `reasoningEfforts` to the model in `cordis.patch.yml`.
 - **`off` does not stop a DeepSeek model from thinking** — An empty `off` sends no reasoning field at all, and an endpoint that thinks by default keeps thinking. Set `compat.thinkingFormat: deepseek` on the model or the route.
 - **A compat switch is refused as having no value** — A key written with nothing after the colon. Give it a value, or remove the key to keep the installed catalog's.
 - **An image is refused before sending** — The model declares no image modality. Give a custom provider's model `input: [text, image]`; on DeepSeek's own route, select an image-capable entry from the configured catalog (`deepseek-flash` by default) and confirm that your gateway serves that model with image input.

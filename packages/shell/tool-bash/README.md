@@ -25,6 +25,8 @@ English | [中文](README.zh.md)
 <a id="use-this-package"></a>
 ## Use this package
 
+New commands start in the Session's current working directory. Relative `workdir` values resolve from that directory; per-call overrides and background jobs do not change it.
+
 Load this plugin in any composition where the agent should run bash commands: it registers the `bash` tool once an executor provider and the `dsh-shell-env` registry are mounted, and stays pending until the `tools`, `shell`, `systemPrompt`, and `shellEnv` services exist.
 
 ### Minimal configuration
@@ -52,7 +54,7 @@ The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-a
 
 ### Running a command
 
-The tool executes `bash -c <command>` and returns the combined output. Commands run in a fresh shell every call, so state never persists — pass `workdir` instead of `cd`. A non-zero exit is reported as `[exit code: N]` for the agent to interpret, not surfaced as a tool error. A `description` in active voice (5–10 words) labels the call in the UI; `timeoutMs` overrides the executor's default and cap. Output beyond the executor's stream caps is truncated to its tail, with the full output saved to a spill file whose path is reported. The description tells the agent to verify the resolved absolute target path before any delete or move and to guard variables in such paths with `${VAR:?}`.
+The tool executes `bash -c <command>` and returns the combined output. Commands run in a fresh shell every call, so state never persists — pass `workdir` instead of `cd`. A non-zero exit is reported as `[exit code: N]` for the agent to interpret, not surfaced as a tool error. A `description` in active voice (5–10 words) labels the call in the UI; the schema lists it before `command` and asks the model to emit it first, without enforcing JSON member order. `timeoutMs` overrides the executor's default and cap. Output beyond the executor's stream caps is truncated to its tail, with the full output saved to a spill file whose path is reported. The description tells the agent to verify the resolved absolute target path before any delete or move and to guard variables in such paths with `${VAR:?}`.
 
 <a id="running-long-commands-in-the-background"></a>
 ### Running long commands in the background
@@ -79,6 +81,8 @@ A composition with no executor provider never activates the tool. Background cal
 <details>
 <summary>Implementation internals — click to expand</summary>
 
+Structured foreground and background results expose `cwd`, the executor-resolved launch directory. Persisted presentation metadata carries the same value so settled cards retain the directory used by that call. A command’s own `cd` does not change this launch value; native result text remains stdout, stderr, and status markers.
+
 This section explains the design decisions behind the tool and points at the code that realizes them; the observable behavior is fully covered in [Use this package](#use-this-package).
 
 ### Design philosophy
@@ -95,11 +99,10 @@ This section explains the design decisions behind the tool and points at the cod
 | [`src/index.ts`](src/index.ts) | Plugin entry: tool registration, prompt section, arg validation, escalation, request assembly |
 | [`src/background.ts`](src/background.ts) | Own asynchronous shell preparation, map process settlement onto job outcomes, and render a ring read as a process read |
 | [`src/render.ts`](src/render.ts) | Model-facing result text: streams, markers, truncation notices |
-| — | No runtime invariant companion is published; the environment registry validates ownership and collected values at each mutation/read; it publishes no independent snapshot that a companion could cross-check. |
 
 ### Request resolution
 
-The tool resolves the workdir before `ctx.shell.resolve()` runs: an explicit relative `workdir` is resolved against the session cwd, and a sandbox policy's canonical workspace root wins so confinement and launch use the same identity. Sandbox policy resolves per call through `ctx.sandboxPolicy`; an escalation request goes through `ctx.approval` before anything executes, and the tool fails at load if the executor confines but no policy service is mounted.
+The tool resolves the workdir before `ctx.shell.resolve()` runs: an explicit relative `workdir` is resolved against the Session's current directory, independently of the sandbox permission root. Sandbox policy resolves per call through `ctx.sandboxPolicy`; an escalation request goes through `ctx.approval` before anything executes, and the tool fails at load if the executor confines but no policy service is mounted.
 
 ### Rendering story
 
@@ -118,7 +121,7 @@ Read these pages when the package-level contract is not enough. They move from t
 - [Bash executor subsystem](../../../docs/subsystems/shell.md) — request/spec vocabulary, results, and background processes.
 - [shell-env](../shell-env/README.md) — the managed `DSH_*` environment every call receives.
 - [tool-jobs](../../jobs/tool-jobs/README.md) — `job_output`, `job_list`, and `job_kill` controls for background runs.
-- [sandbox Agent Note](../../../.agents/notes/implemented/feature/2026-07-06-sandbox.md) — escalation and mode-switching rationale.
+- [historical sandbox Agent Note](../../../.agents/notes/archived/feature/2026-07-06-sandbox.md) — escalation and mode-switching rationale.
 - [Generated tool catalog](../../../docs/tool-catalog.md#deepseek-aidsh-tool-bash) — the exact `bash` argument schema.
 - [Generated configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-tool-bash) — every accepted config field and its source declaration.
 

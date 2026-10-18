@@ -63,22 +63,21 @@ jobs:
           echo "TMPDIR=${{ runner.temp }}" >> "$GITHUB_ENV"
 
       # Fetch complete history so the archive gate can read the trusted PR base from a reused shallow checkout.
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
 
       # Redirect the Node compile cache (enabled by pnpm and TypeScript) off
-      # the root partition's /tmp before the first pnpm call in this lane —
-      # see .agents/notes/implemented/process/2026-08-28-ci-node-compile-cache-data-disk.md.
+      # the root partition's /tmp before the first pnpm call in this lane.
       - name: Redirect Node compile cache to runner temp
         run: echo "NODE_COMPILE_CACHE=${{ runner.temp }}/node-compile-cache" >> "$GITHUB_ENV"
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v5.0.0
         with:
           dest: ${{ runner.temp }}/setup-pnpm-${{ github.run_id }}-${{ github.run_attempt }}
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7.0.0
         with:
           node-version: ${{ env.PRIMARY_NODE_VERSION }}
 
@@ -93,7 +92,7 @@ jobs:
       # Pull requests consume the default-branch cache but do not put cache
       # compression and upload on the paid latency-critical path. Skipped
       # under failover — see the coverage lane's identical rationale.
-      - uses: actions/cache/restore@v4
+      - uses: actions/cache/restore@v6.1.0
         if: vars.DSH_CI_FAILOVER_LINUX != 'selfhosted' || github.event.pull_request.user.login == 'dependabot[bot]'
         with:
           path: ${{ steps.pnpm-store.outputs.path }}
@@ -140,21 +139,28 @@ jobs:
         run: |
           echo "TMPDIR=${{ runner.temp }}" >> "$GITHUB_ENV"
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
+      - name: Restore coverage duration history
+        uses: actions/cache/restore@v6.1.0
+        with:
+          path: .coverage-times.json
+          key: coverage-times-Linux-${{ runner.environment }}-${{ vars.DSH_CI_FAILOVER_LINUX || 'enterprise' }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            coverage-times-Linux-${{ runner.environment }}-${{ vars.DSH_CI_FAILOVER_LINUX || 'enterprise' }}-
+
       # Redirect the Node compile cache (enabled by pnpm and TypeScript) off
-      # the root partition's /tmp before the first pnpm call in this lane —
-      # see .agents/notes/implemented/process/2026-08-28-ci-node-compile-cache-data-disk.md.
+      # the root partition's /tmp before the first pnpm call in this lane.
       - name: Redirect Node compile cache to runner temp
         run: echo "NODE_COMPILE_CACHE=${{ runner.temp }}/node-compile-cache" >> "$GITHUB_ENV"
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v5.0.0
         with:
           dest: ${{ runner.temp }}/setup-pnpm-${{ github.run_id }}-${{ github.run_attempt }}
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7.0.0
         with:
           node-version: ${{ env.PRIMARY_NODE_VERSION }}
 
@@ -168,7 +174,7 @@ jobs:
 
       # Self-hosted runners reuse the shared persistent pnpm store.
       # Hosted runners restore the remote cache into their ephemeral store.
-      - uses: actions/cache/restore@v4
+      - uses: actions/cache/restore@v6.1.0
         if: vars.DSH_CI_FAILOVER_LINUX != 'selfhosted' || github.event.pull_request.user.login == 'dependabot[bot]'
         with:
           path: ${{ steps.pnpm-store.outputs.path }}
@@ -192,23 +198,30 @@ jobs:
       - name: Run exhaustive coverage
         run: pnpm run check:ci:coverage
 
+      - name: Save coverage duration history
+        if: ${{ !cancelled() }}
+        uses: actions/cache/save@v6.1.0
+        with:
+          path: .coverage-times.json
+          key: coverage-times-Linux-${{ runner.environment }}-${{ vars.DSH_CI_FAILOVER_LINUX || 'enterprise' }}-${{ github.run_id }}-${{ github.run_attempt }}
+
   node-24-bench:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
     name: node 24 / benchmarks
     # Wall-clock budgets need an otherwise idle runner, so this job runs the
     # benchmark lane alone instead of joining a concurrent gate aggregate.
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v5.0.0
         with:
           dest: ${{ runner.temp }}/setup-pnpm-${{ github.run_id }}-${{ github.run_attempt }}
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7.0.0
         with:
           node-version: ${{ env.PRIMARY_NODE_VERSION }}
 
@@ -220,7 +233,7 @@ jobs:
           store_path=$(PNPM_CONFIG_STORE_DIR="$store_root" pnpm store path --silent)
           echo "path=$store_path" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/cache/restore@v4
+      - uses: actions/cache/restore@v6.1.0
         with:
           path: ${{ steps.pnpm-store.outputs.path }}
           key: ${{ runner.os }}-node-${{ env.PRIMARY_NODE_VERSION }}-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
@@ -237,6 +250,20 @@ jobs:
         env:
           DSH_GATE_VERBOSE: '1'
         run: pnpm run check:ci:bench
+
+      # The report global teardown renders benchmarks/.dsh-report after the run,
+      # including after a failing budget assertion. A run that fails before
+      # recording any timing has no report, so missing files warn instead of
+      # failing the benchmark job a second time.
+      - name: Upload scaled benchmark report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: benchmark-report
+          path: benchmarks/.dsh-report/
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7
 
   node-24-consumers:
     if: github.event_name == 'pull_request'
@@ -266,21 +293,20 @@ jobs:
           echo "TMPDIR=${{ runner.temp }}" >> "$GITHUB_ENV"
           echo "PLAYWRIGHT_BROWSERS_PATH=${RUNNER_TEMP%/*}/ms-playwright" >> "$GITHUB_ENV"
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
       # Redirect the Node compile cache (enabled by pnpm and TypeScript) off
-      # the root partition's /tmp before the first pnpm call in this lane —
-      # see .agents/notes/implemented/process/2026-08-28-ci-node-compile-cache-data-disk.md.
+      # the root partition's /tmp before the first pnpm call in this lane.
       - name: Redirect Node compile cache to runner temp
         run: echo "NODE_COMPILE_CACHE=${{ runner.temp }}/node-compile-cache" >> "$GITHUB_ENV"
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v5.0.0
         with:
           dest: ${{ runner.temp }}/setup-pnpm-${{ github.run_id }}-${{ github.run_attempt }}
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7.0.0
         with:
           node-version: ${{ env.PRIMARY_NODE_VERSION }}
 
@@ -297,7 +323,7 @@ jobs:
       # hosted cache keys, so each restore-keys fallback hits the matching archived
       # entry until it evicts, after which the store is cold. Self-hosted runners
       # reuse the shared persistent store instead of restoring the remote archive.
-      - uses: actions/cache/restore@v4
+      - uses: actions/cache/restore@v6.1.0
         if: vars.DSH_CI_FAILOVER_LINUX != 'selfhosted' || github.event.pull_request.user.login == 'dependabot[bot]'
         with:
           path: ${{ steps.pnpm-store.outputs.path }}
@@ -306,7 +332,7 @@ jobs:
             ${{ runner.os }}-node-${{ env.PRIMARY_NODE_VERSION }}-pnpm-
 
       # Self-hosted runners retain their own browser cache between jobs.
-      - uses: actions/cache/restore@v4
+      - uses: actions/cache/restore@v6.1.0
         if: vars.DSH_CI_FAILOVER_LINUX != 'selfhosted' || github.event.pull_request.user.login == 'dependabot[bot]'
         with:
           path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
@@ -388,6 +414,7 @@ jobs:
       DSH_GATE_FAIL_FAST: '1'
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
         include:
           - node: '22.19'
@@ -406,7 +433,7 @@ jobs:
             runner: ubuntu-latest
             gate_concurrency: '1'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
@@ -418,11 +445,11 @@ jobs:
           echo "npm_config_devdir=$RUNNER_TEMP/node-gyp" >> "$GITHUB_ENV"
           echo "PNPM_CONFIG_STORE_DIR=$HOME/.local/share/pnpm/store" >> "$GITHUB_ENV"
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v5.0.0
         with:
           dest: ${{ runner.temp }}/setup-pnpm-${{ github.run_id }}-${{ github.run_attempt }}
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7.0.0
         env:
           # The runner overwrites RUNNER_* step env before starting JavaScript actions.
           NODE_OPTIONS: ${{ runner.environment == 'self-hosted' && '--import=./scripts/ci-compatible-toolcache.mjs' || '' }}
@@ -463,7 +490,7 @@ jobs:
     runs-on: ubuntu-latest
     name: python 3.10 / keyless SDK
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.1
 
       - uses: actions/setup-python@v6.3.0
         with:
@@ -473,7 +500,7 @@ jobs:
       - name: Install uv
         run: python -m pip install uv==0.11.23
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7.0.0
         with:
           node-version: 24
 
@@ -488,6 +515,7 @@ jobs:
   # Linux ARM64 and both macOS architectures run in ci-master.yml.
   python-runtime:
     if: github.event_name == 'pull_request'
+    needs: python-sdk
     name: python runtime / release-shaped matrix
     uses: ./.github/workflows/build-exe-for-python-sdk.yml
     with:
@@ -516,7 +544,7 @@ jobs:
       # A failing build or site aborts the sibling gate on the same runner.
       DSH_GATE_FAIL_FAST: '1'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
       - name: Enable Developer Mode (symlink support)
@@ -524,10 +552,10 @@ jobs:
         run: >-
           reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock"
           /t REG_DWORD /f /v "AllowDevelopmentWithoutDevLicense" /d "1"
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v5.0.0
         with:
           dest: ${{ runner.temp }}/setup-pnpm-js-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7.0.0
         with:
           node-version: ${{ env.PRIMARY_NODE_VERSION }}
       - name: Install (immutable)
@@ -546,6 +574,15 @@ jobs:
       - name: Run blocking Windows builds
         shell: pwsh
         run: pnpm run check:ci:windows-blocking
+      - name: Parse Windows runner supervision scripts
+        shell: pwsh
+        run: |
+          foreach ($path in @('apps/desktop/scripts/windows-runner-task.ps1', 'apps/desktop/scripts/run-windows-runner-task.ps1', 'apps/desktop/tests/windows-runner-task.ps1')) {
+            $tokens = $null
+            $parseErrors = $null
+            $null = [Management.Automation.Language.Parser]::ParseFile((Join-Path $env:GITHUB_WORKSPACE $path), [ref]$tokens, [ref]$parseErrors)
+            if ($parseErrors.Count) { throw ($parseErrors -join "`n") }
+          }
       - name: Run Windows observational gates on built artifacts
         id: observational
         continue-on-error: true
@@ -584,7 +621,7 @@ jobs:
       # multi-minute instrumented run.
       DSH_GATE_FAIL_FAST: '1'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
       # Checkout removes the gitignored duration history, so restore it from
@@ -594,21 +631,21 @@ jobs:
       # entries are immutable, so the save key is unique per run and the
       # restore matches the newest entry through the stable prefix.
       - name: Restore coverage duration history
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6.1.0
         with:
           path: .coverage-times.json
-          key: coverage-times-${{ github.run_id }}
+          key: coverage-times-Windows-${{ runner.environment }}-${{ vars.DSH_CI_FAILOVER_WINDOWS || 'enterprise' }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            coverage-times-
+            coverage-times-Windows-${{ runner.environment }}-${{ vars.DSH_CI_FAILOVER_WINDOWS || 'enterprise' }}-
       - name: Enable Developer Mode (symlink support)
         shell: pwsh
         run: >-
           reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock"
           /t REG_DWORD /f /v "AllowDevelopmentWithoutDevLicense" /d "1"
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v5.0.0
         with:
           dest: ${{ runner.temp }}/setup-pnpm-js-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7.0.0
         with:
           node-version: ${{ env.PRIMARY_NODE_VERSION }}
       - name: Install (immutable)
@@ -637,10 +674,10 @@ jobs:
         # measured durations remain useful even when a partition failed. The
         # per-run key keeps every save a fresh immutable cache entry.
         if: ${{ !cancelled() }}
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6.1.0
         with:
           path: .coverage-times.json
-          key: coverage-times-${{ github.run_id }}
+          key: coverage-times-Windows-${{ runner.environment }}-${{ vars.DSH_CI_FAILOVER_WINDOWS || 'enterprise' }}-${{ github.run_id }}-${{ github.run_attempt }}
 
   windows-native-tests:
     if: github.event_name == 'pull_request'
@@ -653,7 +690,7 @@ jobs:
     name: windows node 24 / native tests
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
       - name: Enable Developer Mode (symlink support)
@@ -661,10 +698,10 @@ jobs:
         run: >-
           reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock"
           /t REG_DWORD /f /v "AllowDevelopmentWithoutDevLicense" /d "1"
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v5.0.0
         with:
           dest: ${{ runner.temp }}/setup-pnpm-js-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7.0.0
         with:
           node-version: ${{ env.PRIMARY_NODE_VERSION }}
       - name: Install (immutable)
@@ -688,7 +725,7 @@ jobs:
           --testTimeout 90000
           packages/shell/tool-pwsh/tests/loader.spec.ts
           packages/workflow/workflow-ptc/tests/workflow-ptc.spec.ts
-          packages/workflow/tool-ralph/tests/integration.spec.ts
+          packages/experimental/tool-ralph/tests/integration.spec.ts
           packages/subprocess/subprocess-local/tests/process-exit.spec.ts
 
   # Single stable required check for branch protection: require "all checks

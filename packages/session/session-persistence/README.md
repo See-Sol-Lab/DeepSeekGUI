@@ -62,6 +62,8 @@ Persistence returns the physically valid log; semantic repair belongs to the rea
 
 ### Failures and recovery
 
+For versioned artifacts, `stat` and `list` expose `formatStatus` as `current` or `migration-required`. The separate `header` remains current logical metadata. This status describes storage, not an in-memory preparation or migration task; providers without this information omit it.
+
 A stored log the current build cannot faithfully interpret is refused with a direction-aware error, never misread. `SessionHandle` exposes only current logical records identified by `SESSION_FORMAT_VERSION`; a provider must convert any supported historical storage before returning a handle, and the shipped JSONL provider migrates supported historical generations through its static catalog. A newer format instructs the operator to upgrade the harness. An event type unknown to this build refuses unless its envelope marks it `ignorable`, and committed-prefix corruption rejects as `SessionPersistenceCorruptionError`.
 
 -----
@@ -96,7 +98,6 @@ The package is a seam, not a backend framework: it exports the abstract `Session
 | [`src/storage-contract.ts`](src/storage-contract.ts) | Shared validation: version gate, fail-closed vocabulary, batch materialization, contiguity |
 | [`src/errors.ts`](src/errors.ts) | Stable handle/ownership failures and format refusals |
 | [`src/revision.ts`](src/revision.ts) | The branded opaque revision token |
-| — | No runtime invariant companion is published; persistence correctness requires backend round-trip and crash-tail tests; this package exposes no continuously observable in-process relation. |
 
 ### The write path at a glance
 

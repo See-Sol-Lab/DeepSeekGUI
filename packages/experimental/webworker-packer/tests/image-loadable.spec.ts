@@ -84,12 +84,11 @@ describe('preview example overlays', () => {
  * preview builds exercise the same path against complete real artifacts.
  */
 // The subject is zero-dep, but its peer/dependency closure (cordis, loader,
-// include, cosmokit, invariants) must also be built: on the complete lane
+// include, cosmokit) must also be built: on the complete lane
 // build and coverage run concurrently, so checking only the subject lets the
 // pack start before its real workspace dependencies exist.
 const subjectBuilt = [
   'packages/util/timeout/lib/index.js',
-  'packages/runtime-diagnostics/invariants/lib/index.js',
   'vendor/cordis/lib/index.js',
   'vendor/cosmokit/lib/index.js',
   'vendor/include/lib/index.js',
@@ -103,20 +102,19 @@ const subjectBuilt = [
 
 let memo: ReturnType<typeof packVfsImage> | undefined
 const packed = (): ReturnType<typeof packVfsImage> => memo ??= packVfsImage({
-  // The composition's own shape: one entry per plugin, `name:` on its own line.
-  config: `- id: subject\n  name: '${SUBJECT}'\n`,
   profile: 'image-loadable-check',
+  roster: [SUBJECT],
   workspaces,
   resolveFrom: repoRoot,
-  // Synthetic composition: nothing boots the worker assembly, so its default
+  // Synthetic roster: nothing boots the worker assembly, so its default
   // image entries must not be demanded of this one-package closure.
   entries: [],
 })
 
 let landlockMemo: ReturnType<typeof packVfsImage> | undefined
 const packedLandlock = (): ReturnType<typeof packVfsImage> => landlockMemo ??= packVfsImage({
-  config: `- id: subject\n  name: '${LANDLOCK}'\n`,
   profile: 'landlock-package-check',
+  roster: [LANDLOCK],
   workspaces,
   resolveFrom: repoRoot,
   entries: [],
@@ -124,8 +122,8 @@ const packedLandlock = (): ReturnType<typeof packVfsImage> => landlockMemo ??= p
 
 let pluginInventoryMemo: ReturnType<typeof packVfsImage> | undefined
 const packedPluginInventory = (): ReturnType<typeof packVfsImage> => pluginInventoryMemo ??= packVfsImage({
-  config: `- id: subject\n  name: '${PLUGIN_INVENTORY}'\n`,
   profile: 'plugin-inventory-check',
+  roster: [PLUGIN_INVENTORY],
   workspaces,
   resolveFrom: repoRoot,
   entries: [],
@@ -133,8 +131,8 @@ const packedPluginInventory = (): ReturnType<typeof packVfsImage> => pluginInven
 
 let webServerMemo: ReturnType<typeof packVfsImage> | undefined
 const packedWebServer = (): ReturnType<typeof packVfsImage> => webServerMemo ??= packVfsImage({
-  config: `- id: subject\n  name: '${WEB_SERVER}'\n`,
   profile: 'webserver-dependency-check',
+  roster: [WEB_SERVER],
   workspaces,
   resolveFrom: repoRoot,
   entries: [],
@@ -197,8 +195,8 @@ const archive = async (): Promise<Uint8Array> =>
     // so anything the compressor takes from its environment would read as a
     // changed tree.
     const again = packVfsImage({
-      config: `- id: subject\n  name: '${SUBJECT}'\n`,
       profile: 'image-loadable-check',
+      roster: [SUBJECT],
       workspaces,
       resolveFrom: repoRoot,
       entries: [],
@@ -314,8 +312,9 @@ const archive = async (): Promise<Uint8Array> =>
     inventory.apply({
       baseUrl,
       loader: tree,
+      // The inventory reads these optional services; this host provides none of them.
       get: (name: string): undefined => {
-        expect(name).toBe('pluginPackages')
+        expect(['pluginPackages', 'agentPresets']).toContain(name)
         return undefined
       },
       deepseekLlmApiExtensions: {

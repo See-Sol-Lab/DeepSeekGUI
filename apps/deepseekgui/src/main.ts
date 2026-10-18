@@ -12,7 +12,8 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, statSync, type FSWatcher, unlinkSync, watch, writeFileSync } from 'node:fs'
-import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
+import { execFile, spawn, spawnSync, type ChildProcess } from 'node:child_process'
+import { promisify } from 'node:util'
 import { generateKeyPairSync, sign } from 'node:crypto'
 import { once } from 'node:events'
 import { basename, delimiter, dirname, join, resolve } from 'node:path'
@@ -48,6 +49,9 @@ import { appendDesktopEvent } from './desktop-events.ts'
 import { describeLegacyCredentialsLayout, describeRuntimeVersionSkew, detectRuntimeVersionSkew, hasLegacyCredentialsLayout } from './runtime-skew.ts'
 import { exportHeadlessDiagnostics } from './diagnostics-export.ts'
 import { createMigrationControl } from './migration-control.ts'
+import { measureMigrationTree, nodeMigrationFacts } from './migration.ts'
+import { createRelocationControl, type RelocationControl } from './relocation-control.ts'
+import { keptInstallerPath, launchRelocationHelper, layoutHomeOf, nodeRelocationFacts } from './relocation.ts'
 import { createUpdateControl } from './update-control.ts'
 import { startControlBridge } from './control-bridge.ts'
 import { configureBrowserPaneProxy, releaseCrashedPane } from './browser-pane-runtime.ts'
@@ -83,7 +87,7 @@ import {
   readInstallStampText,
   readUpdateFeed,
 } from './update-view.ts'
-import { FALLBACK_RELEASE_PAGE_URL, releasePageUrlFor } from './update-service.ts'
+import { DEFAULT_UPDATE_FEED_URL, FALLBACK_RELEASE_PAGE_URL, FALLBACK_UPDATE_FEED_URL, releasePageUrlFor } from './update-service.ts'
 import { createUsageControl, type UsageControl } from './usage-control.ts'
 import { fetchUsage } from './usage-fetch.ts'
 import {
@@ -106,7 +110,7 @@ import {
   writeTerminalShims,
 } from './terminal-service.ts'
 import { createHarnessApi, type HarnessApi } from './harness-api.ts'
-import { homePointerPath, reclaimableHome, syncHomePointer, writeHomePointer } from './home-pointer.ts'
+import { homePointerPath, looksLikeManagedHome, reclaimableHome, syncHomePointer, writeHomePointer } from './home-pointer.ts'
 import { exchangeSessionCookie, readHarnessOutput } from './harness-auth.ts'
 import { installConfirmDetail, queryRunningSessionCount, quitConfirmDetail } from './quit-confirm.ts'
 import { stringsFor, type ChromeStrings } from './chrome/view-model.ts'
@@ -135,6 +139,7 @@ import { readVersionInfoOrDegraded, type DeepSeekGUIVersionInfo } from './versio
 import {
   DEFAULT_HOST,
   DEFAULT_PORT,
+  bindablePort,
   READY_TIMEOUT_MS,
   classifyLinkOpen,
   createServiceLogWriter,
@@ -256,8 +261,10 @@ const SMOKE = process.env.DSH_DESKTOP_SMOKE === '1'
  * 事实，绝不与住户正在运行的 3080 实例争用、更不许「清场 3080」。
  * 非法值忽略（回到 DEFAULT_PORT）；APP URL、readiness、占用检测、
  * Compatibility View 与控制桥的 baseUrl 全部消费同一事实。
+ * 启动时若该端口落进 Windows 保留范围，whenReady 里换成系统分配的端口
+ * （见 bindablePort），之后同一进程内不再变。
  */
-const APP_PORT = (() => {
+let APP_PORT = (() => {
   const raw = process.env.DEEPSEEKGUI_TEST_PORT
   if (raw === undefined || !/^\d+$/.test(raw)) return DEFAULT_PORT
   const value = Number(raw)
@@ -1175,6 +1182,10 @@ let browserPaneView: WebContentsView | undefined
 const BROWSER_PANE_PARTITION = 'deepseekgui-browser-pane'
 /** 「用量与余额」执行面（B7-P3）；app ready 后建立，orderly quit 时释放。 */
 let usageControl: UsageControl | undefined
+/** execFile 的 Promise 版（读安装包版本资源用）。 */
+const execFileAsync = promisify(execFile)
+/** 程序与托管数据整体搬家（Phase 1）；app ready 后建立。模型构建早于它时为 undefined。 */
+let relocationControl: RelocationControl | undefined
 /** 两次用量刷新之间的最短间隔：连点🔄只算一次，打开页面反复切换也不会连发。 */
 const USAGE_REFRESH_COOLDOWN_MS = 5_000
 /** 冷启动刷新的延迟：让位给 Harness 就绪与更新检查，不抢启动时段。 */
@@ -1719,6 +1730,8 @@ void app.whenReady().then(async () => {
   }
   // 第二实例：app.exit 已在途，不再启动服务。
   if (!isPrimaryInstance) return
+  // 必须早于 harnessApi / 控制桥：二者在下面按 APP_PORT 定下 baseUrl。
+  APP_PORT = await bindablePort(DEFAULT_HOST, APP_PORT)
   // 旧的英文横铺 application menu 彻底移除；Desktop Chrome 是唯一控制面。
   Menu.setApplicationMenu(null)
   // 安全加固（2026-09-24，住户定）：以管理员身份运行时 Windows 不再替我们挡住
@@ -1893,6 +1906,41 @@ void app.whenReady().then(async () => {
     await offerReclaimedHome(launcher, pointerPath)
     // 老安装（指针出现之前就搬过家的）从这一启动起补上指针。
     syncPointer(launcher.read())
+  }
+
+  // Phase 1（2026-10-05）：安装时选了别的盘，程序装进了 <P>/DeepSeekGUI/app，新用户的数据就放进
+  // 同一布局的 <P>/DeepSeekGUI/dsh，不落回 %APPDATA%。只在全新状态做：launcher state 从没落过盘
+  // （上面的「接着用吗」若接回了旧目录就已经落过盘），默认位置也没有旧数据——老用户重装
+  // 绝不被悄悄换掉数据位置。
+  if (packaged && !existsSync(launcher.filePath)) {
+    const layoutHome = layoutHomeOf(process.execPath)
+    const defaultHome = resolveHarnessHome({ kind: 'managed' }, userDataDir)
+    if (layoutHome !== null && !looksLikeManagedHome(defaultHome)) {
+      try {
+        mkdirSync(layoutHome, { recursive: true })
+        const fresh = launcher.read()
+        launcher.write({ ...fresh, active: { ...fresh.active, home: { kind: 'managed', root: layoutHome } } })
+      } catch (error) {
+        // 安装时选的数据位置用不了：不静默落回 C 盘，说清楚原因，让用户明确选——用默认位置
+        // （之后可以在「数据位置」里搬过去），或者退出去处理那个位置。
+        const reason = String(error instanceof Error ? error.message : error)
+        console.error(`[deepseekgui] install-layout home was not applied: ${reason}`)
+        const dict = moduleDict()
+        const choice = dialog.showMessageBoxSync({
+          type: 'warning',
+          noLink: true,
+          buttons: [dictText(dict, 'dialog.layout-home.use-default'), dictText(dict, 'dialog.layout-home.quit')],
+          defaultId: 0,
+          cancelId: 1,
+          message: dictText(dict, 'dialog.layout-home.title'),
+          detail: dictText(dict, 'dialog.layout-home.detail', { path: layoutHome, reason: redactSecrets(reason), fallback: defaultHome }),
+        })
+        if (choice !== 0) {
+          app.exit(0)
+          return
+        }
+      }
+    }
   }
 
   // 主题偏好的唯一事实源是 Harness 的 ui-theme.preference（官方 settings
@@ -2084,6 +2132,7 @@ void app.whenReady().then(async () => {
         open: browserPaneOpen,
       },
       dataHome: migration.view(),
+      relocation: relocationControl?.view() ?? null,
       // 当前界面形态（B3-P2）：tray 据此显示对向切换入口。
       viewMode: workbenchViewMode,
       // B4-P8 通知点击的一次性会话导航请求（B5-P6 恢复）：由 notify 命令的
@@ -2825,6 +2874,148 @@ void app.whenReady().then(async () => {
     try { await performInstallUpdate() } finally { installationPending = false }
   }
 
+  // ---- 程序与托管数据整体搬家（Phase 1，2026-10-05；纯逻辑 relocation.ts、执行面 relocation-control.ts）----
+  // 程序那一半由短时助手交给同一版本的已校验安装器（/S /D=<app>），数据那一半复用上面的迁移。
+  const relocation = createRelocationControl({
+    win: process.platform === 'win32',
+    packaged,
+    execPath: process.execPath,
+    pid: process.pid,
+    appVersion: versionInfo.appVersion,
+    userDataDir,
+    keptInstaller: process.env.LOCALAPPDATA === undefined ? null : keptInstallerPath(process.env.LOCALAPPDATA, versionInfo.appVersion),
+    home: () => {
+      const state = launcher.read()
+      return { kind: state.active.home.kind === 'managed' ? 'managed' : 'existing', path: resolveHarnessHome(state.active.home, userDataDir) }
+    },
+    migration,
+    busyReason: () => {
+      const dict = stringsFor(localeOf())
+      if (quitting) return dictText(dict, 'error.relocation-quitting')
+      const updateState = updates.view().state
+      if (installationPending || updateState === 'downloading' || updateState === 'checking') return dictText(dict, 'error.relocation-update-busy')
+      return null
+    },
+    // 按用户安装落不进这些位置（要管理员权限），也不该把程序和数据混进系统目录。
+    protectedRoots: () => [process.env.SystemRoot, process.env.ProgramFiles, process.env['ProgramFiles(x86)'], process.env.ProgramW6432, process.env.ProgramData]
+      .filter((value): value is string => typeof value === 'string' && value !== ''),
+    facts: nodeRelocationFacts(nodeMigrationFacts),
+    measure: dir => measureMigrationTree(dir),
+    pickParent: async () => {
+      const dict = stringsFor(localeOf())
+      const picked = await dialog.showOpenDialog({
+        title: dictText(dict, 'dialog.relocation.title'),
+        buttonLabel: dictText(dict, 'dialog.relocation.button'),
+        properties: ['openDirectory', 'createDirectory'],
+      })
+      return picked.canceled ? undefined : picked.filePaths[0]
+    },
+    runningSessions: () => queryRunningSessionCount(rpc),
+    confirmPlan: async (plan) => {
+      const dict = stringsFor(localeOf())
+      const scope = plan.homeKind === 'managed'
+        ? dictText(dict, 'dialog.relocation-confirm.data-managed', { from: plan.currentHome, to: plan.layout.home })
+        : dictText(dict, 'dialog.relocation-confirm.data-existing', { path: plan.currentHome })
+      const running = plan.runningSessions === null
+        ? dictText(dict, 'dialog.relocation-confirm.running-unknown')
+        : plan.runningSessions > 0
+          ? dictText(dict, 'dialog.relocation-confirm.running', { count: String(plan.runningSessions) })
+          : ''
+      const choice = await dialog.showMessageBox({
+        type: 'question',
+        noLink: true,
+        buttons: [dictText(dict, 'dialog.relocation-confirm.button'), dictText(dict, 'dialog.cancel')],
+        defaultId: 1,
+        cancelId: 1,
+        message: dictText(dict, 'dialog.relocation-confirm.title'),
+        detail: dictText(dict, 'dialog.relocation-confirm.detail', {
+          fromApp: plan.currentAppDir, toApp: plan.layout.appDir, scope, running,
+        }),
+      })
+      return choice.response === 0
+    },
+    feeds: () => {
+      const feed = readUpdateFeed(userDataDir)
+      return [feed, feed === DEFAULT_UPDATE_FEED_URL ? FALLBACK_UPDATE_FEED_URL : null]
+    },
+    fetchText: (url, signal) => updateRunnerDeps.fetchText(url, signal, localeOf() === 'zh'),
+    downloadAsset: (asset, destPath, signal, onProgress) => updateRunnerDeps.downloadAsset(asset, destPath, signal, onProgress, localeOf() === 'zh'),
+    offerLocalInstaller: async (reason) => {
+      const dict = stringsFor(localeOf())
+      const choice = await dialog.showMessageBox({
+        type: 'warning',
+        noLink: true,
+        buttons: [dictText(dict, 'dialog.relocation-local.pick'), dictText(dict, 'dialog.cancel')],
+        defaultId: 1,
+        cancelId: 1,
+        message: dictText(dict, 'dialog.relocation-local.title', { version: versionInfo.appVersion }),
+        detail: dictText(dict, 'dialog.relocation-local.detail', { reason: redactSecrets(reason) }),
+      })
+      if (choice.response !== 0) return undefined
+      const picked = await dialog.showOpenDialog({
+        title: dictText(dict, 'dialog.relocation-local.pick'),
+        properties: ['openFile'],
+        filters: [{ name: 'DeepSeekGUI Setup', extensions: ['exe'] }],
+      })
+      return picked.canceled ? undefined : picked.filePaths[0]
+    },
+    confirmLocalInstaller: async (path, sha256) => {
+      const dict = stringsFor(localeOf())
+      const choice = await dialog.showMessageBox({
+        type: 'warning',
+        noLink: true,
+        buttons: [dictText(dict, 'dialog.relocation-confirm.button'), dictText(dict, 'dialog.cancel')],
+        defaultId: 1,
+        cancelId: 1,
+        message: dictText(dict, 'dialog.relocation-local-confirm.title'),
+        detail: dictText(dict, 'dialog.relocation-local-confirm.detail', { path, sha256 }),
+      })
+      return choice.response === 0
+    },
+    // 安装包自带的版本资源（产品名、产品版本）。路径经环境变量传给 PowerShell，不拼进命令文本。
+    installerIdentity: async (path) => {
+      try {
+        const { stdout } = await execFileAsync('powershell.exe', [
+          '-NoProfile', '-NonInteractive', '-Command',
+          '$v = (Get-Item -LiteralPath $env:DSG_INSTALLER_PATH).VersionInfo; [pscustomobject]@{ n = $v.ProductName; v = $v.ProductVersion } | ConvertTo-Json -Compress',
+        ], { env: { ...process.env, DSG_INSTALLER_PATH: path }, windowsHide: true, timeout: 30_000 })
+        const parsed: unknown = JSON.parse(stdout.trim())
+        if (typeof parsed !== 'object' || parsed === null) return null
+        const n = 'n' in parsed && typeof parsed.n === 'string' ? parsed.n : null
+        const v = 'v' in parsed && typeof parsed.v === 'string' ? parsed.v : null
+        return n === null || v === null ? null : { productName: n.trim(), productVersion: v.trim() }
+      } catch {
+        return null
+      }
+    },
+    failureMessages: (record) => {
+      const dict = stringsFor(localeOf())
+      const dataHome = record.dataMoved ? join(record.root, 'dsh') : record.fromHome
+      return {
+        failedTitle: dictText(dict, 'dialog.relocation-helper-failed.title'),
+        failedBody: dictText(dict, 'dialog.relocation-helper-failed.body', {
+          installer: record.installerPath, from: record.fromAppDir, to: record.toAppDir, data: dataHome,
+        }),
+      }
+    },
+    // 短生命周期助手：系统自带的 powershell.exe 跑写好的脚本（它不在会被卸载的程序目录里）。
+    // 经 WMI 创建，拿到的是用户的全新环境，不带本次运行的内部变量。助手没写出第一个状态
+    // 就算没起来，变成一次拒绝，应用保持原状。
+    spawnHelper: launchRelocationHelper,
+    quit: () => proceedQuit(() => { app.exit(0) }),
+    note: (home, title, sections) => {
+      try {
+        appendDesktopEvent(home, { at: formatStampLocal(new Date().toISOString()), title, sections }, localeOf() === 'zh')
+      } catch (error) {
+        console.error(`[deepseekgui] relocation event note failed: ${String(error instanceof Error ? error.message : error)}`)
+      }
+    },
+    text: (key, vars) => dictText(stringsFor(localeOf()), key, vars),
+    zh: () => localeOf() === 'zh',
+    broadcast: () => { broadcast() },
+  })
+  relocationControl = relocation
+
   /** 打开日志所在文件夹（缺失则打开 userData）。 */
   const openLogFolder = (): void => {
     const target = service.logPath === undefined ? userDataDir : dirname(service.logPath)
@@ -3542,6 +3733,11 @@ void app.whenReady().then(async () => {
       'switch-profile', 'choose-existing-home', 'choose-existing-profile', 'use-managed-home',
       'restart-harness', 'open-compatibility-view', 'open-workbench', 'update-install',
     ].includes(command.type)) throw new Error(stringsFor(localeOf())['error.migration-busy'])
+    // 整体搬家进行中：切 Home、装更新、单独迁数据都会和它互踩。
+    if (relocation.isRunning() && [
+      'switch-profile', 'choose-existing-home', 'choose-existing-profile', 'use-managed-home',
+      'restart-harness', 'update-install', 'update-download', 'migrate-managed-home', 'migration-cleanup',
+    ].includes(command.type)) throw new Error(stringsFor(localeOf())['error.relocation-busy'])
     // B5-P6：notify 是无状态的通知展示命令——不经过 dispatch（dispatch 只
     // 服务桌面状态命令），不结算恢复通知、不动模型、不广播（点击时的导航
     // 广播由 showNotify 自己触发）。
@@ -3728,6 +3924,23 @@ void app.whenReady().then(async () => {
     // B6-P7：数据迁移与旧副本清理（全程代码执行，助手只解释不执行）。
     if (command.type === 'migrate-managed-home') {
       await migration.migrate().catch((error: unknown) => { reportFailure(error); throw error })
+      return
+    }
+    if (command.type === 'relocate-install' || command.type === 'relocation-retry') {
+      const run = command.type === 'relocate-install' ? relocation.relocate : relocation.retry
+      await run().catch((error: unknown) => { reportFailure(error); throw error })
+      broadcast()
+      return
+    }
+    if (command.type === 'relocation-dismiss' || command.type === 'relocation-cancel') {
+      try {
+        if (command.type === 'relocation-dismiss') relocation.dismiss()
+        else relocation.cancel()
+      } catch (error: unknown) {
+        reportFailure(error)
+        throw error
+      }
+      broadcast()
       return
     }
     if (command.type === 'migration-cleanup') {
@@ -3983,6 +4196,7 @@ void app.whenReady().then(async () => {
   // 核对新位置。放在 controller.start() 之后：这时应用已经真的从零把新位置
   // 用起来了，核对才代表"从零启动能用"。通过之后删除旧副本的入口才出现。
   migration.verifyOnStartup()
+  relocation.resolveOnStartup()
   // 启动完成后结算恢复通知：上次失败已回退 LKG 且本次成功启动时提示一次。
   settleRecoveryNotice()
   // 权限事实：boot 完成后从官方 settings 读取并显示（fail closed）；Managed

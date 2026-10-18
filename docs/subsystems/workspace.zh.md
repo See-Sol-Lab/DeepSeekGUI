@@ -25,9 +25,10 @@ type WorkspaceId = Branded<'WorkspaceId'>
 ```ts type-equiv
 /**
  * One workspace: a stable id over an existing directory, a display title, and
- * an ordered candidate account of sessions. Membership requires both an id in
- * that account and a session header whose canonical cwd equals the workspace
- * path. Consumers only see this interface; the implementation stays private.
+ * an ordered candidate account of sessions. Membership validates header cwd
+ * against the workspace path, but preserves an existing account when its
+ * fully qualified cwd is missing. Consumers only see this interface; the
+ * implementation stays private.
  */
 interface Workspace {
   /** Stable record id (generated uuid). */
@@ -54,8 +55,11 @@ interface Workspace {
    * prepended at attach, explicit reordering goes through
    * `insertSessionBefore`, and activity never reorders. The durable candidate
    * account is filtered synchronously: missing headers, invalid cwd values,
-   * and canonical cwd mismatches are never returned. A subsequent workspace
-   * mutation prunes those filtered candidates durably.
+   * and canonical cwd mismatches are never returned. A fully qualified cwd
+   * whose realpath or directory stat fails with ENOENT preserves an existing
+   * candidate, including a dangling symlink; other filesystem failures do not.
+   * A subsequent mutation prunes filtered candidates, not missing-directory
+   * candidates. This does not admit new sessions or recreate directories.
    */
   readonly sessionIds: readonly SessionId[]
 
@@ -113,11 +117,11 @@ interface Workspace {
 }
 ```
 
-所有权的真源是记录中有序的 `sessionIds`，绝不从会话 cwd 派生——但成员资格要求两者同时成立：账本上有其 id，且 header 的规范 cwd 等于工作区路径，因此一个会话在结构上至多属于一个工作区。失败的写入会拒绝（`insertSessionBefore` 的账本错误以 `WorkspaceMoveInvalidError` 拒绝，存储失败以普通错误拒绝）；每次被接受的变更都盖上 `updatedAt` 时间戳，并持久修剪不再通过成员资格检查的候选项。
+所有权的真源是记录中有序的 `sessionIds`，绝不从会话 cwd 派生。成员资格将记录的 header cwd 与工作区路径校验；已有候选的完全限定 cwd 在路径解析或目录 stat 时返回 `ENOENT`，仍保留其归属。这会保留目录缺失或符号链接失效时的记账关系，但不会接纳新会话。失败的写入会拒绝（`insertSessionBefore` 的账本错误以 `WorkspaceMoveInvalidError` 拒绝，存储失败以普通错误拒绝）；每次被接受的变更都盖上 `updatedAt` 时间戳，并持久修剪不再通过成员资格检查的候选项。
 
 ## 注册表：`ctx.workspaceRegistry`
 
-`WorkspaceRegistry`（[签名](#ctxworkspaceregistry--workspaceregistry)）拥有注册与解析。`create(path, title?)` 要求完全限定路径并将其规范化，拒绝不存在的路径（原样传出原始 `ENOENT`）或非目录；当规范路径已被拥有时原样返回既有实体；否则创建一条标题为 `title ?? defaultWorkspaceTitle(path)` 的记录并前插到持久的注册表顺序中（不同规范路径可以共享同一显示标题，没有最终路径段时使用根路径拼写）。`get(id)` 与有序的 `list()` 是同步缓存读取；`resolveByPath(path)` 应用同一套完全限定 realpath 规范但不创建。`delete(id)` 只移除注册记录、顺序条目和会话账本——目录、用户文件、实时会话和已持久化日志一概不动，因此这些会话变为 Ungrouped（[决策](../../.agents/notes/implemented/feature/2026-07-27-workspace-registration-deletion.zh.md)）；未知 id 返回 `false`。create 与 delete 会在其两次写入（记录 + 顺序）可能分叉之前先持久写入一个待定变更标记；启动时恰好解决被标记的那次变更——通过删除被标记的表行：这会补完被中断的 delete，并回滚被中断的 create（注册可以重建，因此回滚是安全方向）——而没有标记的顺序/表不一致则作为损坏大声失败。
+`WorkspaceRegistry`（[签名](#ctxworkspaceregistry--workspaceregistry)）拥有注册与解析。`create(path, title?)` 要求完全限定路径并将其规范化，拒绝不存在的路径（原样传出原始 `ENOENT`）或非目录；当规范路径已被拥有时原样返回既有实体；否则创建一条标题为 `title ?? defaultWorkspaceTitle(path)` 的记录并前插到持久的注册表顺序中（不同规范路径可以共享同一显示标题，没有最终路径段时使用根路径拼写）。`get(id)` 与有序的 `list()` 是同步缓存读取；`resolveByPath(path)` 应用同一套完全限定 realpath 规范但不创建。`delete(id)` 只移除注册记录、顺序条目和会话账本——目录、用户文件、实时会话和已持久化日志一概不动，因此这些会话变为 Ungrouped（[参考](../../packages/workspace/workspace/README.zh.md)）；未知 id 返回 `false`。create 与 delete 会在其两次写入（记录 + 顺序）可能分叉之前先持久写入一个待定变更标记；启动时恰好解决被标记的那次变更——通过删除被标记的表行：这会补完被中断的 delete，并回滚被中断的 create（注册可以重建，因此回滚是安全方向）——而没有标记的顺序/表不一致则作为损坏大声失败。
 
 会话的 cwd 在创建时由创建者赋予，而不是由本注册表赋予——API 网关从所选工作区的 `path` 解析新会话的 cwd（回退到显式或默认 cwd），先创建会话使 cwd 落入其不可变的 [`SessionHeader`](persistence.zh.md#sessionheader--metadata-beside-the-log)，再调用 `attachSession`，后者会把已存储的 header cwd 与工作区路径重新校验一遍。首次成功启动时，注册表仅凭已持久化的 header（`id`、`cwd`、`createdAt`——绝不读事件正文）引导历史：把规范 cwd 有效的会话按目录分组为工作区，最新的排在最前；「已初始化」标记最后写入，因此被中断的引导可以安全续跑。引导只发生这一次：没有 cwd 的历史遗留会话保持 Ungrouped，此后创建的会话只能通过 `attachSession` 加入工作区。
 
@@ -232,10 +236,10 @@ Typed Remote control of transient Session-owned terminal processes.
 
 ```ts cordis-catalog
 /**
- * Read the Session working directory and terminal limits without resolving a shell.
+ * Read the Session's current directory and terminal limits without filesystem validation or shell lookup.
  * @param agent - Session owner supplied by the Gateway.
  * @param signal - request cancellation.
- * @returns the Session workspace directory and terminal limits.
+ * @returns the logged current directory and terminal limits; retained terminals keep their own process directories.
  */
 @Remote environment(agent: Agent, signal: AbortSignal): TerminalEnvironment
 
@@ -273,35 +277,13 @@ Typed Remote control of transient Session-owned terminal processes.
 @Remote({ mode: 'stream' }) retain(sessionId: SessionId, id: WebTerminalId, signal: AbortSignal): AsyncIterable<TerminalRetentionFrame>
 
 /**
- * Attach to a terminal without binding its process lifetime to the transport.
+ * Attach terminal input and output to one physical Remote stream.
  * @param agent - Session owner supplied by the Gateway.
  * @param id - terminal identity.
- * @param attachmentId - new exclusive input attachment.
- * @param signal - physical stream cancellation.
- * @returns screen recovery followed by output and metadata changes.
+ * @param signal - attachment cancellation; the process remains alive and input is never replayed.
+ * @returns screen recovery, output, writable state and provider-acceptance acknowledgements.
  */
-@Remote({ mode: 'stream' }) follow(agent: Agent, id: WebTerminalId, attachmentId: TerminalAttachmentId, signal: AbortSignal): AsyncIterable<TerminalFrame>
-
-/**
- * Deliver raw input, including Tab completion and control characters.
- * @param agent - Session owner supplied by the Gateway.
- * @param id - terminal identity.
- * @param attachmentId - current writable attachment.
- * @param data - input bytes represented as UTF-8 text.
- * @returns after provider input acceptance.
- */
-@Remote async write(agent: Agent, id: WebTerminalId, attachmentId: TerminalAttachmentId, data: string): Promise<void>
-
-/**
- * Update the dimensions of the PTY and recovery screen.
- * @param agent - Session owner supplied by the Gateway.
- * @param id - terminal identity.
- * @param attachmentId - current writable attachment.
- * @param cols - column count.
- * @param rows - row count.
- * @returns after the resize completes.
- */
-@Remote async resize(agent: Agent, id: WebTerminalId, attachmentId: TerminalAttachmentId, cols: number, rows: number): Promise<void>
+@Remote({ mode: 'stream' }) attach(agent: Agent, id: WebTerminalId, signal: AbortSignal): RemoteStream<TerminalFrame, TerminalInput>
 
 /**
  * Rename a terminal without changing its shell.
@@ -320,7 +302,7 @@ Typed Remote control of transient Session-owned terminal processes.
 @Remote async close(agent: Agent, id: WebTerminalId): Promise<void>
 ```
 
-Types: [Agent](core.zh.md) · [SessionId](core.zh.md)
+Types: [Agent](core.zh.md) · [RemoteStream](typert.zh.md) · [SessionId](core.zh.md)
 
 Source: [`packages/api/terminal-controller/src/index.ts`](../../packages/api/terminal-controller/src/index.ts)
 
@@ -405,11 +387,17 @@ Host service backing the generated `ctx.remote.workspace` namespace.
 @Remote('unpinSession') unpinSession(request: WorkspaceUnpinSessionRequest): Promise<WorkspacePinValue>
 
 /**
- * Stream a complete Workspace baseline followed by ordered increments.
+ * Stream a complete Workspace baseline followed by ordered increments. A
+ * non-owner receives only the Workspaces and Sessions `allows()` admits.
+ * When a delivered Workspace is no longer admitted at its next change or
+ * the next order change, the stream sends a `replace` frame with the
+ * complete filtered state instead of a `remove`, because a Client never
+ * resurrects a removed Workspace; a `remove` frame reports a deletion and
+ * reaches only a Client that received that Workspace.
  * @param signal - generation cancellation.
  * @returns baseline followed by ordered Workspace increments.
  */
-@Remote({ mode: 'stream' }) follow(signal: AbortSignal): AsyncIterable<WorkspaceFollowFrame>
+@Remote({ mode: 'stream' }) async *follow(signal: AbortSignal): AsyncIterable<WorkspaceFollowFrame>
 ```
 
 Source: [`packages/api/workspace-controller/src/index.ts`](../../packages/api/workspace-controller/src/index.ts)
@@ -628,6 +616,32 @@ Ask the composed providers what still runs for a session before it is archived. 
  */
 'workspace/session-activity'( request: SessionActivityRequest, next: () => Promise<readonly SessionActivity[]>, ): Promise<readonly SessionActivity[]>
 ```
+
+Source: [`packages/workspace/workspace/src/index.ts`](../../packages/workspace/workspace/src/index.ts)
+
+<a id="workspacesession-archived--emit"></a>
+
+#### `workspace/session-archived` — emit
+
+A session entered the archive set; the write is durable when this dispatches (and, with `stopActivity`, its stop requests were issued). DeepSeekGUI addition (2026-10-05): the desktop's archive-time memory notes listen here, so every archive entry — UI or API — reaches the same follow-up. Dispatched once per newly archived session (an id that is already archived resolves without a write and without this event). Listeners start their own work and return; a listener that throws is logged and never turns the durable archive into a failed request.
+
+```ts cordis-catalog
+/**
+ * A session entered the archive set; the write is durable when this
+ * dispatches (and, with `stopActivity`, its stop requests were issued).
+ * DeepSeekGUI addition (2026-10-05): the desktop's archive-time memory
+ * notes listen here, so every archive entry — UI or API — reaches the
+ * same follow-up. Dispatched once per newly archived session (an id that
+ * is already archived resolves without a write and without this event).
+ * Listeners start their own work and return; a listener that throws is
+ * logged and never turns the durable archive into a failed request.
+ * @param sessionId - the archived session.
+ * @mode emit
+ */
+'workspace/session-archived'(sessionId: SessionId): void
+```
+
+Types: [SessionId](core.zh.md)
 
 Source: [`packages/workspace/workspace/src/index.ts`](../../packages/workspace/workspace/src/index.ts)
 

@@ -7,7 +7,7 @@ description: Record browser or Web UI interaction demos as optimized GIFs using 
 
 Produce a short, truthful UI demonstration as a local GIF, and — only when the task includes attaching it to a pull request — publish it through the attach workflow at the end of this skill. The available browser-control workflow remains preferred. Use [Playwright Videos](https://playwright.dev/docs/videos) when that workflow supports continuous capture at higher frame rates; use the bundled encoder for trimming, playback speed, final hold, dimensions, and size.
 
-The [evidence-chain decision](../../notes/implemented/process/2026-08-08-browser-gif-evidence-chain.md) owns why one storyboard comes from one isolated run and why publication revalidates both the artifact and the demonstrated pull-request head.
+The [archived evidence-chain decision](../../notes/archived/process/2026-08-08-browser-gif-evidence-chain.md) records why one storyboard comes from one isolated run and why publication revalidates both the artifact and the demonstrated pull-request head.
 
 ## Every GUI pull request includes a GIF
 
@@ -27,7 +27,7 @@ The recording itself is part of the evidence: use a real server booted from that
 A GIF for a specific pull request demonstrates that pull request's tree, so stage per pull request:
 
 1. Require a clean worktree, record its exact commit with `git rev-parse HEAD`, then build that recorded tree — here, `pnpm run build && pnpm run build:web`. A GIF recorded against another commit's build misattributes the evidence.
-2. Boot one server per port from that tree with fresh scratch `DSH_HOME`, `DSH_AGENTS_HOME`, workspace, and session state. Give the browser a fresh isolated context or profile as well; if the browser workflow cannot create one, clear that origin's cookies and site storage before navigation so persisted client state cannot affect the evidence. Source the root `.env` for the API key through the application's normal path; never echo the key.
+2. Boot one server per port from that tree with fresh scratch `DSH_HOME`, `DSH_AGENTS_HOME`, workspace, and session state. Give the browser a fresh isolated context or profile as well; if the browser workflow cannot create one, clear that origin's cookies and site storage before navigation so persisted client state cannot affect the evidence. Real API credentials can be available in `~/.dsh/.credentials.yaml` even when `DEEPSEEK_API_KEY` and the root `.env` are absent. With a scratch `DSH_HOME`, use a recording overlay to set the `dsh-credentials-local` provider's `path` to that existing file's absolute path. Let the application's normal credential provider resolve the key; never echo it.
 3. Treat one storyboard as one evidence run: every published frame comes from that server and those state roots, workspace, session, and model-backed scenario run. If capture automation fails, discard its frames and rerun from fresh roots; never splice frames from separate runs.
 4. When switching between pull requests, stop the old server by PID or an exact match on its command line. A broad `pkill -f` pattern can match and kill the shell that launched it — including your own.
 

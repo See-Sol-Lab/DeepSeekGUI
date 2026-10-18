@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-subprocess-local",
   "description": "Local-subprocess implementation of the DeepSeek Harness subprocess seam",
-  "version": "0.2.0-rc.2",
+  "version": "0.2.1-rc.2",
   "publishConfig": {
     "access": "public"
   },
@@ -27,9 +27,11 @@
     "./output": {
       "types": "./lib/types/output.d.ts",
       "default": "./lib/output.js"
-    }
+    },
+    "./locale/*.json": "./locale/*.json"
   },
   "files": [
+    "locale/*.json",
     "lib/index.js",
     "lib/runner.js",
     "lib/runner-*.js",

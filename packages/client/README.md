@@ -63,10 +63,12 @@ The kernel packages boot and serve the page; the UI feature packages present it.
 | [`ui-input-trigger/`](ui-input-trigger/README.md) | Coordinates inline command and reference suggestions | — |
 | [`ui-skill/`](ui-skill/README.md) | Adds skill references to inline suggestions | — |
 | [`ui-reference/`](ui-reference/README.md) | Unified Web `@file` / `@session` reference source | — |
+| [`ui-secret-mask/`](ui-secret-mask/README.md) | Masks recognized credentials in sent user text | — |
 | [`ui-subagent/`](ui-subagent/README.md) | Provides subagent navigation, child transcript states, and inline references | — |
 | [`ui-jobs/`](ui-jobs/README.md) | Lists this session's background jobs with on-demand streaming record panels | — |
 | [`ui-schedule/`](ui-schedule/README.md) | Lists the current Session's active reminders in a read-only header catalog | — |
 | [`ui-model-selection/`](ui-model-selection/README.md) | Provides model selection in conversation surfaces | — |
+| [`ui-deepseek-model-label-1017/`](ui-deepseek-model-label-1017/README.md) | Adds the temporary 1017 badge to official DeepSeek Flash model labels | — |
 | [`ui-permission-presets/`](ui-permission-presets/README.md) | Configures default permissions and switches the current session's access | — |
 | [`ui-plan/`](ui-plan/README.md) | Presents active plan-mode status and its exit control | — |
 | [`ui-settings-plugins/`](ui-settings-plugins/README.md) | Owns the Built-in plugins settings section shell and its tab extension point | — |
@@ -81,6 +83,7 @@ The kernel packages boot and serve the page; the UI feature packages present it.
 | [`ui-settings-subagent/`](ui-settings-subagent/README.md) | Provides the Subagent settings page on the Plugins page | — |
 | [`ui-settings-web-search/`](ui-settings-web-search/README.md) | Provides the web-search settings page on the Plugins page | — |
 | [`ui-plugin-manager/`](ui-plugin-manager/README.md) | Contributes the sidebar Plugins panel: install, enable, disable, retry, and compose installed packages | — |
+| [`ui-plugin-market/`](ui-plugin-market/README.md) | Contributes the Discover tab to the Plugins page: browse market indexes and install their bundles | — |
 | [`ui-settings-plugin-inventory/`](ui-settings-plugin-inventory/README.md) | Contributes the read-only Host Loader inventory tab to Plugins settings | — |
 | [`ui-deliverables/`](ui-deliverables/README.md) | Produces the changed-files card with its comparison tabs, delivery cards, and clickable final-response file references | — |
 | [`ui-message-feedback/`](ui-message-feedback/README.md) | Provides message ratings and feedback dialogs opened from ratings, `/feedback`, or the Session Header menu | `ctx.feedbackUi` |
@@ -97,7 +100,7 @@ Start with the subsystem reference and the two notes that own the cross-package 
 
 - [Client modules subsystem](../../docs/subsystems/client-modules.md) — the web plugin table: `dsh.client` declarations, the boot graph wire, and the bundle route.
 - [Slot system standard](../../.agents/notes/implemented/architecture/2026-07-22-slot-type-chain-implementation.md) — the definitive slot model: registration, props shares, and stores.
-- [Web client architecture note](../../.agents/notes/implemented/architecture/2026-07-19-gui-web-client-architecture.md) — the loading chain, object layer, and client services.
+- [Web client architecture reference](../../docs/subsystems/web-client.md) — the loading chain, object layer, and client services.
 - [Host group map](../host/README.md) — the host half that serves this browser half.
 
 <a id="dev-note"></a>

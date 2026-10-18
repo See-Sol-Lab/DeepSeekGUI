@@ -10,7 +10,7 @@ Full access 让有用的项目工作无需反复审批即可继续，但也允�
 
 ## 决策
 
-[`dsh-experimental-auto-review`](../../../../packages/experimental/auto-review/README.zh.md)是显式安装的实验性 Web 层，按[实验包发布决策](../process/2026-09-12-publish-all-experimental-packages.zh.md)参与发布。默认 Web 保持 Read Only、Workspace Write 与 Full access。此层贡献仅限当前会话的 `auto`，唯一持久身份为 `permission/preset:auto`；它使用 Full access 的 `danger-full-access` 沙箱与工具定义，审批策略由[用户审批兜底决策](2026-09-24-auto-review-user-approval-fallback.zh.md)决定。Headless、通用设置与新会话默认值都排除此 integration。
+[`dsh-experimental-auto-review`](../../../../packages/experimental/auto-review/README.zh.md)是显式安装的实验性 Web 层，按[实验包发布策略](../../../../packages/experimental/README.zh.md)参与发布。默认 Web 保持 Read Only、Workspace Write 与 Full access。此层贡献仅限当前会话的 `auto`，唯一持久身份为 `permission/preset:auto`；它使用 Full access 的 `danger-full-access` 沙箱与工具定义，审批策略由[用户审批兜底决策](2026-09-24-auto-review-user-approval-fallback.zh.md)决定。Headless、通用设置与新会话默认值都排除此 integration。
 
 每个原生调用与已开始的 PTC `tools.*` inner call 都在 body 前接受一次审查。外层 `run_code` transport 与 PTC 程序内直接 Node 效果不在保证范围内。不提供按工具名豁免、缓存 grant、重试、可配置策略或第二授权检查；拒绝之后的行为由[用户审批兜底决策](2026-09-24-auto-review-user-approval-fallback.zh.md)负责。重复调用也重新审查。
 
@@ -58,9 +58,9 @@ Reviewer 可以输出 reasoning blocks，随后恰好一个 JSON text block 和�
 
 Permission owner 通过生成的 `permissionPresets` Remote 方法发布一份完整进程目录；BFF 显式挂载它，并转发无 payload 的失效事件。一个浏览器目录在读取前订阅，为两个选择器提供数据。Epoch 与 connection-generation 检查只发布胜出的完整结果。胜出读取失败或 connection reset 会清空旧快照；只有后续既有读取、通知或 reset 才重试。已 dispose 或陈旧的结算不能发布。每次目录失效都通过命令 owner 关闭 slash 选择器与待确认对话框，同时保留草稿，因此等待自身读取的选择器仍保留失败与重试状态；重新打开时加载当前目录。Session 投影只携带当前选择，因此目录安装或移除不写 Session 事件或序号。
 
-Auto 带右上标 `EXP`。两个可见当前会话选择器都要求实验确认；显式 `/permission auto` 已构成同意。Composer 使用通用 Menu 既有 portal 定位保持在视口内，同时保留 218–360px 边界。Slash popup 保留 `min(220px, 100%)` 与 `max-width: 100%`，窄 composer 将 trigger 折叠时也一样。
+Auto 在选择器选项中带 `EXP` 标记；选中后的 composer 控件不显示该标记。两个可见当前会话选择器都要求实验确认；显式 `/permission auto` 已构成同意。Composer 使用通用 Menu 既有 portal 定位保持在视口内，同时保留 218–360px 边界。Slash popup 保留 `min(220px, 100%)` 与 `max-width: 100%`，窄 composer 将 trigger 折叠时也一样。
 
-[委派时权限捕获](2026-07-25-subagent-policy-inheritance.zh.md)在首次 await 前记录 Auto 或 Full access，并在 fork seed 与 sandbox／approval override 之后追加该既有 preset event。单次与可继续创建共用此规则；cold resume 只读取 child 日志。后续 parent 切换不改变该 child，后续 child 自己的切换仍可胜出。Read Only 与 Workspace Write 保留 sandbox 继承加 `approval: never`，因此可能保持 `custom`。Auto child 使用既有 lineage 与消息独立分类每次调用，不增加父 call metadata、委派记录、receipt、Header／descriptor 字段或 Session format。进程外 child 在父委派获准后保留自己的权限系统。
+[委派时权限捕获](../../../../packages/subagent/subagent/README.zh.md)在首次 await 前记录 Auto 或 Full access，并在 fork seed 与 sandbox／approval override 之后追加该既有 preset event。单次与可继续创建共用此规则；cold resume 只读取 child 日志。后续 parent 切换不改变该 child，后续 child 自己的切换仍可胜出。Read Only 与 Workspace Write 保留 sandbox 继承加 `approval: never`，因此可能保持 `custom`。Auto child 使用既有 lineage 与消息独立分类每次调用，不增加父 call metadata、委派记录、receipt、Header／descriptor 字段或 Session format。进程外 child 在父委派获准后保留自己的权限系统。
 
 ## 考虑过的替代方案
 

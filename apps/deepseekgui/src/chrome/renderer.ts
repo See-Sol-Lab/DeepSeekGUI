@@ -150,6 +150,13 @@ function menuItem(options: {
 }
 
 /** 面板小节标题（section-title）。 */
+function paragraph(text: string): HTMLElement {
+  const div = document.createElement('div')
+  div.className = 'recovery-block'
+  div.textContent = text
+  return div
+}
+
 function sectionTitle(text: string): HTMLElement {
   const div = document.createElement('div')
   div.className = 'section-title'
@@ -268,23 +275,81 @@ function render(): void {  if (model === null) return
 }
 
 /**
- * 数据位置面板（B6-P7）：当前位置、迁移入口、上次迁移的待清理提示。
- * 清理按钮只发命令——判定与删除全部在 main 里由代码完成，界面不猜。
+ * 数据位置面板：上半是只移动数据（B6-P7），下半是程序与数据整体搬家（Phase 1）。
  * @param current - 控制模型。
  */
 function renderDataView(current: DesktopControlModel): void {
   if (openPanel !== 'data') return
+  renderDataHome(current)
+  renderRelocation(current)
+}
+
+/**
+ * 整体搬家这一块（Phase 1，2026-10-05）：入口、进度、上一次的结果。
+ * 判定、下载、迁移、交给安装器全部在 main；界面只发命令、照事实显示。
+ * @param current - 控制模型。
+ */
+function renderRelocation(current: DesktopControlModel): void {
+  const relocation = current.relocation
+  if (relocation === null || relocation === undefined) return
+  const mb = (bytes: number): string => `${String(Math.max(1, Math.round(bytes / 1024 / 1024)))} MB`
+  el.dataInfo.append(sectionTitle(tr('data.relocate.title')))
+  if (relocation.unsupported !== null) {
+    el.dataInfo.append(paragraph(tr(`data.relocate.unsupported-${relocation.unsupported}`)))
+    return
+  }
+  el.dataInfo.append(paragraph(tr('data.relocate.current-app').replace('{path}', relocation.appDir)))
+  const last = relocation.last
+  if (last !== null) {
+    const dataLine = last.dataMoved
+      ? (last.kind === 'moved' ? tr('data.relocate.moved-data') : tr('data.relocate.not-moved-data').replace('{root}', last.root))
+      : ''
+    el.dataInfo.append(paragraph(tr(`data.relocate.${last.kind}`)
+      .replace('{path}', last.appDir)
+      .replace('{data}', dataLine)))
+    // 交接助手写下的原因（没搬成时才有意义）：只认已知的几种，别把未知字符串当键。
+    const reasons = ['aborted-parent-alive', 'aborted-processes-alive', 'aborted-installer-changed', 'install-failed-old-kept', 'restored', 'restore-failed', 'helper-error']
+    if (last.kind === 'not-moved' && last.helperPhase !== null && reasons.includes(last.helperPhase)) {
+      el.dataInfo.append(paragraph(tr(`data.relocate.helper.${last.helperPhase}`)))
+    }
+    if (last.kind === 'not-moved' || last.kind === 'record-unreadable') {
+      if (last.kind === 'not-moved') {
+        el.dataActions.append(menuItem({ label: tr('data.relocate.retry'), testId: 'relocation-retry', command: { type: 'relocation-retry' } }))
+      }
+      el.dataActions.append(menuItem({ label: tr('data.relocate.dismiss'), testId: 'relocation-dismiss', command: { type: 'relocation-dismiss' } }))
+      return
+    }
+  }
+  if (relocation.phase === 'downloading') {
+    const progress = relocation.progress
+    el.dataInfo.append(paragraph(tr('data.relocate.downloading')
+      .replace('{done}', progress === null ? '…' : mb(progress.bytes))
+      .replace('{total}', progress === null ? '…' : mb(progress.total))))
+    el.dataActions.append(menuItem({ label: tr('data.relocate.cancel'), testId: 'relocation-cancel', command: { type: 'relocation-cancel' } }))
+    return
+  }
+  if (relocation.phase !== 'idle') {
+    el.dataInfo.append(paragraph(tr(`data.relocate.${relocation.phase}`)))
+    return
+  }
+  // 只移动数据那一趟还没走完（等重启核对、核对失败、旧副本待删）时不给入口：再搬一次会把那一趟的清单覆盖掉。
+  const data = current.dataHome
+  if (data.awaitingRestart !== null || data.verifyFailed !== null || data.pendingCleanup !== null) return
+  el.dataInfo.append(paragraph(tr('data.relocate.hint')))
+  el.dataActions.append(menuItem({ label: tr('data.relocate'), testId: 'data-relocate', command: { type: 'relocate-install' } }))
+}
+
+/**
+ * 只移动数据（B6-P7）：当前位置、迁移入口、上次迁移的待清理提示。
+ * 清理按钮只发命令——判定与删除全部在 main 里由代码完成，界面不猜。
+ * @param current - 控制模型。
+ */
+function renderDataHome(current: DesktopControlModel): void {
   const data = current.dataHome
   /** 旧副本占多大——用户就是为了腾这块空间才搬的，说清楚它值得。 */
   const formatBytes = (bytes: number): string => (bytes >= 1024 * 1024 * 1024
     ? `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`
     : `${String(Math.max(1, Math.round(bytes / 1024 / 1024)))} MB`)
-  const paragraph = (text: string): HTMLElement => {
-    const div = document.createElement('div')
-    div.className = 'recovery-block'
-    div.textContent = text
-    return div
-  }
   el.dataInfo.replaceChildren()
   el.dataInfo.append(sectionTitle(tr('data.title')))
   el.dataInfo.append(paragraph(tr('data.current').replace('{path}', data.homePath)))

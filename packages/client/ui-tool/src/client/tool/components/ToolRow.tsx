@@ -13,7 +13,7 @@ import { CHAT_READ_MAX_LINES, type ReadCardModel } from '../models/read-card-mod
 import type { ImageCardModel } from '../models/image-card-model.ts'
 import { CHAT_SEARCH_MAX_LINES, type SearchCardModel } from '../models/search-card-model.ts'
 import {
-  localizeTerminalCardModel, terminalBlockLabels, type TerminalCardModel,
+  localizeTerminalCardModel, terminalBlockLabels, terminalExitLabel, type TerminalCardModel,
 } from '../models/terminal-card-model.ts'
 import {
   codeToolbarLabels, diffBlockLabels, readBlockLabels, searchBlockLabels, webBlockLabels,
@@ -25,6 +25,7 @@ import {
 import type { WebCardModelProps } from '../models/web-card-model.ts'
 import { AskQuestionCard } from './AskQuestionCard.tsx'
 import { ToolDetails, type ToolDetailsModel } from './ToolDetails.tsx'
+import { ExitCodeBadge } from './ExitCodeBadge.tsx'
 import css from './ToolRow.module.css'
 
 export interface ToolRowProps {
@@ -39,10 +40,9 @@ export interface ToolRowProps {
   summary: string
   /**
    * Trailing summary fragment rendered outside the ellipsized summary text, so
-   * a narrow row clips the summary before this. For a fragment whose whole
-   * value is surviving that clip — the todo row's parallel-active count.
-   * null/absent = the summary is the whole collapsed content. Dropped on an
-   * error row, whose collapsed summary is the failure line instead.
+   * a narrow row clips the summary before this. Appears before diff totals
+   * when both are present. null/absent omits this fragment. Error and stopped
+   * rows omit both the suffix and diff totals.
    */
   summarySuffix?: string | null | undefined
   /** Original argument JSON formatted only while the row is expanded. */
@@ -51,7 +51,10 @@ export interface ToolRowProps {
   output?: string | null | undefined
   /** Ask-user transcript card; card fields are mutually exclusive and replace text sections. */
   askQuestion?: AskQuestionCardModel | null | undefined
-  /** Error first line shown as the collapsed summary on an error row; null/absent = keep `summary`. */
+  /**
+   * First error line for rows without an exit status capsule; null/absent keeps
+   * the ordinary summary. Rows with an exit capsule retain the command description.
+   */
   errorSummary?: string | null | undefined
   /** Terminal card; card fields are mutually exclusive and replace text sections. */
   terminal?: TerminalCardModel | null | undefined
@@ -79,8 +82,8 @@ export interface ToolRowProps {
   details?: ToolDetailsModel | null | undefined
   state: ToolRowState
   /**
-   * Filesystem path from tool args; when set with onOpenFile, the summary
-   * renders as a hover-underline link that opens the host default app.
+   * Recorded file target or a supported argument fallback. With onOpenFile,
+   * the summary opens that path through the owner's file-preview callback.
    */
   filePath?: string | undefined
   /** 1-based line the call was about; absent = open the file at its beginning. */
@@ -177,16 +180,15 @@ export const ToolRow = memo(function ToolRow({
   const status = stateStatus(state, t)
   const running = state === 'running' || state === 'preparing'
   const normalSummary = terminalBody?.description ?? (open ? detailsBody?.expandedSummary ?? summary : summary)
-  // A failure keeps its first result line when available and otherwise turns
-  // the ordinary summary red. An interruption turns the tool-owned summary
-  // amber while retaining the business icon and hidden state announcement.
-  const failureLine = state === 'error' ? errorSummary ?? normalSummary : null
+  const exitLabel = terminalExitLabel(terminal, t)
+  // Generic failures retain their first result line; command exits keep their description.
+  const failureLine = state === 'error' && exitLabel === null ? errorSummary ?? normalSummary : null
   const summaryText = failureLine ?? normalSummary
-  // The tool row keeps the diff's +/- totals visible while its body is collapsed.
-  // An explicit summarySuffix overrides the diff totals.
+  // Diff totals remain visible after the optional summary suffix.
   const diffStat = useMemo(() => diffBody === null ? null : diffTotals(diffBody.card.diffs), [diffBody])
   const settledWithCue = state === 'error' || state === 'stopped'
-  const suffix = settledWithCue ? null : summarySuffix ?? diffStat
+  const suffix = settledWithCue ? null : summarySuffix ?? null
+  const totals = settledWithCue ? null : diffStat
   const openFile = useMemo(() => filePath !== undefined && onOpenFile !== undefined && !settledWithCue
     ? (event: MouseEvent<HTMLButtonElement>) => {
       event.stopPropagation()
@@ -211,7 +213,7 @@ export const ToolRow = memo(function ToolRow({
        its title shows no trailing dot). */
     <>
       <span className={css.sep} data-shimmer-decoration aria-hidden />
-      {openFile !== undefined ? (
+      {exitLabel === null && openFile !== undefined ? (
         <button
           type="button"
           className={css.fileLink}
@@ -220,7 +222,7 @@ export const ToolRow = memo(function ToolRow({
         >
           <TextShimmer>{summaryText}</TextShimmer>
         </button>
-      ) : linkHref !== undefined ? (
+      ) : exitLabel === null && linkHref !== undefined ? (
         <a
           className={css.fileLink}
           href={linkHref}
@@ -235,20 +237,24 @@ export const ToolRow = memo(function ToolRow({
         <span
           className={clsx(
             css.summary,
-            state === 'error' && css.errorSummary,
-            state === 'stopped' && css.stoppedSummary,
+            exitLabel === null && state === 'error' && css.errorSummary,
+            exitLabel === null && state === 'stopped' && css.stoppedSummary,
           )}
         >
           <TextShimmer>{summaryText}</TextShimmer>
         </span>
       )}
+      {exitLabel !== null && <ExitCodeBadge label={exitLabel} />}
       {suffix !== null && (
-        <TextShimmer className={clsx(css.summarySuffix, typeof suffix !== 'string' && css.diffStat)}>
-          {typeof suffix === 'string' ? suffix : <><span className={css.diffAdded}>{`+${suffix.added}`}</span>{' '}<span className={css.diffRemoved}>{`-${suffix.removed}`}</span></>}
+        <TextShimmer className={css.summarySuffix}>{suffix}</TextShimmer>
+      )}
+      {totals !== null && (
+        <TextShimmer className={clsx(css.summarySuffix, css.diffStat)}>
+          <span className={css.diffAdded}>{`+${totals.added}`}</span>{' '}<span className={css.diffRemoved}>{`-${totals.removed}`}</span>
         </TextShimmer>
       )}
     </>
-  ), [summaryLinkKeyDown, linkHref, openFile, state, suffix, summaryText])
+  ), [summaryLinkKeyDown, linkHref, openFile, state, suffix, totals, summaryText, exitLabel])
   const expandedContent = useMemo(() => open ? (
     <div className={clsx(css.bodyWrap, detailsBody !== null && css.detailsBodyWrap)}>
       {askQuestionBody !== null
@@ -268,22 +274,33 @@ export const ToolRow = memo(function ToolRow({
               ? <ReadBlock {...readBody} labels={readLabels} maxLines={CHAT_READ_MAX_LINES} className={css.readBody} />
               : imageBody !== null
                 ? (
-                  /* Label, gallery, then the result's OWN envelope text. The text
-                     comes from the image card model (which reads the result's text
-                     block), never from the row's flattened output: an image read's
-                     content is [text envelope, image block] and flattening
-                     JSON.stringifies the image block, printing the raw attachment
-                     object under the picture. It is not redundant either — the
-                     attachment slot can render nothing, and then this line is the
-                     only evidence an image was returned. */
+                  /* Gallery, then the full path and each attached image's size.
+                     These come from the image card model, never from the row's
+                     flattened output, which JSON.stringifies the image block. They
+                     stay visible when the attachment slot renders nothing. */
                   <div className={css.imageBody}>
-                    <div className={css.imageLabel}>{imageBody.label}</div>
                     {renderSlot !== undefined && loadImage !== undefined && renderSlot('tool.call.images', {
                       images: imageBody.images,
                       loadImage,
                       align: 'start',
                     })}
-                    <div className={css.imageMeta}>{imageBody.text}</div>
+                    <div className={css.imageMeta}>
+                      <div>{imageBody.path}</div>
+                      {imageBody.images.map(({ attachment }, index) => (
+                        <div key={index}>
+                          {attachment.originalDimensions === undefined
+                            ? t('row.imageSize', { width: attachment.width, height: attachment.height, bytes: attachment.bytes })
+                            : t('row.imageSizeDownscaled', {
+                              width: attachment.width,
+                              height: attachment.height,
+                              originalWidth: attachment.originalDimensions.width,
+                              originalHeight: attachment.originalDimensions.height,
+                              bytes: attachment.bytes,
+                            })}
+                        </div>
+                      ))}
+                    </div>
+                    {imageBody.extraText !== null && <div className={css.imageExtra}>{imageBody.extraText}</div>}
                   </div>
                 )
                 : searchBody !== null

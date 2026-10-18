@@ -206,5 +206,3 @@ This Dev Note is working context for maintainers: undecided directions and open 
 The warn-only posture for unusually wide directories and FAT-class volumes is documented in the limitations above but not implemented; it is an open direction, not shipped behavior.
 
 </details>
-
-**Runtime invariant:** No companion is published. This package exposes no independent event sequence or mutable data relation beyond the fail-closed contracts it enforces at each Win32 call boundary.

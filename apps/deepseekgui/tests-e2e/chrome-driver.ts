@@ -295,7 +295,12 @@ export async function openDeepSeekGUISection(
           if (dismiss !== undefined) dismiss.click()
           return false
         }
-        const trigger = document.querySelector('button[aria-haspopup="dialog"]')
+        // dsh 0.2.1: Settings moved into the account menu (button 账号菜单 / Account menu → menuitem 设置 / Settings).
+        const item = Array.from(document.querySelectorAll('[role="menuitem"]'))
+          .find(i => /^(设置|Settings)/.test((i.textContent ?? '').trim()))
+        if (item !== undefined) { item.click(); return false }
+        const trigger = document.querySelector('button[aria-haspopup="menu"][aria-label="账号菜单"], button[aria-haspopup="menu"][aria-label="Account menu"]')
+          ?? document.querySelector('button[aria-haspopup="dialog"]')
         if (trigger === null) return false
         trigger.click()
         return false
@@ -309,7 +314,7 @@ export async function openDeepSeekGUISection(
     // 挡着」「页面根本没加载」「后端断了官方 SPA 换了界面」这几种完全不同的病。
     const scene = await evalInComp<string>(app, `(() => {
       const dialog = Array.from(document.querySelectorAll('[role="dialog"][aria-modal="true"]')).at(-1) ?? null
-      const trigger = document.querySelector('button[aria-haspopup="dialog"]')
+      const trigger = document.querySelector('button[aria-haspopup="menu"][aria-label="账号菜单"], button[aria-haspopup="menu"][aria-label="Account menu"], button[aria-haspopup="dialog"]')
       return JSON.stringify({
         url: location.href,
         hasTrigger: trigger !== null,

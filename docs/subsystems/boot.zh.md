@@ -10,13 +10,52 @@
 
 `PluginInfo` 包含模块标识、实际启停状态、fiber 阶段和可选的展示 `meta`，以及唯一的 `patchId` 或 `readOnlyReason`。
 
-`BundleInfo` 包含包名、可选的安装版本、组合层选择状态、删除可用性及可选的解析错误。它的可选 `meta` 与各行的 `BundleRowInfo.meta` 包含展示文本或元信息诊断；Client 在渲染时选择语言。
+`BundleInfo.official` 标识项目维护的随附可选组合包和按需目录项，独立于安装状态。`availability` 表示可读取的安装随附包、profile 包或 `missing`；按需目录项不计入未声明的传递依赖副本。`installed` 记录 profile 的依赖声明。按需条目的 `installTarget` 包含 Host 生成的精确 spec 和版本。`BundleInfo` 还包含包名、可选的安装版本、组合层选择状态、删除可用性、可选的解析错误；由 profile 自身依赖提供、且安装不提供的组合包还带有 `source`，即该依赖在 `pnpm add` 中可用的 spec。它的可选 `meta` 与各行的 `BundleRowInfo.meta` 包含展示文本或元信息诊断；Client 在渲染时选择语言。
 
-`InstallBundleOptions.enabled` 默认为 true，false 表示安装但不选择组合包层。`approvedBuilds` 在安装前向指定的待审批包名授予持久脚本权限。`registry` 指定首先询问的注册表；缺省为配置的那个。
+`InstallBundleOptions.saveExact` 向共享包安装器传入 `--save-exact`。`InstallBundleOptions.enabled` 默认为 true，false 表示安装但不选择组合包层。`approvedBuilds` 在安装前向指定的待审批包名授予持久脚本权限。`registry` 指定首先询问的注册表；缺省为配置的那个。
 
 `PluginRegistries` 携带配置的第一个注册表（`null` 即 pnpm 自身配置指定的那个）、随后依次询问的备选注册表，以及 `resolved`——pnpm 自身配置指向的 URL，未读到时为 `null`。`InspectOptions.registry` 指定一次查询首先询问的注册表。
 
-`ChangeResult.changed` 报告磁盘修改，独立于 `application`：`applied`、`restart-required`、`overridden` 或 `failed`。可选的 `error` 包含可本地化的错误码和外部诊断。`packageResult` 记录 pnpm 退出码、有界输出、截断标志及完整诊断日志路径；当管理器终止了一个停止打印的运行，还记录 `timedOut`。被终止的运行不论信号留下什么退出状态都归类为 `timeout`，因此安装与删除都报告失败而非成功，也不会再询问下一个注册表。`pendingBuilds` 列出整个 profile 尚未决定的包；`approvedBuilds` 记录本次操作授予权限的包名；`registries` 按顺序列出一次安装问过的注册表；`failedAt` 说明最后一次失败的运行连不上的是所问的注册表，还是 git 或 tarball spec 自身拉取的主机。
+`ChangeResult.changed` 报告磁盘修改，独立于 `application`：`applied`、`restart-required`、`overridden` 或 `failed`。可选的 `error` 包含可本地化的错误码和外部诊断。`packageResult` 记录 pnpm 退出码、有界输出、截断标志及完整诊断日志路径；当管理器终止了一个停止打印的运行，还记录 `timedOut`。被终止的运行不论信号留下什么退出状态都归类为 `timeout`，因此安装与删除都报告失败而非成功，也不会再询问下一个注册表。`pendingBuilds` 列出整个 profile 尚未决定的包；`approvedBuilds` 记录本次操作授予权限的包名；`registries` 按顺序列出一次安装问过的注册表；`bundle` 与 `version` 给出完成的安装新增的包及其清单版本；`failedAt` 说明最后一次失败的运行连不上的是所问的注册表，还是 git 或 tarball spec 自身拉取的主机。
+
+## 市场记录
+
+[Plugin Market](../../packages/boot/plugin-market/README.zh.md) 读取第 1 版索引格式，校验由 [`dsh-plugin-market-index`](../../packages/util/plugin-market-index/README.zh.md) 完成。
+
+`MarketIndexSummary` 携带一个已配置的索引 URL，以及最近一次成功读取得到的 `title` 和 `description`；最近一次读取失败时，还携带其 `error`。
+
+`MarketQuery` 选择索引的一页：模糊匹配的 `text`、一个 `category`、必须全部具备的 `labels`、一个 `MarketSort`、`offset`、不超过 100 的 `limit`、表示重新获取而不使用缓存文档的 `refresh`，以及用于继续读取同一文档后续页的 `fetchedAt`。`MarketSearchResult` 携带索引 URL、`title`、可选的 `description`、市场 `metadata`、该文档的 `fetchedAt`、本页的 `entries`、匹配总数 `total` 和 `nextOffset`。每个 `MarketListingEntry` 额外携带 `defaultVersion`，即默认安装的版本，以及 `installation`，即该包名在当前 profile 中的状态；其 `versions` 中的每个版本额外携带 `install`，即交给 `installBundle` 的精确 spec 和可选的首选 registry，以及 `compatibility`，即包含版本豁免在内的 `engines.dsh` 评估结果。
+
+## Profile 重新组合
+
+<a id="profile-reconciliation"></a>
+
+```ts type-equiv
+/** Outcome of {@link Hmr.reconcileProfile}. */
+interface ProfileReconciliation {
+  /** Diagnostics for Loader entries left inactive. */
+  warnings: string[]
+  /** Loaded modules whose files changed on disk and whose previous code keeps running until a restart. */
+  pending: PendingModule[]
+  /**
+   * Why every change waits for a restart: `module-comparison` when module caches cannot be inspected or their files
+   * compared, even when no URLs are known; `package-moved` when the runtime resolution cannot publish a moved package.
+   */
+  restartReason?: 'module-comparison' | 'package-moved'
+}
+```
+
+```ts type-equiv
+/** A changed module that loads only after a restart. */
+interface PendingModule {
+  url: string
+  /**
+   * `host-module`: the process entry point's static graph imports it. `unmanaged-plugin`: it is imported by a plugin
+   * that runs outside a traversable Loader entry. `module-comparison`: loaded modules could not be compared with disk.
+   */
+  reason: 'host-module' | 'unmanaged-plugin' | 'module-comparison'
+}
+```
 
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
@@ -78,6 +117,21 @@ async watchConfig(filename: string, refresh: () => Promise<void>): Promise<() =>
  * @returns Linked module URLs, or an empty list for an uncached module.
  */
 async getLinked(url: string): Promise<string[]>
+
+/**
+ * Recompose the profile from its manifest and patch files, replacing running plugins whose loaded files below the
+ * profile directory or its linked package targets changed on disk, and publishing its runtime resolution. Changed
+ * modules are evicted and the Loader entries running them stop; app-boot's {@link recomposeProfile} then publishes the
+ * resolution, applies the generation, starts the stopped entries with the current files and configuration,
+ * imports entries whose import failed again, and judges activation. Afterwards the modules below the mappings the
+ * recomposition dropped are evicted, so a removed or deselected package is imported afresh when it returns. Callers run
+ * inside {@link runExclusive}.
+ * @param requiredIds Entry ids whose inactive state is reported as a failure even when it predates this call.
+ * @returns Inactive-entry diagnostics, the changed modules that load after a restart, and a profile-wide restart reason.
+ * @throws The patch read, publication, preparation, apply, or activation failure of the recomposition, including a
+ * replacement plugin that fails to load or start, whose previous code no longer runs.
+ */
+async reconcileProfile(requiredIds: readonly string[] = []): Promise<ProfileReconciliation>
 ```
 
 Source: [`packages/boot/hmr/src/index.ts`](../../packages/boot/hmr/src/index.ts)
@@ -109,10 +163,10 @@ Manage profile files and apply their declared reload lifecycle.
  */
 @Remote async listPlugins(): Promise<PluginInfo[]>
 
-/** Read the profile's installed bundles, the bundles this dsh installation supplies, and the selected names that are not bundles.
+/** Read installed, installation-provided, and offline Official catalog bundles, plus selected non-bundle names.
  * A dependency without a bundle patch is listed, as a `not-bundle` problem, only while it is selected.
- * @returns Package versions, manifest descriptions, rows, optional display metadata, activation selections,
- * whether the installation offers the bundle, and removal availability.
+ * @returns Package versions, manifest descriptions, the installable spec of profile dependencies, rows, optional
+ * display metadata, activation selections, whether the installation offers the bundle, and removal availability.
  */
 @Remote listBundles(): Promise<BundleInfo[]>
 
@@ -151,7 +205,7 @@ Manage profile files and apply their declared reload lifecycle.
  * `package.json` and `pnpm-lock.yaml` as they were; downloaded files can stay.
  * @param spec One package spec, including local paths relative to the invocation directory.
  * @param options Whether to activate the installed bundle (defaults to true), the request id a cancellation names,
- * the pending build scripts to allow for this profile before pnpm runs, and the registry asked first.
+ * the pending build scripts to allow, whether to save an exact dependency, and the registry asked first.
  * @returns Package-manager diagnostics, the registries asked, and the observed activation outcome.
  */
 @Remote installBundle(spec: string, options?: InstallBundleOptions): Promise<ChangeResult>
@@ -170,14 +224,65 @@ Manage profile files and apply their declared reload lifecycle.
  */
 @Remote async cancelInstall(requestId: PluginInstallRequestId): Promise<PluginInstallCancellation>
 
-/** Unload and remove a profile-owned bundle dependency through dsh plugin's pnpm path.
- * @param name Installed dependency name.
+/** Unload and remove a profile-owned bundle dependency through dsh plugin's pnpm path; a selected name no
+ * dependency holds is only deselected.
+ * @param name Installed dependency or selected bundle name.
  * @returns Removal diagnostics and the remaining profile state.
  */
 @Remote removeBundle(name: string): Promise<ChangeResult>
 ```
 
 Source: [`packages/boot/plugin-manager/src/index.ts`](../../packages/boot/plugin-manager/src/index.ts)
+
+<a id="ctxpluginmarket--pluginmarket"></a>
+
+### `ctx.pluginMarket` — `PluginMarket`
+
+Fetches, validates, and caches configured market indexes; annotates entries with the profile's installation facts.
+
+```ts cordis-catalog
+/**
+ * List the configured index sources without fetching them.
+ * @returns every source in order, with the title of its last successful read and, when the last read failed, its error.
+ */
+@Remote listIndexes(): MarketIndexSummary[]
+
+/**
+ * Replace the configured index sources through Settings, without remounting this service.
+ * `plugin-market/changed` announces the committed list. A URL already configured is kept as written, so a client can
+ * add or remove sources beside one that `listIndexes` reports as unusable.
+ * @param urls - index URLs in display order.
+ * @throws {RemoteError} `plugin-market/invalid-index-url` for an invalid new URL or a repeated URL;
+ * `plugin-market/settings-unavailable` without Settings or a profile entry.
+ */
+@Remote async setIndexes(urls: string[]): Promise<void>
+
+/**
+ * Return one page of the plugins of a configured index that match a query. Concurrent reads of a URL share one
+ * fetch; a successful document is reused for `cacheTtlMs` unless `refresh` is set. Matching and ordering read only
+ * the document; installation status and compatibility are computed for the returned page on every call.
+ * @param url - a configured index URL.
+ * @param query - text, filters, order, page, and whether to bypass the cached document.
+ * @returns the index header, the page's plugins with each plugin's default version and installation status and each
+ *   version's compatibility and install arguments, the number of matches, and the next page's offset.
+ * @throws {RemoteError} `plugin-market/invalid-query`, `plugin-market/unknown-index`, `plugin-market/invalid-index-url`,
+ *   `plugin-market/fetch-failed`, or `plugin-market/invalid-index`.
+ */
+@Remote async search(url: string, query: MarketQuery): Promise<MarketSearchResult>
+
+/**
+ * Read one plugin of a configured index, using the cached document as `search` does.
+ * @param url - a configured index URL.
+ * @param name - the plugin's package name.
+ * @returns the plugin with its default version, installation status, and annotated versions; undefined when the
+ *   index does not list it.
+ * @throws {RemoteError} `plugin-market/unknown-index`, `plugin-market/invalid-index-url`, `plugin-market/fetch-failed`,
+ *   or `plugin-market/invalid-index`.
+ */
+async entry(url: string, name: string): Promise<MarketListingEntry | undefined>
+```
+
+Source: [`packages/boot/plugin-market/src/index.ts`](../../packages/boot/plugin-market/src/index.ts)
 
 <a id="ctxpluginregistryprobe--pluginregistryprobe"></a>
 
@@ -319,4 +424,24 @@ An installation moved between its Host phases. `installing` is announced once pe
 ```
 
 Source: [`packages/boot/plugin-manager/src/types.ts`](../../packages/boot/plugin-manager/src/types.ts)
+
+<a id="plugin-market-events"></a>
+
+### `plugin-market/*` events
+
+<a id="plugin-marketchanged--emit"></a>
+
+#### `plugin-market/changed` — emit
+
+The configured index sources changed.
+
+```ts cordis-catalog
+/**
+ * The configured index sources changed.
+ * @mode emit
+ */
+'plugin-market/changed'(): void
+```
+
+Source: [`packages/boot/plugin-market/src/types.ts`](../../packages/boot/plugin-market/src/types.ts)
 <!-- END GENERATED cordis-surface -->

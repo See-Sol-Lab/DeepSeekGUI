@@ -49,7 +49,7 @@ Trajectory 附件行使用 48px 方形缩略图，完整缩放图片而不裁剪
 <details>
 <summary>实现细节——点击展开</summary>
 
-插件通过 `ctx.slots.inject` 等待 `conversation.input.attachments`、`conversation.message.images`、`conversation.trajectory.images` 与 `tool.call.images`。随后它注册 composer rail、文档拖放目标、供 Chat、Trajectory 与工具结果共用的历史图片 gallery，以及原图灯箱。呈现组件仅依赖 props：slot 持有方提供附件数据、图片加载、回调与语言包翻译器；包入口不导出任何组件。
+插件提供 root 作用域的 `conversation.images.content` Factory。官方 `MessageImages` 条目通过 `ctx.slots.inject`，以优先级 100 填入 `conversation.chat.user.images`、`conversation.chat.message.images`、`conversation.trajectory.images` 和 `tool.call.images`。较低优先级的条目只替换自身所在位置，移除后恢复官方条目。各默认条目复用同一画廊，显式传入图片引用、授权 loader、布局参数和可选的完整 labels。Factory 负责画廊展示与默认文案，不拥有 Session 状态或读取授权。各领域拥有自己的 Slot 声明。Composer 附件栏仍为独立条目，包入口不导出任何组件。
 
 | 文件 | 职责 |
 |---|---|
@@ -71,7 +71,7 @@ Trajectory 附件行使用 48px 方形缩略图，完整缩放图片而不裁剪
 如果附件界面本身还不够，请阅读以下页面。这些页面从本包填充的 slot 讲到负责输入流程的会话外壳。
 
 - [ui-conversation](../ui-conversation/README.zh.md)——声明附件 slot，并负责 composer 与图片接收。
-- [Web 客户端架构](../../../.agents/notes/implemented/architecture/2026-07-19-gui-web-client-architecture.zh.md)——浏览器插件行如何加载并注册 slot。
+- [Web 客户端架构](../../../docs/subsystems/web-client.zh.md)——浏览器插件行如何加载并注册 slot。
 - [客户端包映射](../README.zh.md)——相邻的浏览器 UI 包。
 
 -----
@@ -104,5 +104,3 @@ Trajectory 附件行使用 48px 方形缩略图，完整缩放图片而不裁剪
 无。
 
 </details>
-
-**运行时不变式：** 不发布伴生入口。本包只贡献由 effect 持有的 slot entry；slot 注册表负责其生命周期并校验声明。

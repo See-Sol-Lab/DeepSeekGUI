@@ -90,8 +90,12 @@ export interface MigrationControl {
   readonly isRunning: () => boolean
   /** 数据位置事实：当前位置 + 上次迁移未清理的旧副本。 */
   readonly view: () => DataHomeView
-  /** 把 Managed Home 搬到用户选择的位置。 */
-  readonly migrate: () => Promise<void>
+  /**
+   * 把 Managed Home 搬到用户选择的位置。
+   * @param targetParent - 已经选定的目标父目录（整体搬家用；新 Home 是它下面的 dsh）。
+   *   不给就弹目录选择器。
+   */
+  readonly migrate: (targetParent?: string) => Promise<void>
   /** 启动时的核对：清单说「等重启核对」就按它逐项验一遍。 */
   readonly verifyOnStartup: () => void
   /** 清理上次迁移留下的旧副本。 */
@@ -146,13 +150,13 @@ export function createMigrationControl(deps: MigrationControlDeps): MigrationCon
   }
 
   let migrating = false
-  const performMigration = async (): Promise<void> => {
+  const performMigration = async (preselected?: string): Promise<void> => {
     const { homeKind, homePath: sourceHome, profile } = deps.home()
     if (homeKind !== 'managed') throw new Error(deps.text('error.migration-existing-home'))
     if (!existsSync(sourceHome)) {
       throw new Error(deps.text('error.migration-source-missing', { path: sourceHome }))
     }
-    const picked = await deps.pickTargetParent()
+    const picked = preselected ?? await deps.pickTargetParent()
     if (picked === undefined || picked === '') return
     const current = deps.home()
     if (current.homeKind !== homeKind || current.homePath !== sourceHome || current.profile !== profile) {
@@ -226,10 +230,10 @@ export function createMigrationControl(deps: MigrationControlDeps): MigrationCon
     deps.broadcast()
   }
 
-  const migrate = async (): Promise<void> => {
+  const migrate = async (targetParent?: string): Promise<void> => {
     if (migrating) throw new Error(deps.text('error.migration-busy'))
     migrating = true
-    try { await performMigration() } finally { migrating = false }
+    try { await performMigration(targetParent) } finally { migrating = false }
   }
 
   const verifyOnStartup = (): void => {

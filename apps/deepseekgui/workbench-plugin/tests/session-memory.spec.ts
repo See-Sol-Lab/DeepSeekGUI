@@ -5,19 +5,23 @@
  * @module @see-sol-lab/deepseekgui-workbench/tests/session-memory
  */
 
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { SystemPrompt, renderContextSections } from '@deepseek-ai/dsh-system-prompt'
 import * as memoryPlugin from '../src/index.ts'
+import { AREA_BEGIN, AREA_END } from '@deepseek-ai/dsh-workbench-inspector/types'
 import {
   buildMemorySectionText,
+  captureMemorySection,
   memoryContract,
   memoryFilesOf,
   productGuide,
   readMemoryFile,
+  readProjectMemoryFile,
+  recordMemoryInjection,
 } from '../src/session-memory.ts'
 
 const roots: string[] = []
@@ -130,5 +134,39 @@ describe('buildMemorySectionText', () => {
     expect(text).toContain('Global memory (user-edited, model read-only)')
     writeFileSync(join(home, 'memory.md'), '', 'utf8')
     expect(buildMemorySectionText(memoryFilesOf(home, home))).toContain('(file is empty)')
+  })
+})
+
+describe('readProjectMemoryFile（Phase 2：归档整理区一定带入）', () => {
+  it('超过上限时缩短人写的部分，整理区整段保留；没超就原样', () => {
+    const project = tempHome()
+    const path = join(project, 'p.memory.md')
+    const area = `${AREA_BEGIN}\n- 关键决定：改用 Node 24\n${AREA_END}`
+    writeFileSync(path, `${'人写的内容。'.repeat(20_000)}\n${area}\n`, 'utf8')
+    const view = readProjectMemoryFile(path, 4096)
+    expect(view.status).toBe('truncated')
+    expect(view.autoArea).toBe('included')
+    expect(view.text.endsWith(area)).toBe(true)
+    expect(Buffer.byteLength(view.text, 'utf8')).toBeLessThanOrEqual(4096)
+    writeFileSync(path, `短短的\n${area}\n`, 'utf8')
+    expect(readProjectMemoryFile(path, 4096)).toMatchObject({ status: 'present', autoArea: 'included' })
+  })
+})
+
+describe('recordMemoryInjection（Phase 2：每次加载各记一条，带内容摘要）', () => {
+  it('追加而不覆盖；同样长度不同内容的摘要不同', () => {
+    const home = tempHome()
+    const project = tempHome()
+    const files = memoryFilesOf(home, project)
+    writeFileSync(files.globalPath, 'aaaa', 'utf8')
+    recordMemoryInjection(home, 'session-1', captureMemorySection(files))
+    writeFileSync(files.globalPath, 'bbbb', 'utf8')
+    recordMemoryInjection(home, 'session-1', captureMemorySection(files))
+    const saved: unknown = JSON.parse(readFileSync(join(home, 'deepseekgui', 'memory-injections', 'session-1.json'), 'utf8'))
+    expect(saved).toMatchObject({ sessionId: 'session-1' })
+    const entries = typeof saved === 'object' && saved !== null && 'entries' in saved && Array.isArray(saved.entries) ? saved.entries : []
+    expect(entries).toHaveLength(2)
+    expect(entries[0].global.chars).toBe(entries[1].global.chars)
+    expect(entries[0].global.sha256).not.toBe(entries[1].global.sha256)
   })
 })

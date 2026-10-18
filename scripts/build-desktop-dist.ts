@@ -30,7 +30,7 @@ import {
   statSync, writeFileSync,
 } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
-import { basename, delimiter, dirname, join, sep } from 'node:path'
+import { basename, delimiter, dirname, join, relative, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { releaseFamily, tarballName } from './release/families.ts'
 import { capture } from './release/process.ts'
@@ -49,7 +49,8 @@ import { computeRuntimeClosure, parsePluginNames } from './runtime-closure.ts'
 import { directoryBytes, prunePlatforms } from './platform-prune.ts'
 import { sanitizeAndVerify } from './leak-scan.ts'
 import { requireCleanTree } from './require-clean-tree.ts'
-import { portableLockfileIssues, relativeTarballSpec } from './runtime-lock.ts'
+import { load as loadYaml } from 'js-yaml'
+import { dropOverriddenCopies, missingDependencies, overrideViolations, portableLockfileIssues, relativeTarballSpec, runtimeNpmOverrides, type NpmOverrides } from './runtime-lock.ts'
 import { readDevSourceCommit, SOURCE_COMMIT_FILENAME } from '../apps/deepseekgui/src/version-info.ts'
 
 /** Repository root: this script always runs from the checkout root. */
@@ -631,6 +632,87 @@ function shipPlugin(runtimeDir: string, ship: PluginShipment): void {
   console.log(`build-desktop-dist: DeepSeekGUI ${ship.pkg} shipped into ${runtimeDir}${ship.overlay === undefined ? '' : ' with its overlay'}`)
 }
 
+/**
+ * The npm overrides for the staging install, read from the same
+ * pnpm-workspace.yaml `overrides` that pin the source workspace.
+ * @returns the translated overrides.
+ */
+function workspaceRuntimeOverrides(): NpmOverrides {
+  const workspace: unknown = loadYaml(readFileSync(join(ROOT, 'pnpm-workspace.yaml'), 'utf8'))
+  const raw = typeof workspace === 'object' && workspace !== null && 'overrides' in workspace ? workspace.overrides : undefined
+  if (typeof raw !== 'object' || raw === null) return {}
+  const entries: Record<string, string> = {}
+  for (const [selector, version] of Object.entries(raw)) {
+    if (typeof version !== 'string') throw new Error(`build-desktop-dist: pnpm override ${selector} is not a string`)
+    entries[selector] = version
+  }
+  return runtimeNpmOverrides(entries)
+}
+
+/**
+ * Workspace patches the shipped runtime needs too. pnpm applies them only
+ * inside the workspace; the runtime is an npm install, so they are applied
+ * here (upstream 0.2.1 does the same for its Desktop runtime). The other
+ * entries of `patchedDependencies` patch build-host tools or code that is
+ * bundled into the client, and never run from the runtime.
+ */
+const RUNTIME_PATCHES = [
+  // Streamed tool-call argument parsing.
+  '@earendil-works/pi-ai@1.1.0',
+  // Helper resolution, and draining the Windows conout worker when a terminal exits.
+  'node-pty@1.2.0-beta.15',
+] as const
+
+/**
+ * Apply {@link RUNTIME_PATCHES} to every installed copy in the staging tree.
+ * A copy at another version fails the build: the patch is qualified against
+ * one exact version, and an unpatched copy would ship silently.
+ */
+function applyRuntimePatches(): void {
+  const workspace = loadYaml(readFileSync(join(ROOT, 'pnpm-workspace.yaml'), 'utf8')) as { patchedDependencies?: Record<string, string> }
+  for (const spec of RUNTIME_PATCHES) {
+    const patch = workspace.patchedDependencies?.[spec]
+    if (patch === undefined) throw new Error(`build-desktop-dist: pnpm-workspace.yaml no longer patches ${spec}; update RUNTIME_PATCHES`)
+    const at = spec.lastIndexOf('@')
+    const name = spec.slice(0, at)
+    const version = spec.slice(at + 1)
+    const copies = findInstalledPackages(STAGING, name)
+    if (copies.length === 0) throw new Error(`build-desktop-dist: runtime has no ${name} to patch`)
+    for (const dir of copies) {
+      const installed = (JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as { version?: unknown }).version
+      if (installed !== version) throw new Error(`build-desktop-dist: ${dir} is ${String(installed)}, but the runtime patch is for ${spec}`)
+      // STAGING lives inside the repository, so git resolves patch paths from
+      // the repository root; --directory points them at this copy.
+      const directory = relative(ROOT, dir).split(sep).join('/')
+      const result = spawnSync('git', ['apply', `--directory=${directory}`, join(ROOT, patch)], { cwd: ROOT, stdio: 'inherit' })
+      if (result.status !== 0) throw new Error(`build-desktop-dist: applying ${patch} to ${dir} failed`)
+    }
+    console.log(`build-desktop-dist: patched ${copies.length} ${spec}`)
+  }
+}
+
+/**
+ * Packages dsh depends on that the desktop app never mounts: the developer
+ * tools bundle (hidden from the plugin page, see the plugin manager's
+ * HIDDEN_BUNDLES) and what only it uses. The Chrome DevTools frontend inside
+ * dsh-experimental-inspector is 24 MB and holds the deepest paths of the
+ * payload, which set the installer's directory-length budget.
+ */
+const UNSHIPPED_PACKAGES = [
+  '@deepseek-ai/dsh-experimental-inspector-profile',
+  '@deepseek-ai/dsh-experimental-inspector',
+  '@deepseek-ai/dsh-experimental-session-inspector',
+] as const
+
+/** Remove {@link UNSHIPPED_PACKAGES} from the staging tree, nested copies included. */
+function dropUnshippedPackages(): void {
+  for (const name of UNSHIPPED_PACKAGES) {
+    const copies = findInstalledPackages(STAGING, name)
+    for (const dir of copies) rmSync(dir, { recursive: true, force: true })
+    console.log(`build-desktop-dist: left out ${name} (${copies.length} cop${copies.length === 1 ? 'y' : 'ies'})`)
+  }
+}
+
 /** Install the closure into the staging consumer and copy its node_modules into the runtime payload. */
 function assembleRuntime(): void {
   rmSync(STAGING, { recursive: true, force: true })
@@ -668,11 +750,13 @@ function assembleRuntime(): void {
       : null
     if (pnpmPin === null) throw new Error('build-desktop-dist: root package.json lacks a pnpm@<version> packageManager pin')
     dependencies.set('pnpm', pnpmPin)
+    const overrides = workspaceRuntimeOverrides()
     writeFileSync(join(STAGING, 'package.json'), `${JSON.stringify({
       name: 'deepseekgui-dist',
       version: '0.0.0',
       private: true,
       dependencies: Object.fromEntries(dependencies),
+      overrides,
     }, null, 2)}\n`)
     // Reproducibility: seed the committed lockfile so npm resolves every
     // external registry dependency at its locked version; the result is
@@ -680,12 +764,26 @@ function assembleRuntime(): void {
     if (existsSync(COMMITTED_LOCK)) {
       cpSync(COMMITTED_LOCK, join(STAGING, 'package-lock.json'))
       dropLocalTarballEntries(join(STAGING, 'package-lock.json'))
+      const seeded = readFileSync(join(STAGING, 'package-lock.json'), 'utf8')
+      const reseeded = dropOverriddenCopies(seeded, overrides)
+      if (reseeded.dropped.length > 0) {
+        writeFileSync(join(STAGING, 'package-lock.json'), reseeded.text)
+        console.log(`build-desktop-dist: dropped ${reseeded.dropped.join(', ')} from the seeded lockfile; the workspace overrides resolve them again`)
+      }
     }
     // No --omit=optional: koffi (Windows ACL sandbox) and the Landlock
     // platform packages ship prebuilt binaries as optionalDependencies, and
     // skipping them makes koffi's install script attempt a source build.
     runNpm(['install', '--no-audit', '--no-fund'], STAGING)
     const lockText = readFileSync(join(STAGING, 'package-lock.json'), 'utf8')
+    const escaped = overrideViolations(lockText, overrides)
+    if (escaped.length > 0) {
+      throw new Error(`build-desktop-dist: staging install escaped the workspace overrides: ${escaped.join('; ')}`)
+    }
+    const holes = missingDependencies(lockText)
+    if (holes.length > 0) {
+      throw new Error(`build-desktop-dist: staging install left required dependencies out: ${holes.join('; ')}`)
+    }
     const lockIssues = portableLockfileIssues(lockText)
     if (lockIssues.length > 0) {
       throw new Error(`build-desktop-dist: staging lockfile is not machine-portable: ${lockIssues.join('; ')}`)
@@ -702,6 +800,8 @@ function assembleRuntime(): void {
     } else {
       console.log('build-desktop-dist: runtime lockfile unchanged (external dependency set is pinned)')
     }
+    applyRuntimePatches()
+    dropUnshippedPackages()
     const entry = join(STAGING, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')
     if (!existsSync(entry)) throw new Error('build-desktop-dist: installed tree lacks @deepseek-ai/dsh/lib/bin.js')
     const pnpmEntry = join(STAGING, 'node_modules', 'pnpm', 'bin', 'pnpm.cjs')
@@ -972,7 +1072,7 @@ function smokeRuntimeUnderPackagedElectron(resourcesDsh: string): void {
  * Find every installed copy of one package in a node_modules tree, nested
  * copies included.
  * @param root - directory whose `node_modules` is walked.
- * @param name - unscoped package name.
+ * @param name - package name, scoped or not.
  * @returns absolute package directories.
  */
 function findInstalledPackages(root: string, name: string): string[] {
@@ -983,7 +1083,9 @@ function findInstalledPackages(root: string, name: string): string[] {
       if (!entry.isDirectory()) continue
       if (entry.name.startsWith('@')) {
         for (const scoped of readdirSync(join(nodeModules, entry.name), { withFileTypes: true })) {
-          if (scoped.isDirectory()) visit(join(nodeModules, entry.name, scoped.name, 'node_modules'))
+          if (!scoped.isDirectory()) continue
+          if (`${entry.name}/${scoped.name}` === name) found.push(join(nodeModules, entry.name, scoped.name))
+          visit(join(nodeModules, entry.name, scoped.name, 'node_modules'))
         }
         continue
       }

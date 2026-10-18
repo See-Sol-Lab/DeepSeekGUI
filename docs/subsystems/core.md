@@ -106,7 +106,7 @@ interface Agent {
    * turn and runs when the aborted activity converges to idle; a `disposed`
    * cancel leaves it parked. A wake submitted while already idle always opens
    * its turn boundary, even when its message is cleared before the driver
-   * claims ([cancel-convergence wake latch](../../../../.agents/notes/implemented/bug-fix/2026-08-07-cancel-convergence-wake-latch.md)).
+   * claims ([driver wake convergence](../../agent-loop/src/agent.ts)).
    * @param message - identified content and the source that supplied it.
    * @param target - the preferred next-turn or next-step inbox boundary.
    * @param wakeup - whether delivery may wake the driver.
@@ -495,6 +495,12 @@ Registry of YAML-declared presets and the revisions live Agents retain.
  */
 async register(definition: PresetDefinition): Promise<() => Promise<void>>
 
+/** Inspect retained revisions, or the exact revision an Agent joined.
+ * @param ctx - optional Agent context; omission includes all retained revisions.
+ * @returns detached module references and isolation diagnostics; no match returns an empty list.
+ */
+inspectCompositions(ctx?: Context): AgentPresetInspection[]
+
 /** Read every declared preset, including activation failures.
  * @returns Display metadata and loading diagnostics.
  */
@@ -551,7 +557,9 @@ serviceFor<K extends string & keyof Context>(agent: { ctx: Context }, name: K): 
  */
 async recompose(ctx: Context, id: string): Promise<AgentPreset>
 
-/** Select a preset before a session starts its first turn.
+/** Select a preset before a session starts its first turn. A Session whose
+ * log records the preset and whose Agent runs its current revision keeps its
+ * composition; nothing is logged or announced.
  * @param agent Target Agent.
  * @param agentPreset Requested identity.
  * @returns Committed preset identity.

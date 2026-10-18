@@ -25,6 +25,8 @@ Agents can discover and load skills during a session. Before the first request, 
 <a id="use-this-package"></a>
 ## Use this package
 
+Skill discovery, catalog updates, and explicit skill invocation use the Session's current working directory.
+
 Mount the plugin alongside the skill registry to give agents a session skill catalog and the `skill` loader tool. It requires `ctx.agents`, `ctx.tools`, and `ctx.skills`.
 
 ### When to choose it
@@ -77,7 +79,6 @@ The package is built on two ideas. First, the catalog is a durable projection, d
 | File | Role |
 |---|---|
 | [`src/index.ts`](src/index.ts) | Plugin entry: tool registration, catalog and gesture pre-step listeners, rendering and digest |
-| — | No runtime invariant companion is published; this model-facing adapter has no independent lifecycle stream; execution relations are owned by the capability seam it calls. |
 
 ### Catalog lifecycle
 

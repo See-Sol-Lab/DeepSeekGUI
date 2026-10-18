@@ -254,6 +254,7 @@ export async function runLoaderSmoke(options: LoaderSmokeOptions): Promise<Loade
     await options.inspect?.(cwd)
     return { stdout: result.stdout, stderr: result.stderr }
   } finally {
-    if (!providedCwd) await rm(cwd, { recursive: true, force: true })
+    // Windows releases a just-exited child's directory handles a moment later (EBUSY); retry briefly.
+    if (!providedCwd) await rm(cwd, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })
   }
 }

@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-client-product-analytics",
   "description": "Desktop product event collection and authenticated Host reporting",
-  "version": "0.2.0-rc.2",
+  "version": "0.2.1-rc.2",
   "publishConfig": {
     "access": "public"
   },
@@ -34,7 +34,8 @@
     },
     "./types": {
       "types": "./lib/types/events.d.ts"
-    }
+    },
+    "./locale/*.json": "./locale/*.json"
   },
   "dsh": {
     "client": {
@@ -63,9 +64,12 @@
     "@deepseek-ai/dsh-host-webserver": "workspace:*",
     "@deepseek-ai/dsh-settings": "workspace:*",
     "@deepseek-ai/cordis-plugin-loader": "workspace:~",
-    "@deepseek-ai/dsh-otel": "workspace:*"
+    "@deepseek-ai/dsh-otel": "workspace:*",
+    "@deepseek-ai/dsh-app-boot": "workspace:*",
+    "@deepseek-ai/dsh-loader-smoke": "workspace:*"
   },
   "files": [
+    "locale/*.json",
     "lib/index.js",
     "lib/client.js",
     "lib/types/**/*.d.ts",
@@ -77,6 +81,6 @@
   "dependencies": {
     "@deepseek-ai/dsh-typert-protocol": "workspace:*",
     "@deepseek-ai/schemastery": "workspace:~",
-    "zod": "^4.4.3"
+    "zod": "4.4.3"
   }
 }

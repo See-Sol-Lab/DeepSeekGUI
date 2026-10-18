@@ -15,7 +15,7 @@ import type { Scoped } from '@deepseek-ai/dsh-scope'
 import type { Message } from '@deepseek-ai/dsh-llm'
 import { SESSION_FORMAT_VERSION, SessionLogOffset, SessionSeq } from './types.ts'
 import type { TypertLookup } from '@deepseek-ai/dsh-typert-protocol'
-import type { CreateSessionOptions, EpochHeader, PrepareSessionOptions, RequestContext, SessionEvent, SessionEventMap, SessionEventType, SessionHeader, SessionId, SessionSeedEventState, SurfaceIntent, SurfaceEventType } from './types.ts'
+import type { CreateSessionOptions, EpochHeader, PluginRecord, PluginRecordMap, PluginRecordType, PrepareSessionOptions, RequestContext, SessionEvent, SessionEventMap, SessionEventType, SessionHeader, SessionId, SessionSeedEventState, SurfaceIntent, SurfaceEventType } from './types.ts'
 import { SurfaceManager, validateSessionEventData, validateSurfaceMetadata } from './surface.ts'
 import type { SessionSurface, SessionMessageProjection } from './surface.ts'
 import { foldRequestHeader } from './request-header.ts'
@@ -49,7 +49,6 @@ declare module '@deepseek-ai/cordis' {
      * Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners
      * receive only sessions entered through that agent's context.
      * @param session - the session just entered and announced.
-     * @dshScopeScan unsupported
      * @mode emit
      */
     'session/created'(this: Scoped<Session>, session: Session): void
@@ -59,7 +58,6 @@ declare module '@deepseek-ai/cordis' {
      * did not begin. Listener failures are logged and contained.
      * Scope-filtered dispatch (`@deepseek-ai/dsh-scope`) reuses the owner scope.
      * @param session - the session that is no longer live in the store.
-     * @dshScopeScan unsupported
      * @mode emit
      */
     'session/disposed'(this: Scoped<Session>, session: Session): void
@@ -71,7 +69,6 @@ declare module '@deepseek-ai/cordis' {
      * receive only events from sessions entered through that agent's context.
      * @param session - the session whose log grew.
      * @param event - the appended event, exactly as recorded.
-     * @dshScopeScan unsupported
      * @mode emit
      */
     'session/event'(this: Scoped<Session>, session: Session, event: SessionEvent): void
@@ -80,7 +77,6 @@ declare module '@deepseek-ai/cordis' {
      * caller awaits all of them, with no waterfall veto. Scope-filtered dispatch
      * (`@deepseek-ai/dsh-scope`) reuses the session's owner scope.
      * @param session - the session whose buffered events must reach durable storage.
-     * @dshScopeScan unsupported
      * @mode parallel
      */
     'session/flush'(this: Scoped<Session>, session: Session): Promise<void> | void
@@ -436,6 +432,86 @@ interface SessionEntry {
 const attachments = new WeakMap<Session, SessionEntry>()
 
 /**
+ * Grammar of a {@link PluginRecordType}: `plugin:` followed by
+ * slash-separated segments of lowercase letters, digits, `.`, `_`, and `-`,
+ * each segment starting with a letter or digit.
+ */
+const PLUGIN_RECORD_TYPE = /^plugin:[a-z0-9][a-z0-9._-]*(?:\/[a-z0-9][a-z0-9._-]*)*$/u
+
+/**
+ * Whether one event type name follows the plugin record grammar.
+ * @param type - an event type name.
+ * @returns whether the name is a {@link PluginRecordType}.
+ */
+function isPluginRecordType(type: string): type is PluginRecordType {
+  return PLUGIN_RECORD_TYPE.test(type)
+}
+
+/**
+ * Type one constructed plugin record as a log event after checking its type
+ * against the plugin record grammar. A restored Session already holds events
+ * whose types are outside `SessionEventMap` when they are marked ignorable;
+ * a plugin record is such an event.
+ * @param value - the frozen record envelope built by {@link Session}.
+ * @throws when the record type is outside the plugin record grammar.
+ */
+function assertPluginRecordEvent(value: unknown): asserts value is SessionEvent {
+  const { type } = value as { readonly type: string }
+  if (!isPluginRecordType(type)) {
+    throw new Error(`plugin record type "${type}" must be "plugin:" followed by lowercase slash-separated segments`)
+  }
+}
+
+/** Module-private access to {@link Session}'s record commit, assigned once by its static block. */
+let commitPluginRecord: (session: Session, type: PluginRecordType, data: unknown) => SessionSeq
+
+/**
+ * Append one experimental plugin record: an event marked `ignorable` whose
+ * type is declared in {@link PluginRecordMap}, outside {@link SessionEventMap}.
+ * The plugin record catalog lists it separately from released event schemas.
+ * A reader that does not recognize the type retains and skips the record, which never
+ * enters the model-visible surface, and fork and resume carry it with the rest
+ * of the log. A Session format migration retains records on a best-effort
+ * basis, so a record holds plugin-owned state that its owner can lose without
+ * changing how the rest of the log is interpreted.
+ *
+ * Only production source under `packages/experimental/` may call this
+ * function; the `verify-plugin-record-callers` gate rejects any other
+ * production caller in this repository. Read records back with
+ * {@link pluginRecordOf}.
+ * @param session - the Session whose log receives the record.
+ * @param type - declared record name: `plugin:` followed by slash-separated
+ *   segments of lowercase letters, digits, `.`, `_`, and `-`, each starting
+ *   with a letter or digit.
+ * @param data - JSON payload, snapshotted before it enters the log.
+ * @returns the sequence number of the committed record.
+ * @throws when `type` is outside that grammar, when `data` is not losslessly
+ *   JSON-serializable, or when the call reenters another append's publication;
+ *   a rejected record does not change the log.
+ */
+export function appendPluginRecord<K extends Extract<keyof PluginRecordMap, PluginRecordType>>(
+  session: Session,
+  type: K,
+  data: NoInfer<PluginRecordMap[K]>,
+): SessionSeq {
+  return commitPluginRecord(session, type, data)
+}
+
+/**
+ * Read one committed event as a plugin record. The V3-to-V4 format edge also
+ * renames each unknown ignorable V3 event into the `plugin:` namespace, so an
+ * owner names its records under its own package name and validates `data`.
+ * @param event - any committed Session event, live or restored.
+ * @returns the record, or undefined when the event is not an ignorable event
+ *   whose type follows the plugin record grammar.
+ */
+export function pluginRecordOf(event: SessionEvent): PluginRecord | undefined {
+  const type: string = event.type
+  if (event.ignorable !== true || !isPluginRecordType(type)) return undefined
+  return { type, seq: event.seq, time: event.time, data: event.data }
+}
+
+/**
  * An event-sourced session: an append-only log of {@link SessionEvent}s.
  *
  * Plain class (not a Service) — create live instances via
@@ -737,10 +813,7 @@ export class Session {
     if (surfaceMetadataSnapshot === undefined) {
       throw new Error(`session event "${type}" carries non-JSON-serializable surface metadata`)
     }
-    const entry = attachments.get(this)
-    if (entry?.appending) {
-      throw new Error('session append cannot reenter while another append is being published')
-    }
+    const entry = this.publicationEntry()
     const event = deepFreeze({
       type,
       seq: SessionSeq(this.log.length),
@@ -749,7 +822,59 @@ export class Session {
       ...(surfaceMetadataSnapshot as { surfaceOp?: unknown; sourceEventSeqs?: unknown }),
     } as unknown as SessionEvent<T>)
     validateSessionEventData(event, `session event "${type}" at seq ${event.seq}`)
-    this.surfaceManager.validateNext(event as SessionEvent)
+    this.commit(event as SessionEvent, entry)
+    return event
+  }
+
+  static {
+    commitPluginRecord = (session, type, data) => session.#appendRecord(type, data)
+  }
+
+  /**
+   * Commit one plugin record; {@link appendPluginRecord} is the only caller.
+   * @param type - record type, checked against the plugin record grammar.
+   * @param data - JSON payload, snapshotted before it enters the log.
+   * @returns the record's sequence number.
+   */
+  #appendRecord(type: PluginRecordType, data: unknown): SessionSeq {
+    const dataSnapshot = snapshotJsonValue(data)
+    if (dataSnapshot === undefined) {
+      throw new Error(`plugin record "${type}" carries non-JSON-serializable data`)
+    }
+    const entry = this.publicationEntry()
+    const record: unknown = deepFreeze({
+      type,
+      seq: SessionSeq(this.log.length),
+      time: Date.now(),
+      data: dataSnapshot,
+      ignorable: true,
+    })
+    assertPluginRecordEvent(record)
+    this.commit(record, entry)
+    return record.seq
+  }
+
+  /**
+   * Read the store attachment for one append, refusing an append that
+   * reenters while another append is being published.
+   * @returns the attachment, or undefined for a detached Session.
+   */
+  private publicationEntry(): SessionEntry | undefined {
+    const entry = attachments.get(this)
+    if (entry?.appending) {
+      throw new Error('session append cannot reenter while another append is being published')
+    }
+    return entry
+  }
+
+  /**
+   * Accept one frozen candidate at the next sequence number, enter it into the
+   * log, and notify `session/event` observers with per-listener containment.
+   * @param event - the candidate built at the current log length.
+   * @param entry - the attachment read before the candidate was built.
+   */
+  private commit(event: SessionEvent, entry: SessionEntry | undefined): void {
+    this.surfaceManager.validateNext(event)
 
     if (entry !== undefined) entry.appending = true
     try {
@@ -758,12 +883,11 @@ export class Session {
       if (entry !== undefined) {
         callbacks = collectSessionCallbacks(entry.emitCtx, [entry.carrier, 'session/event', ...callbackArgs])
       }
-      this.log.push(event as SessionEvent)
+      this.log.push(event)
       this.eventsSnapshot = undefined
       if (callbacks !== undefined && entry !== undefined) {
         invokeContainedSessionObservers(entry.emitCtx, 'session/event', entry.id, callbackArgs, callbacks)
       }
-      return event
     } finally {
       if (entry !== undefined) {
         entry.appending = false
@@ -955,6 +1079,7 @@ export class SessionStore extends Service {
       typeCtx.typert.lookups.register('session', {
         parameter: 'session',
         wire: 'sessionId',
+        resource: 'session',
         hostTypeSymbol: '@deepseek-ai/dsh-session#Session',
         wireTypeSymbol: '@deepseek-ai/dsh-session/types#SessionId',
         resolve: sessionId => this.get(sessionId),
@@ -1184,8 +1309,8 @@ export class SessionStore extends Service {
    * store owns the carrier, so callers (the checkpoint policy's per-request
    * barrier, goal-round-driver's idle checkpoint, teardown drains, and consumers
    * that flush themselves before reading storage) must come through here
-   * rather than dispatch a raw `ctx.parallel('session/flush', …)` — one owner,
-   * one spelling, and the scoped-dispatch invariant can pin it.
+   * rather than dispatch a raw `ctx.parallel('session/flush', …)` — one owner
+   * and one spelling.
    * @param session - the session whose buffered events must reach durable storage.
    * @returns whether at least one durability listener participated, after every
    *   listener has settled successfully.

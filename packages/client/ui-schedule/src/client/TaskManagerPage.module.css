@@ -45,9 +45,10 @@
   padding: 0 clamp(24px, 4vw, 48px) 48px;
 }
 
-/* The page name and the creation actions on one line. */
+/* Page title and creation actions. */
 .pageHeading {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
@@ -68,8 +69,9 @@
    their titles share one size. The theme carries no size token for this step,
    which is why every first-level page states the same literal. */
 .pageHeading h1 {
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
+  max-width: 100%;
   margin: 0;
   font-size: 20px;
   line-height: 28px;
@@ -82,6 +84,7 @@
   flex: none;
   align-items: center;
   gap: 16px;
+  white-space: nowrap;
 }
 
 /* The Plugins toolbar's Add-plugin step: a 32px capsule with the 13px label. */
@@ -565,6 +568,12 @@
   padding-bottom: 1px;
   margin-bottom: -1px;
   overflow-x: auto;
+  /* A narrow strip still scrolls its tabs, without a visible bar (both engines). */
+  scrollbar-width: none;
+}
+
+.detailTabs::-webkit-scrollbar {
+  display: none;
 }
 
 .detailActions {
@@ -1272,6 +1281,16 @@
   align-items: center;
   min-width: 0;
   max-width: 200px;
+}
+
+/* A disabled entry passes the pointer to this wrapper, whose tooltip names the
+   compact icon; the wrapper keeps the disabled cursor. */
+.detailContext:has(> button:disabled) {
+  cursor: not-allowed;
+}
+
+.detailContext > button:disabled {
+  pointer-events: none;
 }
 
 /* The staged-edit bar: it appears under the detail tab strip only while the

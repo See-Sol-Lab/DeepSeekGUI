@@ -94,6 +94,40 @@ describe.skipIf(!gitAvailable)('LocalGitCapability over real repositories', () =
     }
   })
 
+  it('keeps the non-repository verdict under a translated git locale', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'dsh-git-plain-locale-'))
+    disposables.push(() => { rmSync(dir, { recursive: true, force: true }) })
+    const gitCap = await harness()
+    vi.stubEnv('GIT_CEILING_DIRECTORIES', realpathSync.native(tmpdir()))
+    vi.stubEnv('LANG', 'zh_CN.UTF-8')
+    vi.stubEnv('LANGUAGE', 'zh_CN')
+    try {
+      await expect(gitCap.repoIdentity(dir)).rejects.toBeInstanceOf(GitNotARepositoryError)
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
+  it('reports a broken gitfile as a git failure with its stderr, not as a plain folder', async () => {
+    const dir = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-git-broken-')))
+    disposables.push(() => { rmSync(dir, { recursive: true, force: true }) })
+    // A `.git` file that is not "gitdir: <path>" makes git exit 128 with
+    // "invalid gitfile format" — a damaged repository, not an absent one.
+    writeFileSync(join(dir, '.git'), 'this is not a gitfile\n')
+    const gitCap = await harness()
+    vi.stubEnv('GIT_CEILING_DIRECTORIES', realpathSync.native(tmpdir()))
+    try {
+      const failure = await gitCap.repoIdentity(dir).then(() => undefined, (error: unknown) => error)
+      expect(failure).toBeInstanceOf(Error)
+      expect(failure).not.toBeInstanceOf(GitNotARepositoryError)
+      expect((failure as Error).name).toBe('GitCommandFailedError')
+      expect((failure as Error).message).toMatch(/gitfile/u)
+      await expect(gitCap.status(dir)).rejects.not.toBeInstanceOf(GitNotARepositoryError)
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
   it('reports branch, detached, and unborn heads', async () => {
     const dir = stageRepo('head')
     const gitCap = await harness()

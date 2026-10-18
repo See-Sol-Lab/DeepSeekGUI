@@ -29,13 +29,15 @@ Compose UI through this package whenever you write a client plugin: register a c
 
 ### Reusable Component Factories
 
-Use a Component Factory when one package defines an assembly that unrelated parents render independently. Declare its complete type in `SlotFactoryMap`, install the definition with `ctx.slots.registerFactory()`, render occurrences through the injected `renderFactorySlot()`, and select each declared local Component through the call's `slots` option. The definition reads that choice through `useFactorySlot(name, fallback)`.
+A designer may choose a Component Factory for a component or assembly they consider reusable, even with one current caller; unrelated parents, separate packages, and additional injection or local slots are not prerequisites. A one-off component need not use a Factory. Declare its complete type in `SlotFactoryMap`, install the definition with `ctx.slots.registerFactory()`, render occurrences through the injected `renderFactorySlot()`, and select each declared local Component through the call's `slots` option. The definition reads that choice through `useFactorySlot(name, fallback)`.
 
 Factory `children` remain ordinary global Slots and must match `SlotMap`, while local `slots` select one Component per occurrence. An occurrence inherits its render-position scope; `renderFactorySlot()` does not accept a Session identity. Shared Store handles use ordinary scope resolution. A Store factory stays lazy until an occurrence first materializes, then creates one handle for that render position and rejects a persistent Store spec whose key would collide across occurrences.
 
 ### The five framework props shares
 
 Every registered component receives props composed from five framework shares: the runtime share (`owner` from the parent's render call site, plus the session standard kit and global seat), the child-render share (`renderSlot` statically narrowed to declared children), the Factory-render share (`renderFactorySlot`), the store share (the declared handle's selector hook and draft-stripped actions), and the business share (inferred from `inject`). Components reference the derived props aliases; they never re-type a share locally.
+
+An open-key standard Hook, called as `useName(key, selector?, equal?)`, also accepts `useName(key, member)`: a string second argument reads the `KeyedStandardSource` resolver's `(key, member)` source without a selector. The resolver returns the same source object for the same arguments while that source is live.
 
 ### Store seats
 
@@ -75,7 +77,7 @@ These pages cover the engine, the renderer, and the composition model.
 - [ui-renderer](../ui-renderer/README.md) — the React slot renderer implementing this package's install contract.
 - [Slot system standard](../../../.agents/notes/implemented/architecture/2026-07-22-slot-type-chain-implementation.md) — the definitive composition model.
 - [Component Factories](../../../.agents/notes/implemented/architecture/2026-09-10-component-factories-and-local-slots.md) — reusable definitions, local Component selection, and occurrence lifetimes.
-- [Web client architecture](../../../.agents/notes/implemented/architecture/2026-07-19-gui-web-client-architecture.md) — the loading chain and object layer this registry plugs into.
+- [Web client architecture](../../../docs/subsystems/web-client.md) — the loading chain and object layer this registry plugs into.
 
 -----
 
@@ -107,5 +109,3 @@ These limits define the registry's scaling behavior and accepted type noise; the
 None.
 
 </details>
-
-**Runtime invariant:** No companion is published. This is a zero-dependency pure registry core; it emits no Cordis events itself (the `ui-renderer` SlotRegistry owns the event bridge and its invariants); define/register/dispose sequencing is asserted directly by this package's behavior specs.

@@ -2,12 +2,12 @@
  * Doc-sync gate for package README Model Experience sections. It validates
  * audited package classifications, model/token/KV-cache fields, package-owned
  * text blocks, generated-catalog links, and final-section order. See the
- * [Model Experience Agent Note](../.agents/notes/implemented/process/2026-07-12-package-model-experience-contract.md).
+ * [Model Experience reference](../docs/cookbook/adding-a-package.md).
  */
 
 import { existsSync, globSync, readFileSync } from 'node:fs'
 import { relative, resolve, sep } from 'node:path'
-import { markdownHeadingLines, markdownProseLines, type MarkdownProseLine } from './markdown.ts'
+import { markdownHeadingLines, markdownProseLines, parseMarkdown, type MarkdownProseLine } from './markdown.ts'
 
 const root = resolve(import.meta.dirname, '..')
 const HEADING = '## Model Experience'
@@ -45,16 +45,21 @@ const NO_MODEL_EXPERIENCE_SECTION: Readonly<Record<string, string>> = {
  * blocks. A package moves on or off this list with its context behavior.
  */
 const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
+  'packages/experimental/client-ui-cot-translation': { kind: 'indirect', reason: 'The translator owns optional paid queries; normal Session activation delegates startup context to the preset.' },
+  'packages/experimental/cot-translation-bundle': { kind: 'indirect', reason: 'The GUI consumer delegates paid query prompts to the translator and normal activation context to the Session preset.' },
   'packages/client/product-analytics': { kind: 'none', reason: 'Desktop analytics observes selected interactions without contributing model context or Session events.' },
   'packages/experimental/speech-to-text': { kind: 'none', reason: 'Routes transient recognition without adding model requests or Session events.' },
   'packages/experimental/api-speech-to-text': { kind: 'none', reason: 'Transports audio and preparation state; ordinary user submission owns model-visible text.' },
   'packages/experimental/speech-to-text-sensevoice': { kind: 'none', reason: 'Local recognition returns transient text without modifying model context.' },
   'packages/experimental/client-ui-voice-input': { kind: 'none', reason: 'Inserts reviewable text into the unsent draft without submitting to the Agent.' },
+  'packages/experimental/plugin-market-bundle': { kind: 'indirect', reason: 'Mounts the pluginMarket service, which lets the Creator preset register the plugin_market tool documented in packages/boot/plugin-market.' },
   'packages/experimental/voice-input-bundle': { kind: 'none', reason: 'Composes dictation and preparation plugins without adding any model-facing contribution.' },
   'packages/telemetry/otel': { kind: 'none', reason: 'The service delivers caller-selected records without changing model context.' },
   'packages/host/product-telemetry-otel': { kind: 'none', reason: 'The plugin exports explicit analytics records without contributing model context.' },
-  'packages/api/terminal-controller': { kind: 'none', reason: 'User-owned terminal processes and screen streams never enter model requests or Session events.' },
+  'packages/api/terminal-controller': { kind: 'indirect', reason: 'Working-directory recovery owns directory context; user terminal screens never enter model requests.' },
   'packages/client/ui-sidebar-terminal': { kind: 'none', reason: 'The browser renders user terminal screens without exposing them to the model.' },
+  'packages/ssh/ssh-helper-runtime': { kind: 'none', reason: 'The private executable carrier registers no model-facing content; its providers and consumers own operation results.' },
+  'packages/experimental/worktree': { kind: 'indirect', reason: 'The worktree tool renders creation results; the working-directory service owns model-visible directory context.' },
   'packages/ssh/ssh': { kind: 'none', reason: 'The connection owner transports private provider operations; consumers own all model-facing content.' },
   'packages/ssh/fs-ssh': { kind: 'indirect', reason: 'The remote filesystem delegates model rendering to the existing filesystem consumers.' },
   'packages/ssh/subprocess-ssh': { kind: 'indirect', reason: 'The remote process provider delegates model rendering to Bash, terminal, LSP and ptc-runtime consumers.' },
@@ -89,6 +94,7 @@ const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
   'packages/util/chunked-list': { kind: 'none', reason: 'Immutable collection primitive; registers nothing model-facing.' },
   'packages/util/package-manifest': { kind: 'none', reason: 'Type declarations only; registers nothing model-facing.' },
   'packages/util/lazy-require': { kind: 'none', reason: 'Host module-loading primitive; registers nothing model-facing.' },
+  'packages/util/plugin-market-index': { kind: 'indirect', reason: 'Pure index validation; the plugin_market tool owns the entries it returns to the model.' },
   'packages/util/time': { kind: 'indirect', reason: 'Pure zone validation; the consumer that records a canonical zone owns the model-visible line derived from it.' },
   'packages/core/agent-default-model': { kind: 'indirect', reason: 'The service supplies a ModelSelection; request assembly and adapters own the model-visible request.' },
   'packages/llm/deepseek-llm-api-extensions': { kind: 'indirect', reason: 'The registry contributes model-hidden provider fields; dsh-llm-deepseek owns their wire placement.' },
@@ -102,6 +108,8 @@ const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
   'packages/experimental/webworker-runtime': { kind: 'none', reason: 'Browser-side host runtime and Node-compatibility layer; the plugins it boots own every model-facing registration.' },
   'packages/experimental/webworker-packer': { kind: 'none', reason: 'Build-time image writer; its output reaches a model only through the tree the worker then boots.' },
   'packages/experimental/inspector': { kind: 'none', reason: 'Developer diagnostics transport; it observes runtime activity without changing model requests.' },
+  'packages/experimental/inspector-profile': { kind: 'none', reason: 'The bundle mounts developer inspection plugins without contributing model context.' },
+  'packages/experimental/session-inspector': { kind: 'none', reason: 'The conversation view entries add no model-facing input.' },
   'packages/client/ui-slots': { kind: 'none', reason: 'Browser-side UI plugin layer; registers nothing model-facing.' },
   'packages/client/ui-attachment': { kind: 'none', reason: 'Browser-side UI plugin layer; registers nothing model-facing.' },
   'packages/client/ui-primitives': { kind: 'none', reason: 'Browser-side UI plugin layer; registers nothing model-facing.' },
@@ -111,7 +119,9 @@ const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
   'packages/client/connection': { kind: 'none', reason: 'Browser-side UI plugin layer; registers nothing model-facing.' },
   'packages/client/file-upload': { kind: 'none', reason: 'Browser-side request-body transport; registers nothing model-facing.' },
   'packages/api/remotes': { kind: 'none', reason: 'The Remote BFF selects business methods and forwarded events; selected services own any model-visible effect.' },
+  'packages/api/remote-access': { kind: 'none', reason: 'Remote access decisions for Client callers; registers nothing model-facing.' },
   'packages/experimental/client-ui-agent-team': { kind: 'none', reason: 'The browser projection and task controls register no model-facing input.' },
+  'packages/experimental/client-ui-claude-code-mods': { kind: 'none', reason: 'The browser draws Host-held mod trees and relays clicks; the mods\' own hooks own any model-visible effect.' },
   'packages/client/shortcuts': { kind: 'none', reason: 'Browser keyboard routing; registers nothing model-facing.' },
   'packages/client/ui-shortcuts': { kind: 'none', reason: 'Read-only browser reference; registers nothing model-facing.' },
   'packages/client/ui-layout': { kind: 'none', reason: 'Browser-side UI plugin layer; registers nothing model-facing.' },
@@ -124,12 +134,13 @@ const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
   'packages/client/ui-chat': { kind: 'none', reason: 'Browser-side Chat presentation; registers nothing model-facing.' },
   'packages/client/ui-message-feedback': { kind: 'none', reason: 'Browser-side controls over log-only message feedback; ratings and notes never enter model context or change model-input tokens.' },
   'packages/client/ui-tool': { kind: 'none', reason: 'Browser-side Tool presentation layer; renders logged calls without changing model context.' },
-  'packages/client/ui-schedule': { kind: 'none', reason: 'Browser-side catalog, editing, and deletion of Host Schedule records; dsh-schedule owns the model-facing tools and delivery.' },
+  'packages/client/ui-schedule': { kind: 'none', reason: 'Browser-side catalog, editing, and deletion of Host Schedule records; dsh-schedule owns storage and delivery, and dsh-tool-schedule contributes the model-facing tools in a preset that mounts it.' },
   'packages/client/ui-workflow-run': { kind: 'none', reason: 'Browser-side UI plugin layer; renders durable workflow records without changing model context.' },
   'packages/client/ui-input-trigger': { kind: 'none', reason: 'Browser-side UI plugin layer; registers nothing model-facing.' },
   'packages/client/ui-reference': { kind: 'indirect', reason: 'Browser-side reference selection delegates file guidance and session snapshot preparation to Host-owned providers.' },
   'packages/client/ui-commands': { kind: 'indirect', reason: 'The dispatch paths trigger the host command.execute RPC; each command handler\'s host package owns any model-visible effect.' },
   'packages/client/ui-model-selection': { kind: 'indirect', reason: 'Selection routes session.selectModel; the Host snapshots the selection at the next prompt-assembly boundary and owns the model-visible effect.' },
+  'packages/client/ui-deepseek-model-label-1017': { kind: 'none', reason: 'Temporary browser release badge; leaves model catalogs and requests unchanged.' },
   'packages/client/ui-goal': { kind: 'indirect', reason: 'The strip verbs route goal.* mutations; the host GoalService owns the model-visible goal/change context message.' },
   'packages/extensions/ui-cordis': { kind: 'indirect', reason: 'The definition card drives the host dynamic run/stop verbs that the model\'s cordis_run/cordis_stop tools also reach; the runner owns any model-visible effect.' },
   'packages/client/ui-permission-presets': { kind: 'indirect', reason: 'The picker submits the host /permission command; the knob events it appends own the model-visible effect through the sandbox/approval consumers.' },
@@ -153,6 +164,7 @@ const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
   'packages/client/ui-settings': { kind: 'none', reason: 'Browser-side UI plugin layer; registers nothing model-facing.' },
   'packages/client/ui-settings-general': { kind: 'none', reason: 'Browser-side UI plugin layer; registers nothing model-facing.' },
   'packages/client/ui-settings-models': { kind: 'none', reason: 'Browser-side UI plugin layer; registers nothing model-facing.' },
+  'packages/client/ui-plugin-market': { kind: 'none', reason: 'Browser-side Discover tab; registers nothing model-facing.' },
   'packages/client/ui-plugin-manager': { kind: 'none', reason: 'Browser-side management surface; registers nothing model-facing.' },
   'packages/client/ui-settings-plugin-inventory': { kind: 'none', reason: 'Browser-side inventory projection; registers nothing model-facing.' },
   'packages/client/locale': { kind: 'none', reason: 'Browser-side UI plugin layer; registers nothing model-facing.' },
@@ -160,17 +172,23 @@ const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
   'packages/context/file-reference': { kind: 'indirect', reason: 'The discovery seam and grammar delegate model guidance to the composed provider.' },
   'packages/fs/fs': { kind: 'indirect', reason: 'The service interface delegates model rendering to dsh-tool-fs.' },
   'packages/fs/fs-local': { kind: 'indirect', reason: 'The provider backend delegates model rendering to dsh-tool-fs.' },
-  'packages/hooks/hook-protocol': { kind: 'indirect', reason: 'Only the hook bridge plugins render decoded hook output to a model.' },
+  'packages/experimental/hook-protocol': { kind: 'indirect', reason: 'Only the hook bridge plugins render decoded hook output to a model.' },
   'packages/host/directory-picker': { kind: 'none', reason: 'The GUI-host picking seam registers nothing model-facing.' },
   'packages/host/directory-picker-auto': { kind: 'none', reason: 'The GUI-host picking chooser only mounts a backend row; it registers nothing model-facing.' },
   'packages/host/directory-picker-browse': { kind: 'none', reason: 'The GUI-host picking backend registers nothing model-facing.' },
   'packages/host/directory-picker-native': { kind: 'none', reason: 'The GUI-host picking backend registers nothing model-facing.' },
   'packages/host/webserver': { kind: 'none', reason: 'The HTTP carrier bridges browser and API handler and registers nothing model-facing.' },
-  'packages/webhook/webhook-github': { kind: 'indirect', reason: 'The adapter delegates model-visible text to matching rules and dsh-webhook.' },
+  'packages/experimental/webhook-github': { kind: 'indirect', reason: 'The adapter delegates model-visible text to matching rules and dsh-webhook.' },
   'packages/host/frontend-static': { kind: 'none', reason: 'The SPA dist server answers browser asset requests and registers nothing model-facing.' },
   'packages/host/plugin-inventory': { kind: 'none', reason: 'Host-side read-only Loader projection; registers nothing model-facing.' },
   'packages/host/open-in-app': { kind: 'none', reason: 'Host routes opening desktop applications for a human; registers nothing model-facing.' },
   'packages/client/ui-open-in-app': { kind: 'none', reason: 'Browser-side split button opening the workspace directory for a human; registers nothing model-facing.' },
+  'packages/client/ui-secret-mask': { kind: 'none', reason: 'Browser-side display masking of sent user text; registers nothing model-facing.' },
+  'packages/experimental/session-search': { kind: 'indirect', reason: 'The profile layer delegates model-visible behavior to its selected capability.' },
+  'packages/experimental/ralph-bundle': { kind: 'indirect', reason: 'The profile layer delegates model-visible behavior to its selected capability.' },
+  'packages/experimental/terminal-bundle': { kind: 'indirect', reason: 'The profile layer delegates model-visible behavior to its selected capability.' },
+  'packages/experimental/badge-skill-bundle': { kind: 'indirect', reason: 'The profile layer delegates model-visible behavior to its selected capability.' },
+  'packages/experimental/session-titles-bundle': { kind: 'indirect', reason: 'The profile layer delegates model-visible behavior to its selected capability.' },
   'packages/bundle/base': { kind: 'indirect', reason: 'The bundle is a patch-list carrier; each inserted row\'s package owns its model-facing behavior.' },
   'packages/bundle/headless': { kind: 'none', reason: 'The one-shot runner submits the task as an ordinary user message; prompts and tools belong to the composed base and headless bundles.' },
   'packages/llm/llm': { kind: 'none', reason: 'The adapter registry forwards already-assembled requests unchanged.' },
@@ -199,14 +217,13 @@ const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
   'packages/session/session-telemetry-otel': { kind: 'none', reason: 'The backend forwards seam records into the OTel SDK pipeline and registers nothing model-facing.' },
   'packages/identity/anonymous-user-id': { kind: 'none', reason: 'The shared identifier reaches DeepSeek only as model-hidden HTTP metadata; it registers nothing model-facing.' },
   'packages/skill/skill': { kind: 'indirect', reason: 'The provider registry delegates model rendering to dsh-tool-skill.' },
-  'packages/skill/skill-badge': { kind: 'indirect', reason: 'The bundled provider delegates model rendering to dsh-tool-skill.' },
+  'packages/experimental/skill-badge': { kind: 'indirect', reason: 'The bundled provider delegates model rendering to dsh-tool-skill.' },
   'packages/skill/skill-office': { kind: 'indirect', reason: 'The bundled Office provider delegates model rendering to dsh-tool-skill.' },
   'packages/skill/skill-filesystem': { kind: 'indirect', reason: 'The provider backend delegates model rendering to dsh-tool-skill.' },
   'packages/spill/spill': { kind: 'indirect', reason: 'The storage seam delegates model rendering to spill consumers.' },
   'packages/spill/spill-local': { kind: 'indirect', reason: 'The storage backend delegates model rendering to spill consumers.' },
   'packages/test-support/session-snapshot': { kind: 'none', reason: 'The test harness observes and normalizes transcripts without changing live requests.' },
   'packages/test-support/agent-loop-testkit': { kind: 'none', reason: 'The test helper mounts services but neither drives nor modifies model requests.' },
-  'packages/runtime-diagnostics/invariants': { kind: 'none', reason: 'The observer validates requests but never rewrites their context.' },
   'packages/test-support/loader-smoke': { kind: 'none', reason: 'The test harness submits an ordinary user task but delegates prompt and tool composition to the loaded tree.' },
   'packages/git/git-local': { kind: 'none', reason: 'Executes the seam\'s git queries behind the service interface; no tools, prompts, or session events of its own.' },
   'packages/test-support/llm-mock-server': { kind: 'none', reason: 'The test server substitutes provider wire behavior without invoking a real model.' },
@@ -360,8 +377,9 @@ for (const packageJson of packageJsons) {
 
   const text = readFileSync(abs, 'utf8')
   const rawLines = text.split('\n')
-  const lines = markdownProseLines(text)
-  const headings = markdownHeadingLines(text)
+  const tree = parseMarkdown(text)
+  const lines = markdownProseLines(text, tree)
+  const headings = markdownHeadingLines(text, tree)
   const h2Headings = headings.filter(heading => heading.depth === 2)
   const modelExperienceHeadings = headings.filter(heading => heading.text
     .trim().replaceAll(/\s+/g, ' ').toLowerCase() === 'model experience')

@@ -158,6 +158,60 @@ describe('WorktreeSection inside GitView', () => {
   })
 })
 
+describe('an ordinary folder that is not a Git repository (2026-10-04)', () => {
+  const renderChanges = (inspector: InspectorRemote) => render(
+    <ChangesView
+      inspector={inspector}
+      bridge={null}
+      sessionId={sessionId}
+      submitInstruction={submitInstruction}
+      t={t}
+      useConversation={noChat}
+    />,
+  )
+  const notRepository = () => ({
+    ok: false as const,
+    error: Object.assign(new Error("'E:/plain' is not inside a Git repository"), { code: 'workbench/not-a-repository' }) as never,
+  })
+
+  it('shows the empty state, not a failed read, in both the Changes and the Git views', async () => {
+    const inspector = fakeInspector({ status: vi.fn(async () => notRepository()), overview: vi.fn(async () => notRepository()) })
+    const changes = renderChanges(inspector)
+    expect(await screen.findByText(zh['notRepository.title'])).toBeTruthy()
+    expect(screen.getByText(zh['notRepository.hint'])).toBeTruthy()
+    expect(screen.queryByRole('alert')).toBeNull()
+    changes.unmount()
+    render(
+      <GitView
+        inspector={inspector}
+        bridge={null}
+        sessionId={sessionId}
+        submitInstruction={submitInstruction}
+        t={t}
+        useConversation={noChat}
+      />,
+    )
+    expect(await screen.findByText(zh['notRepository.title'])).toBeTruthy()
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('still shows the concrete reason for every other failed read', async () => {
+    const inspector = fakeInspector({ status: vi.fn(async () => failed('git is unavailable: spawn git ENOENT')) })
+    renderChanges(inspector)
+    expect(await screen.findByRole('alert')).toHaveProperty('textContent', expect.stringContaining('git is unavailable: spawn git ENOENT'))
+    expect(screen.queryByText(zh['notRepository.title'])).toBeNull()
+  })
+
+  it('shows a damaged repository as a failed read with git\'s stderr, never the git-init hint', async () => {
+    const stderr = 'fatal: invalid gitfile format: E:/broken/.git'
+    const inspector = fakeInspector({ status: vi.fn(async () => failed(stderr)), overview: vi.fn(async () => failed(stderr)) })
+    renderChanges(inspector)
+    expect(await screen.findByRole('alert')).toHaveProperty('textContent', expect.stringContaining(stderr))
+    expect(screen.queryByText(zh['notRepository.title'])).toBeNull()
+    expect(screen.queryByText(zh['notRepository.hint'])).toBeNull()
+  })
+})
+
 /** The Memory view for one inspector and bridge, on the fixed test session. */
 function renderMemory(inspector: InspectorRemote, bridge: ControlBridgeClient | null) {
   return render(

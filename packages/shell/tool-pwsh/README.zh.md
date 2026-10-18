@@ -25,6 +25,8 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
+新命令从 Session 的当前工作目录启动。相对 `workdir` 从该目录解析；单次调用的覆盖值与后台任务不会改变该目录。
+
 在 agent 需要运行 PowerShell 命令的任何组合中加载本插件——通常是 `ctx.shell` 由 PowerShell 执行器支撑的 Windows 组合。一旦挂载执行器提供方与 `dsh-shell-env` 注册表，它就注册 `pwsh` 工具。
 
 ### 何时选择
@@ -52,7 +54,7 @@ kind: "package-reference"
 
 ### 运行命令
 
-工具执行 `pwsh -Command <command>` 并返回合并后的输出。命令每次调用都运行在全新 pwsh 进程中，因此状态从不保留——请传 `workdir` 而不是 `cd`。路径使用原生 Windows 形式，环境变量用 `$env:NAME` 读取。非零退出以 `[exit code: N]` 报告；在 Windows 上，强制终止的命令以 `[exit code: 1]` 结算且没有信号标记，因此 agent 把中断后的裸 exit 1 当作终止而非命令失败。工具描述要求 agent 在任何删除或移动前校验解析后的绝对目标路径，并且不要给 `$HOME` 等自动变量赋值。后台运行、输出截断以及 `description`／`timeoutMs`／`workdir` 参数的行为与 [`dsh-tool-bash`](../tool-bash/README.zh.md#running-long-commands-in-the-background) 完全一致，包括异步 shell 准备过程中由任务负责的取消。
+工具执行 `pwsh -Command <command>` 并返回合并后的输出。命令每次调用都运行在全新 pwsh 进程中，因此状态从不保留——请传 `workdir` 而不是 `cd`。路径使用原生 Windows 形式，环境变量用 `$env:NAME` 读取。非零退出以 `[exit code: N]` 报告；在 Windows 上，强制终止的命令以 `[exit code: 1]` 结算且没有信号标记，因此 agent 把中断后的裸 exit 1 当作终止而非命令失败。schema 将 `description` 列在 `command` 前并要求模型先输出它，但不强制 JSON 成员顺序。工具描述要求 agent 在任何删除或移动前校验解析后的绝对目标路径，并且不要给 `$HOME` 等自动变量赋值。后台运行、输出截断以及 `description`／`timeoutMs`／`workdir` 参数的行为与 [`dsh-tool-bash`](../tool-bash/README.zh.md#running-long-commands-in-the-background) 完全一致，包括异步 shell 准备过程中由任务负责的取消。
 
 ### 前台命令即任务
 
@@ -74,11 +76,13 @@ kind: "package-reference"
 <details>
 <summary>实现细节——点击展开</summary>
 
+前台与后台的结构化结果均包含 `cwd`，即执行器解析后的启动目录。持久化展示元数据携带同一值，使已结束的调用卡片保留该次调用使用的目录。命令内部的 `cd` 不会改变这个启动值；原生结果文本仍由 stdout、stderr 与状态标记组成。
+
 本节解释工具背后的设计决策，并指出实现它们的代码位置；可观察行为已在[使用本包](#use-this-package)中完整说明。
 
 ### 设计理念
 
-- **`dsh-tool-bash` 的刻意孪生。** 前台与后台执行、受管环境、沙箱升权面以及标记／截断渲染都逐调用镜像 bash 工具，因此其中之一的消费方也能接受另一个的协议形状（[pwsh 工具与 bash 对齐 Agent Note](../../../.agents/notes/implemented/feature/2026-08-02-pwsh-tool-bash-parity.zh.md)）。
+- **`dsh-tool-bash` 的刻意孪生。** 前台与后台执行、受管环境、沙箱升权面以及标记／截断渲染都逐调用镜像 bash 工具，因此其中之一的消费方也能接受另一个的协议形状（[pwsh 工具与 bash 对齐 参考](README.zh.md)）。
 - **PowerShell 方言约定。** 工具约定是 PowerShell：原生路径与 `$env:` 变量，经由 `pwsh -Command` 执行，没有中间 shell。
 - **Windows 沙箱事实写进描述。** ConstrainedLanguage 与命名管道约定是 Windows 受限令牌行为；教授它们的条件是「已挂载任意约束执行器」，之所以安全，是因为每个已发布的配对都是 win32-only。
 - **非零退出只报告、不失败。** 只有基础设施故障（spawn 错误、中止）才会作为工具错误暴露，与 bash 的故事一致。
@@ -90,7 +94,6 @@ kind: "package-reference"
 | [`src/index.ts`](src/index.ts) | 插件入口：工具注册、提示词区段、参数校验、升权、请求组装 |
 | [`src/background.ts`](src/background.ts) | 把已结算的进程映射为通用任务结果词汇，并把输出环读取渲染为进程读取 |
 | [`src/render.ts`](src/render.ts) | 模型侧结果文本：流、标记、截断通知（bash 孪生） |
-| — | 不发布运行时不变式伴生入口；除所属 seam 强制执行的约定外，本包不公开独立的事件序列或可变数据关系。 |
 
 ### 渲染与退出标记
 
@@ -109,7 +112,7 @@ kind: "package-reference"
 - [Bash 执行器子系统](../../../docs/subsystems/shell.zh.md)——请求／spec 词汇、结果与后台进程。
 - [shell-env](../shell-env/README.zh.md)——每次调用都会收到的受管 `DSH_*` 环境。
 - [tool-jobs](../../jobs/tool-jobs/README.zh.md)——后台运行的 `job_output`、`job_list` 与 `job_kill` 控制。
-- [pwsh 工具与 bash 对齐 Agent Note](../../../.agents/notes/implemented/feature/2026-08-02-pwsh-tool-bash-parity.zh.md)——为什么工具镜像 bash 工具。
+- [历史pwsh 工具与 bash 对齐 Agent Note](../../../.agents/notes/archived/feature/2026-08-02-pwsh-tool-bash-parity.md)——为什么工具镜像 bash 工具。
 - [Windows ACL 受限令牌沙箱 Agent Note](../../../.agents/notes/implemented/feature/2026-08-08-windows-acl-restricted-token-sandbox.zh.md)——语言模式与命名管道约定。
 - [生成的工具目录](../../../docs/tool-catalog.zh.md#deepseek-aidsh-tool-pwsh)——`pwsh` 参数 schema 的确切内容。
 - [生成的配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-tool-pwsh)——每个受支持配置字段及其源声明。
@@ -205,7 +208,6 @@ Non-zero exits are reported as `[exit code: N]` markers; investigate failures be
 - **Windows 沙箱下的语言模式与命名管道捕获**——在 [Windows ACL 沙箱](../../sandbox/sandbox-windows-acl/README.zh.md)下，只读 pwsh 以 ConstrainedLanguage 启动，因为其临时目录写入被拒绝，导致 PowerShell 的 AppLocker 探测失败并按拒绝处理：`Add-Type`、非核心 .NET 静态调用（`[System.IO.*]::`、`[math]::`）、COM 对象与反射会以 "only core types" 错误失败，且该模式无法从内部解除。workspace-write 的私有临时目录让探测完成，因此除非宿主策略另有规定，它保持 FullLanguage。两种受限模式都拒绝命名管道打开，因此受限命令内部的管道 stdio spawn 会以 EPERM 失败。工具描述把两条约定都教给模型；完整限制以后端 README 为准。
 - **没有持久 shell**——每次调用都启动全新的 `pwsh -Command`；持久 shell 对应物是 [`@deepseek-ai/dsh-tool-pwsh-persistent`](../tool-pwsh-persistent/README.zh.md)，它跨调用保持一个按所有者隔离的 pwsh 存活。
 - **PowerShell 方言约定**——模型必须编写 PowerShell（原生路径、`$env:` 变量），而不是 bash；没有方言翻译。
-- **会话 cwd 身份未规范化**——workdir 基准就是会话头部 cwd 原样，不像 bash 工具那样以沙箱根规范化身份为准。在约束执行器下，策略的 workspace root 确实被规范化（由共享策略服务完成），因此当原始会话 cwd 与其规范形式不同时，workdir 与约束根可能分叉——这是推迟到共享 shell 工具基座抽取的对齐差距。
 
 <a id="dev-note"></a>
 ### 开发备注

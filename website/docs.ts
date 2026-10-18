@@ -195,6 +195,14 @@ const homeAndGuide = pairedPages([
     order: 3,
   },
   {
+    source: 'docs/user/guide/public-deployments.md',
+    route: 'guide/public-deployments.md',
+    label: { root: '公开部署', en: 'Public deployments' },
+    sidebar: { root: 'zh-guide', en: 'en-guide' },
+    section: { root: '入门', en: 'Guide' },
+    order: 4,
+  },
+  {
     source: 'docs/user/guide/python-sdk.md',
     route: 'guide/python-sdk.md',
     label: { root: 'Python', en: 'Python' },
@@ -216,6 +224,14 @@ const homeAndGuide = pairedPages([
     label: { root: '会话内提醒', en: 'Session reminders' },
     sidebar: { root: 'zh-guide', en: 'en-guide' },
     section: { root: '自动化', en: 'Automation' },
+    order: 2,
+  },
+  {
+    source: 'docs/user/guide/plugin-market.md',
+    route: 'guide/plugin-market.md',
+    label: { root: '插件市场', en: 'Plugin markets' },
+    sidebar: { root: 'zh-guide', en: 'en-guide' },
+    section: { root: '集成', en: 'Integrations' },
     order: 2,
   },
   {
@@ -356,7 +372,6 @@ const subsystemGroups = [
   ['内核与作用域', 'Core and scopes', [
     ['core.md', '核心', 'Core'],
     ['scope.md', '作用域', 'Scopes'],
-    ['invariants.md', '运行时不变式', 'Runtime invariants'],
   ]],
   ['会话与持久化', 'Sessions and persistence', [
     ['session.md', '会话', 'Sessions'],
@@ -458,6 +473,7 @@ const reference = [
     ['docs/config-catalog.md', 'reference/config-catalog.md', '插件配置', 'Plugin configuration'],
     ['docs/tool-catalog.md', 'reference/tool-catalog.md', 'Tool Schema', 'Tool schemas'],
     ['docs/persistence-catalog.md', 'reference/persistence-catalog.md', '持久化事件', 'Persistence events', 'deep'],
+    ['docs/experimental-persistence-catalog.md', 'reference/experimental-persistence-catalog.md', '实验性持久化记录', 'Experimental persistence'],
   ] as const).map(([source, route, rootLabel, enLabel, outline], order): PairedPage => ({
     source,
     route,

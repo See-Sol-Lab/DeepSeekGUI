@@ -25,6 +25,8 @@ Use `dsh-tool-fs-search` to give models `glob` file discovery and `grep` content
 <a id="use-this-package"></a>
 ## Use this package
 
+Searches use the Session's current working directory, including changes made with `working_directory`.
+
 Mount the tools after a `ctx.subprocess` backend; no host `rg` install is needed, and no filesystem provider is required. The model then gets modification-time-ordered file discovery and line-oriented content search, each bounded and timeout-guarded.
 
 ### Minimal composition
@@ -219,5 +221,3 @@ These limits define when the search tools are a poor fit or need special operati
 None.
 
 </details>
-
-**Runtime invariant:** No companion is published. This model-facing adapter has no independent lifecycle stream; execution relations are owned by the capability seam it calls.

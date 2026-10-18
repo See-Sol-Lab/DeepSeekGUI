@@ -124,6 +124,8 @@ export interface DesktopControlModel {
   browserPane: { present: boolean; open: boolean }
   /** 数据位置与迁移收尾事实（B6-P7；main 单处持有）。 */
   dataHome: DataHomeView
+  /** 程序与数据整体搬家（Phase 1）；缺省为 null = 宿主不提供。 */
+  relocation?: RelocationView | null
   /**
    * 「用量与余额」页事实（B7-P3；main 单处持有）。只有聚合后的展示值：
    * token、cookie、api key 名称都留在内置浏览器的登录 session 与 main 里。
@@ -266,6 +268,33 @@ export interface DataHomeView {
    * 这是搬家的收尾主动作（用户正是为了腾出原盘空间才搬的），不是残留清理。
    */
   readonly pendingCleanup: { readonly count: number; readonly sourceHome: string; readonly bytes: number } | null
+}
+
+/**
+ * 程序与托管数据整体搬家（Phase 1，2026-10-05；main 单处持有，纯逻辑见 relocation.ts）。
+ * 面板据此决定给不给入口、显示进度还是上一次的结果。
+ */
+export interface RelocationView {
+  /** 不支持的原因：只有 Windows 打包版能搬程序（AppImage 是一个文件，挪文件即可）。null = 支持。 */
+  readonly unsupported: 'not-windows' | 'not-packaged' | null
+  /** 当前程序目录。 */
+  readonly appDir: string
+  /** idle / 下载安装包 / 搬数据 / 交给安装器。 */
+  readonly phase: 'idle' | 'downloading' | 'migrating' | 'handing-off'
+  /** 下载进度；只在 downloading 时有。 */
+  readonly progress: { readonly bytes: number; readonly total: number } | null
+  /**
+   * 上一次搬家的结果（启动时对照记录得出，或这次运行里交接失败）。null = 无。
+   * not-moved：程序没搬成（数据若已搬就在新位置），可重试或放弃。
+   */
+  readonly last: {
+    readonly kind: 'moved' | 'not-moved' | 'elsewhere' | 'spawn-failed' | 'quit-failed' | 'record-unreadable'
+    readonly root: string
+    readonly appDir: string
+    readonly dataMoved: boolean
+    /** 交接助手最后写下的阶段（relocation.ts 的 RelocationHelperPhase）；null = 没有。 */
+    readonly helperPhase: string | null
+  } | null
 }
 
 /** Diagnostics Center 面板事实。 */
@@ -452,6 +481,17 @@ export type DesktopControlCommand =
    */
   | { type: 'migration-cleanup' }
   /**
+   * Phase 1（2026-10-05）：程序与托管数据整体搬家。目标由 main 弹原生选择器取得，
+   * 命令不带路径；确认、下载、迁移、交给安装器全在 main。
+   */
+  | { type: 'relocate-install' }
+  /** 上次程序没搬成：用同一目标再交给安装器一次。 */
+  | { type: 'relocation-retry' }
+  /** 不搬程序了：清掉搬家记录（已搬的数据留在新位置）。 */
+  | { type: 'relocation-dismiss' }
+  /** 取消正在进行的安装包下载。 */
+  | { type: 'relocation-cancel' }
+  /**
    * 莉莉丝 2026-09-10 人工验收：删掉一个归档会话在磁盘上的数据。上游从
    * 持久化层到 RPC 面都没有删除通道（归档只是把会话从侧边栏藏起来），
    * 所以这件事由 main 直办。只删 Home 之内属于这个会话的东西，删不掉
@@ -504,6 +544,10 @@ const BARE_COMMANDS = new Set([
   'update-toggle-auto-download',
   'migrate-managed-home',
   'migration-cleanup',
+  'relocate-install',
+  'relocation-retry',
+  'relocation-dismiss',
+  'relocation-cancel',
   'open-compatibility-view',
   'open-workbench',
 ])
@@ -756,6 +800,8 @@ export interface ControlModelInput {
   browserPane: { present: boolean; open: boolean }
   /** 数据位置与迁移收尾事实（B6-P7；main 单处持有）。 */
   dataHome: DataHomeView
+  /** 程序与数据整体搬家（Phase 1）；缺省为 null = 宿主不提供。 */
+  relocation?: RelocationView | null
   /** 「用量与余额」页事实（B7-P3；main 单处持有）。 */
   usage: UsageView
   /** 技能导入的最近一次选择结果（B7-P4）；缺省为 null。 */
@@ -822,6 +868,7 @@ export function buildControlModel(input: ControlModelInput): DesktopControlModel
     powerShell7Available: input.powerShell7Available,
     browserPane: input.browserPane,
     dataHome: input.dataHome,
+    relocation: input.relocation ?? null,
     usage: input.usage,
     skillPick: input.skillPick ?? null,
     sessionExport: input.sessionExport ?? null,

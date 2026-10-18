@@ -92,7 +92,6 @@ The library is built on one boundary: share the timing and classification, keep 
 | File | Role |
 |---|---|
 | [`src/index.ts`](src/index.ts) | `clampTimeout`, `deadline`, `idleWatchdog`, `timeoutOf`, `TimeoutReason`, `MAX_TIMER_DELAY_MS` |
-| — | No runtime invariant companion is published; this pure utility owns no event stream or mutable runtime data; its value algebra is enforced by unit tests. |
 
 ### How a deadline fuses sources
 
@@ -104,7 +103,7 @@ The library is built on one boundary: share the timing and classification, keep 
 
 ### Why an idle watchdog rearms
 
-`idleWatchdog` keeps one stable fused signal and arms the timer only while `next()` is outstanding; resolution disarms, later demand or `pulse()` rearms, disposal clears, and concurrent demand rejects. Only the transport observes the signal, so the provider's real read must listen to it — the DeepSeek and pi-ai adapters close their response body or SDK request on abort.
+`idleWatchdog` keeps one stable fused signal and arms the timer only while `next()` is outstanding; resolution disarms, later demand or `pulse()` rearms, disposal clears, and concurrent demand rejects. Unlike `deadline()`, an idle watchdog settles its outstanding demand on its own deadline: a read the transport leaves pending after an abort rejects `next()` with the watchdog's `TimeoutReason`, so a transport that never observes the signal cannot extend the wait past the idle interval. The signal still tells the transport to release its own resources — the DeepSeek and pi-ai adapters close their response body or SDK request on abort.
 
 </details>
 

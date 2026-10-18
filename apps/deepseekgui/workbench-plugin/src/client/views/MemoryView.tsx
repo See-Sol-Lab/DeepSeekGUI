@@ -13,6 +13,7 @@ import type { WorkbenchMemory } from '@deepseek-ai/dsh-workbench-inspector/types
 import { MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { Translate as MemoryTranslate } from '../locales-memory.ts'
 import { ProjectMemoryEditor } from '../memory/ProjectMemoryEditor.tsx'
+import { ArchiveNotes } from './ArchiveNotes.tsx'
 import { button, BUTTON_CLASS, caption, ReadStatus, Toolbar, useRead, view, type ViewProps } from './shared.tsx'
 
 const reader: React.CSSProperties = {
@@ -142,6 +143,7 @@ export function MemoryView(props: MemoryViewProps) {
       {legacy !== undefined && (desktop
         ? <ProjectMemoryEditor key={`${sessionId}:${legacy.text ?? ''}`} sessionId={sessionId} memory={legacy} bridge={bridge} onSaved={() => { read.refresh() }} t={tm} />
         : <LegacyReader memory={legacy} fileName={fileName} t={t} />)}
+      <ArchiveNotes inspector={inspector} sessionId={sessionId} t={t} />
       <p style={{ ...guide, marginTop: 8 }}>{t('memory.globalNav')}</p>
       {about}
       {bridge === null && <div style={caption}>{t('common.noDesktop')}</div>}

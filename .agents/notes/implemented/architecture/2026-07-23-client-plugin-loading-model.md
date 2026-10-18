@@ -4,7 +4,7 @@ Status: implemented
 
 English | [中文](2026-07-23-client-plugin-loading-model.zh.md)
 
-> Scope: the browser-side plugin loading machinery — how code arrives, how Cordis governs it, and how hot reload rides on that model. This note owns the loading chain; the [client shell layering note](2026-08-15-client-shells-and-dynamic-packages.md) owns package categories, build faces, shared-module requests, and npm dependency declarations, while the [web client architecture note](2026-07-19-gui-web-client-architecture.md) owns slots and the data object layer.
+> Scope: the browser-side plugin loading machinery — how code arrives, how Cordis governs it, and how hot reload rides on that model. This note owns the loading chain; the [client shell layering note](2026-08-15-client-shells-and-dynamic-packages.md) owns package categories, build faces, shared-module requests, and npm dependency declarations, while the [web client architecture reference](../../../../docs/subsystems/web-client.md) owns slots and the data object layer.
 
 ## Problem
 
@@ -94,7 +94,7 @@ On the browser side, the transport delegates code replacement to the same module
 
 Bootstrap replacement is rejected before invalidation or teardown: the module system retains its initial exports, so remounting its old code would reset consumers without applying the requested revision. The page reports the required reload and preserves the bootstrap fiber. Every non-bootstrap plugin shares the replacement semantics; an `immediately` row reloads exactly like a lazy one. Dependency cascade costs zero client code: a fiber's activation epoch strings its service providers' uids, so replacing a foundational provider such as connection re-loads every dependent through cordis itself — correct, if heavy.
 
-Reload creates a fresh fiber and component state; it does not preserve React state inside the replaced plugin. Static assembly libraries and the shell require a rebuilt page. Failed imports or activation remain diagnosable and retryable without rolling back unrelated plugins. Self-reload closes the old SSE channel and opens a new one; its full snapshot repairs missed graph changes. Boot, graph updates and rebuilt frames share the same queue, so a code replacement cannot overlap initial module arrival.
+Reload creates a fresh fiber and component state; it does not preserve React state inside the replaced plugin. Static assembly libraries and the shell require a rebuilt page; when the Host itself serves another release, the page holds plugin replacement and asks whether to reload ([Host release change prompt](../feature/2026-10-14-host-release-change-refresh-prompt.md)). Failed imports or activation remain diagnosable and retryable without rolling back unrelated plugins. Self-reload closes the old SSE channel and opens a new one; its full snapshot repairs missed graph changes. Boot, graph updates and rebuilt frames share the same queue, so a code replacement cannot overlap initial module arrival.
 
 ## Package ownership
 

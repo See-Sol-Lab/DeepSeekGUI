@@ -1,30 +1,17 @@
+import { mountWorkingDirectoryFixture } from '../../subagent/tests/working-directory-fixture.ts'
+import { mountLocalActivations, startTestActivation as start } from '../../subagent/tests/local-activation.ts'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
-import InvariantRegistry from '@deepseek-ai/dsh-invariants'
-import * as SessionInvariant from '@deepseek-ai/dsh-session/invariant'
-import * as AgentInvariant from '@deepseek-ai/dsh-agent/invariant'
-import * as AgentLoopInvariant from '@deepseek-ai/dsh-agent-loop/invariant'
-import SubagentRuntime, { type SubagentStartRequest } from '@deepseek-ai/dsh-subagent'
+import SubagentRuntime from '@deepseek-ai/dsh-subagent'
 import * as Spawn from '@deepseek-ai/dsh-subagent-spawn-in-process'
 import { MockAdapter, textResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
 import * as fork from '../src/index.ts'
 
 type Script = ConstructorParameters<typeof MockAdapter>[0]
-
-async function mountInvariants(ctx: Context): Promise<void> {
-  await ctx.plugin(InvariantRegistry)
-  await ctx.plugin(SessionInvariant)
-  await ctx.plugin(AgentInvariant)
-  await ctx.plugin(AgentLoopInvariant)
-}
-
-function start(ctx: Context, provider: string, request: Omit<SubagentStartRequest, 'signal'> & { signal?: AbortSignal }) {
-  return ctx.subagents.start(provider, { signal: request.signal ?? new AbortController().signal, ...request })
-}
 
 /**
  * The two in-process backends coexist on one context: the SAME parent agent
@@ -35,8 +22,9 @@ function start(ctx: Context, provider: string, request: Omit<SubagentStartReques
 async function setup(script: Script) {
   const ctx = new Context()
   await mountAgentLoopTestDependencies(ctx)
-  await mountInvariants(ctx)
+  await mountLocalActivations(ctx)
   await ctx.plugin(AgentLoop, { agents: [] })
+  await mountWorkingDirectoryFixture(ctx)
   await ctx.plugin(SubagentRuntime)
   await ctx.plugin(Spawn, { providerName: 'spawn' })
   await ctx.plugin(fork, { providerName: 'fork' })
@@ -82,8 +70,8 @@ describe('multi-subagent coexistence (spawn + fork on one context)', () => {
     expect(text(forkResult.output)).toBe('fork child reply')
 
     // The two children are distinct sessions, both lineage-stamped to the parent.
-    const spawnChild = ctx.agents.get(spawnRun.id)!
-    const forkChild = ctx.agents.get(forkRun.id)!
+    const spawnChild = spawnRun.localAgent
+    const forkChild = forkRun.localAgent
     expect(spawnChild.session.header.id).not.toBe(forkChild.session.header.id)
     expect(spawnChild.session.header.parentSession).toBe(parent.session.header.id)
     expect(forkChild.session.header.parentSession).toBe(parent.session.header.id)

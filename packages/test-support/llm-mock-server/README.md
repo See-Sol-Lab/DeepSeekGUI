@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-This package gives tests and demos a scriptable Messages-compatible HTTP/SSE endpoint, so they can exercise model-provider failures and successes without a provider key. Each accepted `/v1/messages` request consumes the next scripted behavior, including resets, stalls, malformed chunks, rate limits, server errors, completions, and tool calls. Test authors can run it with `pnpm run mock:llm` or call `startMockLlmServer`, which returns captured requests for assertions. Seeded `random` behavior supports reproducible mixed-failure stress runs.
+This package gives tests and demos a scriptable Messages-compatible HTTP/SSE endpoint with named events for native SDK consumers, so they can exercise model-provider failures and successes without a provider key. Each accepted `/v1/messages` request consumes the next scripted behavior, including resets, stalls, malformed chunks, rate limits, server errors, completions, and tool calls. Test authors can run it with `pnpm run mock:llm` or call `startMockLlmServer`, which returns captured requests for assertions. Seeded `random` behavior supports reproducible mixed-failure stress runs.
 
 ## Table of Contents
 
@@ -117,7 +117,6 @@ The server is built on one rule: each accepted Messages request consumes exactly
 | [`src/index.ts`](src/index.ts) | `startMockLlmServer`: listener, behavior table, seeded randomness, telemetry, captured request records |
 | [`src/cli.ts`](src/cli.ts) | `--sequence` and timing/content option parsing, JSONL stdout telemetry |
 | [`src/bin.ts`](src/bin.ts) | The `pnpm run mock:llm` source entry |
-| — | No runtime invariant companion is published; this standalone test server owns no Cordis event stream or shared data; its wire behavior and lifecycle are exercised through direct HTTP and assembled-loop tests. |
 
 ### Wire flow
 

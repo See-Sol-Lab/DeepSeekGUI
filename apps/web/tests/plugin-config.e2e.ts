@@ -9,7 +9,7 @@ import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import type { Browser, Locator, Page } from 'playwright'
 import { chromium } from 'playwright'
-import { OPTIONAL_BUNDLES } from '@deepseek-ai/dsh-app-boot'
+import { ON_DEMAND_BUNDLES, OPTIONAL_BUNDLES } from '@deepseek-ai/dsh-app-boot'
 import { afterAll, beforeAll, describe, expect, it, onTestFailed } from 'vitest'
 import { join } from 'node:path'
 import {
@@ -36,6 +36,7 @@ describe('web e2e: plugin configuration pages', () => {
     // below, that half registers its row's configuration into the page.
     scaffold = await launchWebScaffold({
       extraOverlayPath: fileURLToPath(new URL('./pin-browse-picker.overlay.yml', import.meta.url)),
+      deepSeekSearch: { apiKeyEnv: 'DSH_PLUGIN_CONFIG_E2E_UNUSED_KEY' },
       profile: { packages: [{ dir: join(FIXTURE_PLUGINS, 'fixture-live-client') }] },
     })
     browser = await chromium.launch()
@@ -68,7 +69,7 @@ describe('web e2e: plugin configuration pages', () => {
     while (await panel.getByRole('button', { name: /^返回/ }).count() > 0) {
       await panel.getByRole('button', { name: /^返回/ }).first().click()
     }
-    await panel.getByRole('heading', { name: '官方', exact: true }).waitFor({ timeout: 20_000 })
+    await panel.getByRole('heading', { name: '内置插件配置', exact: true }).waitFor({ timeout: 20_000 })
     return panel
   }
 
@@ -83,28 +84,116 @@ describe('web e2e: plugin configuration pages', () => {
     return readFile(join(scaffold.harnessHome, 'profiles', 'scaffold', 'cordis.patch.yml'), 'utf8').catch(() => '')
   }
 
-  it('lists one official page per exposed host-plane namespace after the official bundles', async () => {
+  it('keeps configuration pages first and opens the full experimental plugin list separately', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-plugin-config-cards'))
     const panel = await openPlugins()
 
     // Every page the shipped web composition exposes: the shell executor, the
-    // agent loop, subagent selection, and the DeepSeek search provider, after
-    // the official bundles the installation ships switched off.
+    // agent loop, subagent selection, and the DeepSeek search provider.
     await panel.getByRole('button', { name: '查看 网页搜索', exact: true }).waitFor({ timeout: 20_000 })
-    const official = panel.locator('[data-plugin-group="official"]')
-    expect(await official.locator('[data-plugin-package]').count()).toBe(OPTIONAL_BUNDLES.length)
-    expect(await official.locator('[data-plugin-item]').count()).toBe(4)
-    for (const title of ['终端', 'Agent 循环', '子智能体', '网页搜索']) {
-      expect(await official.getByRole('button', { name: `查看 ${title}`, exact: true }).count()).toBe(1)
+    const basic = panel.locator('[data-plugin-group="basic"]')
+    expect(await basic.locator('[data-plugin-item]').count()).toBe(4)
+    expect(await basic.locator(':scope > ul > li').evaluateAll(cards => cards.map(card => card.getAttribute('data-plugin-item'))))
+      .toEqual(['subagent', 'web-search', 'agent-loop', 'shell'])
+    for (const title of ['子智能体', '网页搜索', 'Agent 循环', '终端']) {
+      expect(await basic.getByRole('button', { name: `查看 ${title}`, exact: true }).count()).toBe(1)
     }
     // A card carries the one-liner; the fields wait for the page.
-    expect(await official.getByText('限制每条命令最多能跑多久、最多输出多少内容。', { exact: true }).count()).toBe(1)
+    expect(await basic.getByText('限制每条命令最多能跑多久、最多输出多少内容。', { exact: true }).count()).toBe(1)
     expect(await panel.getByLabel('命令超时（毫秒）').count()).toBe(0)
+
+    const extensions = panel.locator('[data-plugin-group="extensions"]')
+    const more = panel.getByRole('button', { name: '更多', exact: true })
+    expect(await extensions.getByRole('heading', { name: '实验性插件', exact: true }).count()).toBe(1)
+    expect(await extensions.getByRole('button', { name: '更多', exact: true }).textContent()).toBe('更多')
+    expect(await extensions.getByRole('list').isVisible()).toBe(true)
+    expect(await panel.locator('[data-plugin-group="more"]').count()).toBe(0)
+    await more.focus()
+    await page.keyboard.press('Enter')
+    await panel.getByRole('heading', { name: '实验性插件', exact: true, level: 1 }).waitFor()
+    expect(await panel.locator('[data-plugin-group="more"] [data-plugin-package]').count())
+      .toBe(OPTIONAL_BUNDLES.length + ON_DEMAND_BUNDLES.length)
+    expect(await basic.count()).toBe(0)
+    expect(await extensions.count()).toBe(0)
+    expect(await panel.locator('[data-plugin-group="bundles"]').count()).toBe(0)
+    await panel.getByRole('button', { name: '查看 Git 工作树', exact: true }).click()
+    await panel.locator('[data-plugin-detail]').waitFor()
+    await panel.getByRole('button', { name: '返回 实验性插件', exact: true }).click()
+    await panel.getByRole('heading', { name: '实验性插件', exact: true, level: 1 }).waitFor()
+    await panel.getByRole('button', { name: '返回插件', exact: true }).focus()
+    await page.keyboard.press('Space')
+    expect(await extensions.getByRole('list').isVisible()).toBe(true)
+    expect(await panel.locator('[data-plugin-group="more"]').count()).toBe(0)
+    await more.click()
+    await page.reload({ waitUntil: 'load' })
+    await openPlugins()
+    expect(await extensions.getByRole('list').isVisible()).toBe(true)
+    expect(await panel.locator('[data-plugin-group="more"]').count()).toBe(0)
 
     const snapshot = await captureStableAria(page, '[data-plugin-panel]', scaffold.workspaceCwd)
     await compareOrRefreshGolden(OFFICIAL_EXPECTED, snapshot, MODE)
     expect(tripwire.pageErrors).toEqual([])
   }, 60_000)
+
+  it('switches search and fetch to the Search and Fetch APIs together and preserves each API’s endpoint', async () => {
+    onTestFailed(() => saveFailureShot(page, 'web-e2e-search-api-settings'))
+    const panel = await openPlugins()
+    await openPage(panel, '网页搜索')
+    const toggle = panel.getByRole('switch', { name: '启用新版 Web 搜索 API', exact: true })
+    const endpoint = panel.locator('#plugin-config-web-search-endpoint')
+    const maxUses = panel.getByLabel('单次请求最多搜索次数', { exact: true })
+    const save = panel.getByRole('button', { name: '保存', exact: true })
+    expect(await toggle.getAttribute('aria-checked')).toBe('false')
+    expect(await panel.getByRole('link', { name: '网页搜索与抓取指南', exact: true }).getAttribute('href'))
+      .toBe('https://api-docs.deepseek.com/zh-cn/guides/search')
+    expect(await panel.getByLabel('Messages API 基础地址', { exact: true }).count()).toBe(1)
+    expect(await maxUses.inputValue()).toBe('5')
+    expect(await endpoint.inputValue()).toBe('')
+    expect(await save.isDisabled()).toBe(true)
+    await endpoint.fill('https://messages.test/anthropic/v1')
+    await save.click()
+    await expect.poll(() => save.isDisabled()).toBe(true)
+    await toggle.focus()
+    await page.keyboard.press('Space')
+    expect(await panel.getByLabel('Search / Fetch API 基础地址', { exact: true }).count()).toBe(1)
+    expect(await endpoint.inputValue()).toBe('https://api.deepseek.com/v1/tools')
+    expect(await maxUses.count()).toBe(0)
+    const count = panel.getByLabel('每次搜索结果数', { exact: true })
+    expect(await count.inputValue()).toBe('10')
+    await count.fill('51')
+    await panel.getByText('请填 1–50 的整数；留空表示使用默认值。', { exact: true }).waitFor()
+    expect(await save.isDisabled()).toBe(true)
+    expect(await toggle.isDisabled()).toBe(true)
+    await count.fill('10')
+    expect(await settingsDocument()).not.toContain('searchProvider: deepseek-search-api')
+    await endpoint.fill('https://search-api.test/api/v1/tools')
+    await save.click()
+    await expect.poll(() => save.isDisabled()).toBe(true)
+    await expect.poll(settingsDocument).toContain('searchProvider: deepseek-search-api')
+    await expect.poll(settingsDocument).toContain('fetchProvider: deepseek-fetch-api')
+    await expect.poll(settingsDocument).toContain('baseURL: https://search-api.test/api/v1/tools')
+    await page.reload({ waitUntil: 'load' })
+    await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })
+    await openPlugins()
+    await openPage(panel, '网页搜索')
+    expect(await toggle.getAttribute('aria-checked')).toBe('true')
+    expect(await endpoint.inputValue()).toBe('https://search-api.test/api/v1/tools')
+    const snapshot = await captureStableAria(page, '[data-plugin-panel]', scaffold.workspaceCwd)
+    await compareOrRefreshGolden(join(SNAPSHOT_DIR, 'web-search.expected.md'), snapshot, MODE)
+    await panel.getByRole('button', { name: '恢复默认', exact: true }).click()
+    expect(await endpoint.inputValue()).toBe('https://api.deepseek.com/v1/tools')
+    await save.click()
+    await expect.poll(() => save.isDisabled()).toBe(true)
+    await expect.poll(settingsDocument).not.toContain('https://search-api.test/api/v1/tools')
+    await toggle.click()
+    expect(await endpoint.inputValue()).toBe('https://messages.test/anthropic/v1')
+    await save.click()
+    await expect.poll(() => save.isDisabled()).toBe(true)
+    await expect.poll(settingsDocument).not.toContain('searchProvider: deepseek-search-api')
+    await expect.poll(settingsDocument).not.toContain('fetchProvider: deepseek-fetch-api')
+    expect(await settingsDocument()).toContain('baseURL: https://messages.test/anthropic/v1')
+    expect(tripwire.pageErrors).toEqual([])
+  })
 
   it('saves subagent limits and resets them to the deployment defaults', async () => {
     const panel = await openPlugins()
@@ -136,7 +225,7 @@ describe('web e2e: plugin configuration pages', () => {
     await openPage(panel, '子智能体')
     expect(await depth.inputValue()).toBe('1')
     expect(await capacity.inputValue()).toBe('8')
-    await panel.getByRole('button', { name: '返回插件列表', exact: true }).click()
+    await panel.getByRole('button', { name: '返回插件', exact: true }).click()
   })
 
   it('opens field explanations with the keyboard and retains unsaved edits', async () => {
@@ -160,7 +249,7 @@ describe('web e2e: plugin configuration pages', () => {
     await panel.getByRole('button', { name: '子智能体并行数量上限说明', exact: true }).click()
     const capacityRules = panel.getByRole('region', { name: '子智能体并行数量上限说明', exact: true })
     expect(await capacityRules.getByText('同一主 Agent 下，所有递归层级同时存活的子智能体总数，主 Agent 不计入。达到上限时，新的启动请求会被拒绝。', { exact: true }).count()).toBe(1)
-    await panel.getByRole('button', { name: '返回插件列表', exact: true }).click()
+    await panel.getByRole('button', { name: '返回插件', exact: true }).click()
     await openPage(panel, '子智能体')
     expect(await depth.inputValue()).toBe('1')
   })
@@ -241,8 +330,8 @@ describe('web e2e: plugin configuration pages', () => {
     await timeout.waitFor({ timeout: 10_000 })
 
     await timeout.fill('7000')
-    await panel.getByRole('button', { name: '返回插件列表' }).click()
-    await panel.getByRole('heading', { name: '官方', exact: true }).waitFor({ timeout: 10_000 })
+    await panel.getByRole('button', { name: '返回插件' }).click()
+    await panel.getByRole('heading', { name: '内置插件配置', exact: true }).waitFor({ timeout: 10_000 })
     await openPage(panel, '终端')
 
     await expect.poll(() => panel.getByLabel('命令超时（毫秒）').inputValue(), { timeout: 5_000 }).toBe('12000')
@@ -317,7 +406,9 @@ describe('web e2e: plugin configuration pages', () => {
     expect(await bundlePage.getByRole('button', { name: '夹具操作' }).count()).toBe(1)
     expect(await bundlePage.locator('[data-live-badge="bundle"]').textContent()).toBe('夹具标签')
     expect(await bundlePage.getByRole('region', { name: '夹具区块' }).getByText('来自夹具的区块内容').count()).toBe(1)
-    const bundleSnapshot = await captureStableAria(page, '[data-plugin-panel]', scaffold.workspaceCwd)
+    const bundleSnapshot = await captureStableAria(page, '[data-plugin-panel]', scaffold.workspaceCwd, {
+      replacements: [[FIXTURE_PLUGINS, '{{fixtures}}']],
+    })
     await compareOrRefreshGolden(BUNDLE_EXPECTED, bundleSnapshot, MODE)
     await configure.click()
 
@@ -340,7 +431,7 @@ describe('web e2e: plugin configuration pages', () => {
     await bundlePage.waitFor({ timeout: 10_000 })
 
     // An official plugin's page is another subject; the fixture's entries render nothing for it.
-    await panel.getByRole('button', { name: '返回插件列表' }).click()
+    await panel.getByRole('button', { name: '返回插件' }).click()
     await openPage(panel, '终端')
     const itemPage = panel.locator('[data-plugin-item-detail]')
     expect(await itemPage.locator('[data-live-action], [data-live-badge], [data-live-section]').count()).toBe(0)
@@ -349,7 +440,7 @@ describe('web e2e: plugin configuration pages', () => {
 
   it.skipIf(MODE === 'record')('keeps the fixture inventory closed', async () => {
     expect(tripwire.warnings).toEqual([])
-    await assertFixtureInventory(SNAPSHOT_DIR, ['bundle.expected.md', 'official.expected.md', 'row.expected.md', 'subagent.expected.md'])
+    await assertFixtureInventory(SNAPSHOT_DIR, ['bundle.expected.md', 'official.expected.md', 'row.expected.md', 'subagent.expected.md', 'web-search.expected.md'])
   })
 
 

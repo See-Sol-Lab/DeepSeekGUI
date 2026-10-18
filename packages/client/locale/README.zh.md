@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-使用 `dsh-client-locale` 可在 web GUI 中切换内置的英文和中文 locale，或 client 插件添加的语言。用户选择会立即生效；loopback 页面把选择持久化到 `$DSH_HOME/cordis.patch.yml`，非 loopback 页面则只为当前进程保留选择。全新浏览器会使用浏览器请求的第一个受支持语言，直到允许读取的已存储偏好到达。插件作者可添加类型化命名空间字典，并通过公开 locale API 翻译；经 slot 渲染的文案无需重新加载即可随语言切换更新。
+使用 `dsh-client-locale` 可在 web GUI 中切换内置的英文和中文 locale，或 client 插件添加的语言。用户选择会立即生效；每个已认证浏览器都通过 Host settings 服务把选择以 `locale.preference` 持久化到 `$DSH_HOME/cordis.patch.yml`。全新浏览器会使用浏览器请求的第一个受支持语言，直到 Host 读取送达已存储偏好。插件作者可添加类型化命名空间字典，并通过公开 locale API 翻译；经 slot 渲染的文案无需重新加载即可随语言切换更新。
 
 ## 目录
 
@@ -67,7 +67,7 @@ export function apply(ctx) {
 
 ### Host 半侧做什么
 
-Host 通过 settings 服务为 loopback 页面持久化偏好。Client 会刻意拒绝非 loopback 页面使用该 settings scope，因此即使 Connection 认证所有 API 方法，它们的 locale 选择仍只存在于进程内。
+每个已认证浏览器都遵循共享的 [settings scope 策略](../ui-settings/README.zh.md)，通过 Host settings 服务持久化偏好。
 
 -----
 
@@ -85,7 +85,7 @@ Host 通过 settings 服务为 loopback 页面持久化偏好。Client 会刻意
 
 ### 偏好解析
 
-临时 locale 来自浏览器（`navigator.languages` 先按完整标签、再按主语言子标签匹配，以英文作为回退），在允许使用的 Host-backed settings scope 送达其存储偏好之前生效。Host 读取在插件激活后运行，因此 settings scope 不可用或被拒绝都不会阻塞页面，结果会实时替换临时值。已存储的外部 locale 会等待其定义注册。`setLocale` 是唯一写入入口；即使 id 已与生效中的 locale 匹配也会持久化，因为生效中的值可能是临时的，必须能供共享同一 home 的其他浏览器继续使用。
+临时 locale 来自浏览器（`navigator.languages` 先按完整标签、再按主语言子标签匹配，以英文作为回退），在 Host settings scope 送达其存储偏好之前生效。Host 读取在插件激活后运行，因此 settings scope 不可用不会阻塞页面，结果会实时替换临时值。已存储的外部 locale 会等待其定义注册。`setLocale` 是唯一写入入口；即使 id 已与生效中的 locale 匹配也会持久化，因为生效中的值可能是临时的，必须能在共享同一 home 的其他浏览器上存活。
 
 ### 字典查找
 
@@ -112,7 +112,7 @@ Host 通过 settings 服务为 loopback 页面持久化偏好。Client 会刻意
 当仅阅读 locale 约定不足以解答问题时，请继续阅读以下页面，了解它实现的 slot 接口、依托的设置机制，以及偏好背后的持久化决策。
 
 - [客户端 slot 系统](../ui-slots/README.zh.md)——本包实现的 slot 模型与 `LocaleFace` 席位。
-- [Host 支撑偏好决策](../../../.agents/notes/implemented/bug-fix/2026-08-06-host-backed-web-preferences.zh.md)——偏好为何持久化在 Host 设置中而非浏览器里。
+- [历史Host 支撑偏好决策](../../../.agents/notes/archived/bug-fix/2026-08-06-host-backed-web-preferences.md)——偏好为何持久化在 Host 设置中而非浏览器里。
 - [设置组地图](../../settings/README.zh.md)——存储该偏好的设置服务。
 - [客户端组地图](../README.zh.md)——本包所属的浏览器半侧。
 
@@ -146,5 +146,3 @@ Host 通过 settings 服务为 loopback 页面持久化偏好。Client 会刻意
 无。
 
 </details>
-
-**运行时不变式：** 不发布伴生入口。locale catalog 与字典没有可供交叉核对的独立运行时来源；注册释放、偏好解析和 fallback 查找由行为测试覆盖。

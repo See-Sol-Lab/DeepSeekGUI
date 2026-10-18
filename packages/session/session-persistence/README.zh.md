@@ -62,6 +62,8 @@ await ctx.sessionPersistence.flush()                           // backend-wide d
 
 ### 失败与恢复
 
+对于版本化产物，`stat` 与 `list` 通过 `formatStatus` 暴露 `current` 或 `migration-required`。独立的 `header` 仍是当前逻辑元数据。该状态描述存储，不描述内存准备或迁移任务；没有这项信息的提供方省略该字段。
+
 当前构建无法忠实解读的存储日志会被拒绝，并返回指明拒绝方向的错误，绝不会被误读。`SessionHandle` 只暴露由 `SESSION_FORMAT_VERSION` 标识的当前逻辑记录；提供方必须在返回句柄前转换任何受支持的历史存储，随产品交付的 JSONL 提供方会通过静态 catalog 迁移受支持的历史代际。更新的格式会要求操作者升级 harness。本构建不认识的事件类型会被拒绝，除非其信封标记为 `ignorable`；已提交前缀中的损坏以 `SessionPersistenceCorruptionError` 拒绝。
 
 -----
@@ -96,7 +98,6 @@ await ctx.sessionPersistence.flush()                           // backend-wide d
 | [`src/storage-contract.ts`](src/storage-contract.ts) | 共享校验：版本门禁、未知事件词汇拒绝、批次实体化、连续性 |
 | [`src/errors.ts`](src/errors.ts) | 稳定的句柄/所有权失败与格式拒绝 |
 | [`src/revision.ts`](src/revision.ts) | 带品牌类型的不透明修订值 token |
-| — | 不发布运行时不变式伴生入口；持久化正确性需要后端往返与崩溃尾部测试；本包不暴露可持续观察的进程内关系。 |
 
 ### 写入路径概览
 

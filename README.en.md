@@ -1,6 +1,6 @@
 <div align="center">
 
-# <img src="./apps/deepseekgui/src/chrome/icon.png" width="38" alt="" align="absmiddle" /> DeepSeekGUI v1.2.0
+# <img src="./apps/deepseekgui/src/chrome/icon.png" width="38" alt="" align="absmiddle" /> DeepSeekGUI v1.2.1
 
 </div>
 
@@ -12,10 +12,6 @@ English | [中文](README.md)
 
 <p align="center">
   <em>A DeepSeek local workbench that stays stable.</em>
-</p>
-
-<p align="center">
-  A local desktop workbench for Windows and Linux, built on <a href="https://github.com/deepseek-ai/deepseek-harness">DeepSeek Harness</a>.
 </p>
 
 <p align="center">
@@ -47,7 +43,7 @@ DeepSeekGUI is a local AI workbench built on [DeepSeek Harness](https://github.c
 
 **Not an official DeepSeek product.** Built on DeepSeek Harness and independently developed, with no affiliation with or endorsement by DeepSeek. The upstream runtime and official Web UI are DeepSeek's work.
 
-**Current release: [v1.2.0](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.2.0).** The embedded Harness updates to `0.2.0-rc.2`. Windows sandbox Low integrity marks are removed after use, Enhanced Memory returns to global and project Markdown files, and sessions can be exported as Markdown. Developer mode is off by default and governs official session-log, plugin-list and feedback uploads. Applicable rc.2 PowerShell, model-search and interface improvements are included.
+**Current release: [v1.2.1](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.2.1).** The embedded Harness updates to `0.2.1-rc.2`. This release adds moving the program and its data together to a new location and tidying project memory when a session is archived, and fixes the permission display in read-only workspaces, the empty state in non-Git workspaces, and known vulnerabilities in the shipped runtime's fflate and fast-uri. Developer mode stays off by default; the official 0.2.1 V4.1 Flash label, Search/Fetch API switch and interface improvements are included. The Linux AppImage is still v1.2.0.
 
 [Product roadmap for the in-house Workbench](https://see-sol-lab.github.io/research/deepseekgui-single-task-signal.html)
 
@@ -55,7 +51,7 @@ DeepSeekGUI is a local AI workbench built on [DeepSeek Harness](https://github.c
 
 | Platform | Download | Requirements |
 | --- | --- | --- |
-| Windows | [Download installer](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.2.0/DeepSeekGUI-Setup-1.2.0.exe) | Windows 10/11, x64 |
+| Windows | [Download installer](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.2.1/DeepSeekGUI-Setup-1.2.1.exe) | Windows 10/11, x64 |
 | Linux | [Download AppImage](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.2.0-linux.1/DeepSeekGUI-1.2.0-x86_64.AppImage) | x64, AppImage; experimental support |
 
 The Windows installer installs to your user account and bundles its runtime. Linux uses a separate AppImage distribution; download and verification details are on the [v1.2.0-linux.1](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.2.0-linux.1) release page.
@@ -68,10 +64,10 @@ The Windows installer installs to your user account and bundles its runtime. Lin
 After downloading the installer, calculate its SHA256 in PowerShell:
 
 ```powershell
-Get-FileHash .\DeepSeekGUI-Setup-1.2.0.exe -Algorithm SHA256
+Get-FileHash .\DeepSeekGUI-Setup-1.2.1.exe -Algorithm SHA256
 ```
 
-Compare it with [`SHA256SUMS.txt`](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.2.0/SHA256SUMS.txt) before installing. See the [troubleshooting guide](docs/user/deepseekgui/data-troubleshooting.md#windows-smartscreen-blocks-the-installer) if needed.
+Compare it with [`SHA256SUMS.txt`](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/download/v1.2.1/SHA256SUMS.txt) before installing. See the [troubleshooting guide](docs/user/deepseekgui/data-troubleshooting.md#windows-smartscreen-blocks-the-installer) if needed.
 
 </details>
 
@@ -146,7 +142,7 @@ Git, file sidebar, model settings, browser, and archived-session screenshots sho
 - **Updates and data migration** — Downloads and SHA256 checks can run automatically; installation requires confirmation, and automatic download can be disabled. Move managed data after copying and verification, then confirm cleanup of the old copy.
 - **Onboarding and diagnostics** — First launch offers DeepSeek account sign-in or an API key, and the official setup after sign-in introduces your credit and options. Includes Chinese and English interfaces, a system tray, local diagnostics export, and assistant-aided bug triage.
 
-See the [v1.2.0 release notes](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.2.0) for the complete version changes.
+See the [v1.2.1 release notes](https://github.com/See-Sol-Lab/DeepSeekGUI/releases/tag/v1.2.1) for the complete version changes.
 
 ## Documentation
 

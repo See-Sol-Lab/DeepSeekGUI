@@ -31,7 +31,7 @@ Use `ctx.sessionQuery` from application code when you need to read or search ses
 
 | Operation | What you get |
 |---|---|
-| `listSessions()` | Every logical session, newest first, with `live` and `persisted` availability flags |
+| `listSessions()` | Every logical session, newest first, with `live` and `persisted` availability flags and optional `formatStatus` |
 | `readSession(id)` | The complete replay-validated raw event log, without making the session live |
 | `filterSessions(filters)` | Sessions matching ANDed metadata and availability predicates |
 | `filterEvents(id, filters)` | Semantic event documents matching metadata and literal-text predicates |
@@ -100,7 +100,6 @@ The decision history lives in the [unified service decision](../../../.agents/no
 | [`src/documents.ts`](src/documents.ts) | Surface-aware semantic document projection |
 | [`src/tracing.ts`](src/tracing.ts) | One-shot session-lineage and event-relationship tracing |
 | [`src/sources.ts`](src/sources.ts) | Immutable-header compatibility check |
-| — | No runtime invariant companion is published; query results are immutable per-call projections whose lineage and event relations are validated while they are built; the service retains no observable result state. |
 
 ### Corpus resolution
 
@@ -125,7 +124,7 @@ Read these pages when the package-level contract is not enough. They move from t
 
 - [Session Query subsystem reference](../../../docs/subsystems/session-query.md) — the full type-level contract: records, filters, search pages, lineage, bounded reads, and errors.
 - [dsh-session-query-sqlite](../session-query-sqlite/README.md) — the shipped full-text backend and its index lifecycle.
-- [dsh-tool-session-query](../tool-session-query/README.md) — the model-facing consumer built on this service.
+- [dsh-tool-session-query](../../experimental/tool-session-query/README.md) — the model-facing consumer built on this service.
 - [Session query relationship tracing](../../../.agents/notes/archived/feature/2026-07-13-session-query-tracing.md) — trace semantics and the validation boundary.
 - [SQLite FTS5 session search](../../../.agents/notes/archived/feature/2026-07-10-sqlite-session-query-provider.md) — how the search surface is implemented and reconciled.
 
@@ -162,7 +161,7 @@ This Dev Note is working context for maintainers: open design questions and dire
 
 #### Future: extractor and search-provider registries
 
-Recursive traversal through cited source events, extractor and search-provider registries, and additional model-facing surfaces are deferred; the [tool-session-query README](../tool-session-query/README.md) documents the current consumer surface.
+Recursive traversal through cited source events, extractor and search-provider registries, and additional model-facing surfaces are deferred; the [tool-session-query README](../../experimental/tool-session-query/README.md) documents the current consumer surface.
 
 </details>
 

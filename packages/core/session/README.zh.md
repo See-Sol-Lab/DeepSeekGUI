@@ -63,6 +63,18 @@ session.deriveMessages()         // the derived model history
 
 会话日志位置使用两种数字类型。`SessionSeq` 标识已有事件或包含端点的事件水位；`SessionLogOffset` 标识间隙、前缀长度或读取边界，并且可以等于事件数量。`SessionSeqCursor` 添加 `-1` 这个“尚无事件”值，`OptionalSessionSeq` 则在缺失本身属于数据时使用 `null`。构造函数会校验非负安全整数，brand 在运行时会被擦除，因此持久 JSON 与 wire 值仍是普通数字。
 
+<a id="write-experimental-plugin-records"></a>
+
+### 写入实验性插件记录
+
+`appendPluginRecord(session, type, data)` 为 `packages/experimental/` 下的包追加一条插件记录；`verify-plugin-record-callers` 检查拒绝本仓库中任何其他生产调用方。本仓库之外的插件同样不得调用它，尽管仓库检查无法检查它们。
+
+在所属实验性包的 `src/` 中，通过 `@deepseek-ai/dsh-session/types` 的 `PluginRecordMap` 为每条记录声明描述与显式 payload 类型注解。名称使用 `plugin:<owner>/<record>`，其中 `owner` 是包名 `@deepseek-ai/dsh-experimental-<owner>` 的后缀；例如 `plugin:pi-extensions/entry`。TypeScript 按声明检查每个名称与 payload；写入方运行时的 JSON 快照拒绝无法无损保留的值。扩展自定义名称或其他动态名称放在已声明记录的 payload 中。
+
+[实验性持久化目录](../../../docs/experimental-persistence-catalog.zh.md)列出当前插件记录声明及其所属包、描述、payload 类型注解与源文件。这些声明与 `SessionEventMap`、展开的持久化 schema、已发布类型历史及 `KNOWN_SESSION_EVENT_TYPES` 分开。记录带有 `ignorable: true`：不认识某条记录的构建在读取时保留并跳过它。记录从不进入模型可见的 surface。resume 与 fork 随日志其余部分一起携带它们；Session 格式迁移以尽力而为的方式保留它们。
+
+`pluginRecordOf(event)` 把事件作为记录返回，对其他任何事件返回 `undefined`；把每个事件都交给它的 `ctx.sessionProjections` 单元在 resume 时重建插件状态。即使当前映射声明了该名称，其 `data` 仍为 `unknown`。所属包在使用前校验数据，因为早先构建可能写入不同的 payload，V3-to-V4 格式迁移边也可能把未知的 ignorable V3 事件改名放入同一个 `plugin:` 命名空间。删除或重命名声明不会丢弃已存记录。[ignorable 事件决策](../../../.agents/notes/implemented/architecture/2026-08-30-retain-ignorable-external-session-events.zh.md)定义兼容性策略。
+
 ### 派生会话的 fork
 
 `ctx.sessions.fork(source, boundary?, childSessionId?)` 从实时源会话复制包含切点的精确事件前缀（默认：最后一个事件）。`dsh-session/fork` 的 `buildForkSeed` 在复制事件之后放置继承标记，仅为开放步骤补缺失的错误工具结果，并以 `forked` 原因关闭步骤和轮次。已关闭的步骤与轮次保持原样，包括历史缺失结果。标记和结束事件属于子会话；`inheritedEventCount` 只统计复制的前缀。
@@ -101,7 +113,6 @@ session.deriveMessages()         // the derived model history
 | [`src/request-header.ts`](src/request-header.ts) | `request/header` 折叠与重建 |
 | [`dsh-util-values`](../../util/values/README.zh.md) | 共享无损 JSON 校验与分离式快照 |
 | [`src/repair.ts`](src/repair.ts) | 失败步骤、中断日志与 fork 种子共享的工具结果恢复 |
-| [`src/invariant.ts`](src/invariant.ts) | 不变式配套：序号、轮次／步骤闭合、工具调用／结果配对 |
 
 ### 追加校验
 
@@ -109,11 +120,11 @@ session.deriveMessages()         // the derived model history
 
 ### 共享恢复逻辑
 
-`ToolCallRecovery` 从已提交事件中跟踪尚无结果的请求，不保留事件历史。AgentLoop 观察实时步骤；崩溃恢复与 fork 种子构造通过 `openTurnClosers` 回放各自的前缀。实时失败与崩溃恢复默认使用中断结果文案；fork 构造传入 fork 原因，以选择其专用的重试指引。调用方在关闭步骤之前追加恢复结果（[决策](../../../.agents/notes/implemented/bug-fix/2026-09-19-failed-step-tool-results.zh.md)）。
+`ToolCallRecovery` 从已提交事件中跟踪尚无结果的请求，不保留事件历史。AgentLoop 观察实时步骤；崩溃恢复与 fork 种子构造通过 `openTurnClosers` 回放各自的前缀。实时失败与崩溃恢复默认使用中断结果文案；fork 构造传入 fork 原因，以选择其专用的重试指引。调用方在关闭步骤之前追加恢复结果（[参考](../agent-loop/README.zh.md)）。
 
 ### 派生历史
 
-`deriveMessages()` 缓存深度冻结的派生消息，每次调用返回新数组。surface 事件类型（`system/message`、`developer/message`、`user/message`、`assistant/message`、`tool/result`）提供记录的消息身份和内容，空内容的 system 和 developer 节点不派生消息。插件拥有的投影修改派生内容，不修改记录的消息。替换和投影决策使缓存失效。嵌入式 Assistant stream 与 `assistant/attempt` 事件只保留回放和诊断数据。
+`deriveMessages()` 缓存深度冻结的派生消息，每次调用返回新数组。surface 事件类型（`system/message`、`developer/message`、`user/message`、`assistant/message`、`tool/result`）提供记录的消息身份和内容，空内容的 system 和 developer 节点不派生消息。插件拥有的投影修改派生内容，不修改记录的消息。替换和投影决策使缓存失效。嵌入式 Assistant stream 与 `assistant/attempt` 事件只保留回放和诊断数据。普通提示与注入上下文在派生时不会按类型或来源自动添加包装。生产方负责记录内容中的所有框定格式。
 
 ### 请求头
 
@@ -157,7 +168,7 @@ session.deriveMessages()         // the derived model history
 
 #### 模型看到什么
 
-如果恢复发现 assistant 工具请求没有持久 `tool/call`，其合成 `TOOL_NOT_STARTED` 结果内容为 `The tool call was interrupted before the Harness recorded it as started. Retry it if it is still needed.`。如果持久 `tool/call` 没有结果，其 `TOOL_OUTCOME_UNKNOWN` 结果内容为 `The tool call was interrupted after it was recorded, but no result was durably recorded. Its outcome is unknown. Decide whether to retry from the tool semantics: retry only if the operation is read-only or idempotent; if it may have side effects, first verify external state or ask the user. Do not retry blindly.`。 Fork 生成的结果只描述继承记录：父会话可能已经在所选事件之后启动或完成调用。`TOOL_NOT_STARTED` 表示前缀中没有启动记录；`TOOL_OUTCOME_UNKNOWN` 表示有启动记录但没有结果。两者都要求模型仅对只读或幂等操作直接重试；有副作用的操作需要先验证外部状态或询问用户。参见 [fork 决策](../../../.agents/notes/implemented/feature/2026-08-18-arbitrary-seq-session-fork.zh.md)。
+如果恢复发现 assistant 工具请求没有持久 `tool/call`，其合成 `TOOL_NOT_STARTED` 结果内容为 `The tool call was interrupted before the Harness recorded it as started. Retry it if it is still needed.`。如果持久 `tool/call` 没有结果，其 `TOOL_OUTCOME_UNKNOWN` 结果内容为 `The tool call was interrupted after it was recorded, but no result was durably recorded. Its outcome is unknown. Decide whether to retry from the tool semantics: retry only if the operation is read-only or idempotent; if it may have side effects, first verify external state or ask the user. Do not retry blindly.`。 Fork 生成的结果只描述继承记录：父会话可能已经在所选事件之后启动或完成调用。`TOOL_NOT_STARTED` 表示前缀中没有启动记录；`TOOL_OUTCOME_UNKNOWN` 表示有启动记录但没有结果。两者都要求模型仅对只读或幂等操作直接重试；有副作用的操作需要先验证外部状态或询问用户。参见 [fork 参考](src/fork.ts)。
 
 #### Token 影响
 
@@ -189,7 +200,7 @@ session.deriveMessages()         // the derived model history
 这些限制说明会话存储何时需要特别留意。它们是当前包约束，不是任务积压。
 
 - **Store API 仅接受活跃源会话** — 已持久化但未加载的源会话通过 Host 观察路径处理。Fork 仅闭合开放尾部，不修复先前已闭合步骤中缺失的结果。
-- **`SESSION_FORMAT_VERSION` 命名[当前逻辑表示](../../../docs/session-format-status.zh.md)**——当前读取器拒绝已退役的 `header.system`，并校验 `system/message` 载荷与受保护头节点的重写。历史 header 与事件归相邻格式包所有；[相邻迁移链](../../session/session-format-catalog/README.zh.md)在构造 `Session` 前转换受支持的历史，写打开只发布当前格式的后继代际。同版本未知事件要求信封显式带有 `ignorable` 标记，但这不保证结构迁移的安全性（[机制](../../../.agents/notes/implemented/architecture/2026-08-31-released-session-format-migrations.zh.md)）。
+- **`SESSION_FORMAT_VERSION` 命名[当前逻辑表示](../../../docs/session-format-status.zh.md)**——当前读取器拒绝已退役的 `header.system`，并校验 `system/message` 载荷与受保护头节点的重写。历史 header 与事件归相邻格式包所有；[相邻迁移链](../../session/session-format-catalog/README.zh.md)在构造 `Session` 前转换受支持的历史，写打开只发布当前格式的后继代际。同版本未知事件要求信封显式带有 `ignorable` 标记，但这不保证结构迁移的安全性（[机制](../../../.agents/notes/implemented/architecture/2026-08-31-released-session-format-migrations.zh.md)）。[读取器兼容性](../../../.agents/notes/implemented/process/2026-10-08-session-reader-compatibility-review.zh.md)决定变更是否需要升版本。
 - **`TurnEndReasonMap` 不含 ACP（Agent Client Protocol）命名的 `refusal`／`max_turn_requests` 变体**：受生产方约束；只有当适配器或循环首次产生这些变体时才加入。
 - **fork 之外没有会话树**：基于分支会话的 pi 风格条目树被推迟，除非消费方需要超越基于边界的 forking 的能力。
 

@@ -30,7 +30,16 @@ export type ViewProps = PropsLocale<typeof NS_INSPECTOR> & ViewInjected & { sess
 /** Translate function type of the views. */
 export type Translate = ViewProps['t']
 
-export interface ReadState<T> { busy: boolean; value?: T; error?: string }
+export interface ReadState<T> {
+  busy: boolean
+  value?: T
+  error?: string
+  /** Remote failure code of a failed read; lets a view tell a normal state from a fault. */
+  code?: string
+}
+
+/** The folder is not inside a Git repository: an empty state, not a failed read. */
+export const NOT_A_REPOSITORY = 'workbench/not-a-repository'
 
 /** One request per opening, navigation, or explicit refresh; unmount cancels it. */
 export function useRead<T>(
@@ -54,7 +63,7 @@ export function useRead<T>(
         if (controller.signal.aborted) return
         setState(result.ok
           ? { busy: false, requestKey, value: result.value }
-          : { busy: false, requestKey, error: result.error.message })
+          : { busy: false, requestKey, error: result.error.message, code: result.error.code })
       },
       (error: unknown) => {
         if (!controller.signal.aborted) setState({ busy: false, requestKey, error: error instanceof Error ? error.message : String(error) })
@@ -117,6 +126,14 @@ export function TextView({ text }: { text: string }) {
 
 export function ReadStatus({ state, t }: { state: ReadState<unknown>; t: Translate }) {
   if (state.busy) return <div role="status" style={caption}>{t('common.loading')}</div>
+  if (state.code === NOT_A_REPOSITORY) {
+    return (
+      <div role="status" data-deepseekgui="not-a-repository" style={{ ...caption, padding: '20px 0', textAlign: 'center' }}>
+        <div style={{ fontSize: 14, lineHeight: '22px', color: 'var(--dsw-alias-label-secondary)' }}>{t('notRepository.title')}</div>
+        <div>{t('notRepository.hint')}</div>
+      </div>
+    )
+  }
   if (state.error !== undefined) return <div role="alert" style={{ color: 'var(--dsw-alias-state-error-primary)' }}>{t('common.failed')} {state.error}</div>
   return null
 }

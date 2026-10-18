@@ -39,7 +39,7 @@ kind: "package-reference"
 
 ### 失败与恢复
 
-本插件只处理带 `offloadImages` 的 `IMAGE_OFFLOAD_REQUIRED` 失败。它按模型请求顺序遍历表层，跳过 assistant 节点和已经标记的图片，给指定数量的出现位置打标记。没有可省略的图片时在 `agent/request-error` waterfall 上委派下游，由下游恢复或普通的轮次错误处理。这次重试不占提供方重试预算，也不追加 `llm/retry` 事件。
+本插件只处理带 `offloadImages` 的 `IMAGE_OFFLOAD_REQUIRED` 失败。它按模型请求顺序遍历表层，跳过 assistant 节点和已经标记的图片，给指定数量的出现位置打标记。没有可省略的图片时在 `agent/request-error` waterfall 上委派下游，由下游恢复或普通的轮次错误处理。这次重试不占提供方重试预算，也不追加 `llm/retry` 事件。记录选择前发生取消时会委派后续处理，不新增 `image/offload` 事件；选择提交后发生取消时停止重试，但保留省略记录。
 
 -----
 
@@ -53,7 +53,7 @@ kind: "package-reference"
 
 摘要失败使用同步的 `compaction/summary-error` waterfall。插件只在传入的摘要选区内选图，记录省略后返回 true。压缩后端重新派生该选区并计价，然后重试。每次重试都会继续省略保留的图片，没有可省略的位置时结束恢复。取消或无关的选区变更会使摘要失败。已经记录的省略在后续失败或取消后仍然有效。
 
-本包不发布运行时 invariant 伴生插件：纯投影在 Session 提交事件前拒绝无效或重复省略的图片引用，执行器不维护独立可变的省略状态。
+纯投影在 Session 提交事件前拒绝无效或重复省略的图片引用，执行器不维护独立可变的省略状态。
 
 </details>
 

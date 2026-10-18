@@ -167,7 +167,7 @@ it('discovers client-preset packages the shell links, excluding loader-delivered
       await writeFile(join(root, dir, 'package.json'), JSON.stringify(manifest))
       await writeFile(join(root, dir, 'tsdown.config.ts'), config)
     }
-    const clientPreset = "import { clientLibrary } from '../tsdown.client.ts'\nexport default clientLibrary('x', [])\n"
+    const clientPreset = "import { clientLibrary } from '../tsdown.client.ts'\nexport default clientLibrary(import.meta.dirname, [])\n"
 
     // Linked by the compile shell: client preset, no loader-delivered half.
     await write('packages/client/linked', {}, clientPreset)
@@ -195,6 +195,10 @@ import { defineConfig } from 'tsdown'
 export default defineConfig({
   entry: { client: 'src.ts' }, outDir: 'lib', format: 'cjs', platform: 'browser', dts: false, clean: false,
   outputOptions: { entryFileNames: 'client.js' },
+  hooks: { 'build:done': async () => {
+    const { writeFile } = await import('node:fs/promises')
+    await writeFile(new URL('./hook-complete', import.meta.url), 'ready')
+  } },
 })
 `)
     const sourcePath = join(root, 'src.ts')
@@ -202,6 +206,7 @@ export default defineConfig({
     await writeFile(sourcePath, 'export const version = "watch-v1"\n')
     bundles = await watchClientPlugins(root, ['.'], 50)
     expect(await readFile(bundlePath, 'utf8')).toContain('watch-v1')
+    expect(await readFile(join(root, 'hook-complete'), 'utf8')).toBe('ready')
 
     await new Promise(resolve => setTimeout(resolve, 1_000))
     await writeFile(sourcePath, `export const version = "watch-v2-${'x'.repeat(100)}"\n`)

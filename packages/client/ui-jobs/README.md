@@ -31,7 +31,7 @@ Load the plugin through the web-app manifest; it renders nothing until the sessi
 
 The `job.list` stream `ctx.jobs` mirrors is the single roster: each `JobView` row carries lifecycle, duration, the live `progress` line or the terminal `detail`, and its retained byte count — a live job, or a settled one with retained output, is what makes a row expandable. There is no second roster to join.
 
-Running job rows also carry a two-press stop control: the first press arms it, the confirming press within three seconds calls `ctx.jobs.kill`, and the row converges through the roster stream (`stopping`, then the settled section, whose detail carries `cancelled by the user`). The kill claims nothing in the model's notice ledger, so the owning agent still receives the standard completion notice — the model is told the user stopped its task rather than left to infer it ([decision](../../../.agents/notes/implemented/feature/2026-08-26-human-job-kill.md)). The settled section folds behind its count while live work exists and can be cleared client-side.
+Running job rows also carry a two-press stop control: the first press arms it, the confirming press within three seconds calls `ctx.jobs.kill`, and the row converges through the roster stream (`stopping`, then the settled section, whose detail carries `cancelled by the user`). The kill claims nothing in the model's notice ledger, so the owning agent still receives the standard completion notice — the model is told the user stopped its task rather than left to infer it ([reference](../../jobs/tool-jobs/README.md)). The settled section folds behind its count while live work exists and can be cleared client-side.
 
 ### The expanded panel
 
@@ -45,13 +45,15 @@ Expanding an observable row opens that job's output observation stream from `ctx
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-One slot entry in the header actions band (after the preset label) renders the trigger and popover; the popover fits itself to the viewport by measuring its anchor. All data arrives through `ctx.jobs` — the component holds no transport state. The roster follows the mount: one `useEffect` keeps the session's `job.list` stream open while the control lives. Observation follows visibility: another `useEffect` opens the stream for the expanded row's job and closes it on collapse, unmount, or popover close.
+One slot entry in the header actions band (after the preset label) renders the trigger; its popover uses a body-mounted `MenuSurface` with fixed positioning so dock panels and clipping ancestors cannot cover it. The shared anchoring hook tracks scrolling, resizing, and panel-size changes. All data arrives through `ctx.jobs` — the component holds no transport state. The roster follows the mount: one `useEffect` keeps the session's `job.list` stream open while the control lives. Observation follows visibility: another `useEffect` opens the stream for the expanded row's job and closes it on collapse, unmount, or popover close.
 
 | File | Role |
 |---|---|
 | [`src/client/JobListAction.tsx`](src/client/JobListAction.tsx) | The job list: sections, durations, panels |
 | [`src/client/index.ts`](src/client/index.ts) | Slot registration and the dictionaries |
 | [`src/client/locales.ts`](src/client/locales.ts) | The `job` namespace copy (zh source of truth) |
+
+Background-job rows follow the [standard menu edge geometry](../../../docs/ui-radius.md#nested-hover); controls inside a filled running row retain compact corners.
 
 </details>
 
@@ -92,5 +94,3 @@ These limits define current package constraints, not a task backlog.
 None.
 
 </details>
-
-**Runtime invariant:** No companion is published. This package is a read-only projection of the `ctx.jobs` rosters and views onto one header slot entry. It emits no Cordis events, owns no cross-plugin mutable state, and its single slot registration proves disposal through the HMR-safety spec.

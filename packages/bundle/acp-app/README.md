@@ -44,7 +44,7 @@ The complete supported method matrix, MCP trust model, update mapping, and stop 
 
 #### What the model sees
 
-The profile supplies `You are a coding agent powered by the {{model}} model.` before first-party guidance and `Your working directory is {{cwd}}.` in a separate persona suffix. The ACP row's route and each `session/new` cwd resolve the placeholders.
+The profile supplies `You are a coding agent powered by the {{model}} model.` before first-party guidance; the ACP route resolves `{{model}}`. Each Session receives its current directory in required user-role context from [`dsh-working-directory`](../../session/working-directory/README.md).
 
 #### Token effect
 
@@ -72,5 +72,3 @@ Stable for a fixed profile, provider, model, and tool roster. Profile changes ta
 None.
 
 </details>
-
-**Runtime invariant:** No companion is published. The bundle adds a process transport and startup latch; source/built stdio tests own frame purity, help exclusion, and shutdown.

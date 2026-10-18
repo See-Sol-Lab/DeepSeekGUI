@@ -9,7 +9,7 @@
 
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {
-  CredentialInfo, LlmConfigurableProvider, LlmProviderInfo, SettingsNamespaceView,
+  CredentialInfo, LlmConfigurableProvider, LlmNativeAuth, LlmProviderInfo, SettingsNamespaceView,
 } from '@deepseek-ai/dsh-api-remotes/client'
 import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
@@ -30,6 +30,9 @@ export interface ProviderDirectoryEntry {
   readonly settingsPath: readonly string[]
   readonly active: boolean
   readonly declared?: boolean
+  readonly defaultBaseURL?: string
+  readonly baseURLEnv?: readonly string[]
+  readonly nativeAuth?: LlmNativeAuth
   readonly error?: string
 }
 
@@ -52,6 +55,9 @@ export function joinProviderDirectory(
     settingsPath: [...entry.settingsPath],
     active: active.has(entry.provider),
     ...entry.declared === undefined ? {} : { declared: entry.declared },
+    ...entry.defaultBaseURL === undefined ? {} : { defaultBaseURL: entry.defaultBaseURL },
+    ...entry.baseURLEnv === undefined ? {} : { baseURLEnv: entry.baseURLEnv },
+    ...entry.nativeAuth === undefined ? {} : { nativeAuth: entry.nativeAuth },
     ...entry.error === undefined ? {} : { error: entry.error },
   }))
   for (const provider of registered) {
@@ -90,6 +96,8 @@ export interface ProviderRow {
    * own derivation rule.
    */
   derivedCredential?: CredentialInfo
+  /** Redacted checks for named or native references; absent when their read failed. */
+  credentialChecks?: Readonly<Record<string, CredentialInfo>>
 }
 
 /** Page snapshot. */
@@ -138,6 +146,28 @@ export function protocolChoices(
   return list.list.map(entry => entry.value).filter((value): value is string => typeof value === 'string')
 }
 
+/**
+ * The reasoning levels a hand-declared route's models may declare, read out of
+ * the owning namespace's own schema for the same reason as
+ * {@link protocolChoices}: the levels the page offers and the keys the
+ * adapter accepts in `reasoningEfforts` come from the same `Config`.
+ * @param namespace - the namespace view whose schema declares the profile shape.
+ * @param schema - settings schema operations.
+ * @returns the levels in the schema's escalation order, or an empty list when the schema has none.
+ */
+export function reasoningLevelChoices(
+  namespace: SettingsNamespaceView | undefined,
+  schema: SettingsSchemaOperations,
+): string[] {
+  if (namespace === undefined) return []
+  const path = ['providers', PROBE_ROUTE, 'models', '0', 'reasoningEfforts']
+  const node = schema.nodeAtPath(schema.rehydrate(namespace.schema), path)
+  // `false | { [level]: value }`: the dict branch's key schema lists the levels.
+  const branches = (node as { list?: readonly { type?: string; sKey?: unknown }[] } | undefined)?.list ?? []
+  const keys = branches.find(branch => branch.type === 'dict')?.sKey as { list?: readonly { value?: unknown }[] } | undefined
+  return (keys?.list ?? []).map(entry => entry.value).filter((value): value is string => typeof value === 'string')
+}
+
 /** The credential reference a resolved profile names (its `apiKeyEnv` field). */
 function apiKeyEnvOf(
   namespace: SettingsNamespaceView | undefined,
@@ -160,6 +190,8 @@ export class ModelsSettingsStore {
 
   /** Latest load wins; an older response never overwrites a newer one. */
   private generation = 0
+  /** Callers follow the current refresh's outcome, including callers whose read was superseded. */
+  private readonly pendingLoads = new Set<PromiseWithResolvers<void>>()
 
   /**
    * @param ctx - the page plugin's context, whose `remote.llm` and
@@ -178,22 +210,38 @@ export class ModelsSettingsStore {
    * settings answer in parallel, then one batched credential describe over
    * every referenced ref. Provider failure or absence of an initial settings
    * answer keeps the last good rows and surfaces an error; a failed settings
-   * refresh reuses the mirror's held view.
-   * @returns nothing; the snapshot carries the outcome.
+   * refresh reuses the mirror's held view. Concurrent callers resolve only
+   * after the current refresh publishes its ready or error snapshot.
+   * @returns resolution after the current snapshot is published.
+   * @throws the current read's unexpected rejection; superseded rejections are ignored.
    */
-  async load(): Promise<void> {
+  load(): Promise<void> {
+    const pending = Promise.withResolvers<void>()
+    this.pendingLoads.add(pending)
     const generation = ++this.generation
+    void this.read(generation).then(
+      () => { this.settleLoads(generation, (load) => { load.resolve() }) },
+      (error: unknown) => { this.settleLoads(generation, (load) => { load.reject(error) }) },
+    )
+    return pending.promise
+  }
+
+  /** Publish one joined answer; stale answers leave the current refresh in charge. */
+  private async read(generation: number): Promise<void> {
     this.store.update((s) => { s.status = 'loading'; s.error = null })
     const [registered, declared] = await Promise.all([
       this.ctx.remote.llm.listProviders(),
       this.ctx.remote.llm.listConfigurableProviders(),
       this.describeFace.ensure(),
     ])
-    if (!registered.ok) { this.failLoad(generation, registered.error.message); return }
-    if (!declared.ok) { this.failLoad(generation, declared.error.message); return }
+    if (generation !== this.generation) return
+    if (!registered.ok) { this.failLoad(registered.error.message); return }
+    if (!declared.ok) { this.failLoad(declared.error.message); return }
     const mirrored = this.describeFace.getSnapshot()
     if (mirrored.view === undefined) {
-      this.failLoad(generation, mirrored.error ?? 'settings are unavailable in this browser')
+      /* v8 ignore next -- SettingsDescribeFace.ensure settles with a view or the read's error */
+      if (mirrored.error === null) throw new Error('settings describe settled with neither a view nor an error')
+      this.failLoad(mirrored.error)
       return
     }
     const providers = joinProviderDirectory(registered.value, declared.value)
@@ -223,16 +271,18 @@ export class ModelsSettingsStore {
           && catalog.value.groups.some(group => group.id === 'deepseek-account' && group.models.length > 0)
       }
     }
-    const refs = [...new Set(rows.filter(row => row.entry.provider !== 'deepseek-account').map(row => row.apiKeyEnv ?? deriveKeyRef(row.entry.provider)))]
-    let credentials: Record<string, CredentialInfo> = {}
+    const refs = [...new Set(rows.filter(row => row.entry.provider !== 'deepseek-account').flatMap(row =>
+      row.apiKeyEnv === undefined ? [deriveKeyRef(row.entry.provider), ...row.entry.nativeAuth?.env ?? []] : [row.apiKeyEnv]))]
+    const credentials: Record<string, CredentialInfo> = {}
     let credentialError: string | null = null
-    if (refs.length > 0) {
-      const response = await this.ctx.remote.credentials.describe(refs)
+    // credentials.describe accepts at most 64 references per request.
+    for (let index = 0; index < refs.length; index += 64) {
+      const response = await this.ctx.remote.credentials.describe(refs.slice(index, index + 64))
       // Credential state is an enrichment for the Models page: a failure
       // degrades the badge instead of failing the load. The onboarding
       // projection below retains the failure distinction.
-      if (response.ok) credentials = response.value
-      else credentialError = response.error.message
+      if (response.ok) Object.assign(credentials, response.value)
+      else { credentialError = response.error.message; break }
     }
     if (generation !== this.generation) return
     this.store.update((s) => {
@@ -248,15 +298,29 @@ export class ModelsSettingsStore {
           ...row,
           ...named === undefined ? {} : { credential: named },
           ...derived === undefined ? {} : { derivedCredential: derived },
+          ...credentialError === null ? { credentialChecks: Object.fromEntries(
+            (row.apiKeyEnv === undefined ? row.entry.nativeAuth?.env ?? [] : [row.apiKeyEnv])
+              .flatMap((ref) => {
+                const info = credentials[ref]
+                return info === undefined ? [] : [[ref, info] as const]
+              }),
+          ) } : {},
         }
       })
       s.namespaces = namespaces
     })
   }
 
-  /** Publish one load's failure text, unless a newer load already took over. */
-  private failLoad(generation: number, message: string): void {
+  /** Settle callers only while this read still owns the current refresh. */
+  private settleLoads(generation: number, settle: (load: PromiseWithResolvers<void>) => void): void {
     if (generation !== this.generation) return
+    const pending = [...this.pendingLoads]
+    this.pendingLoads.clear()
+    for (const load of pending) settle(load)
+  }
+
+  /** Publish the current joined read's failure text. */
+  private failLoad(message: string): void {
     this.store.update((s) => {
       s.status = 'error'
       s.error = message

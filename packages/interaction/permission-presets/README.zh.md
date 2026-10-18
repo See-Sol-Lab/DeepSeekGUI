@@ -59,6 +59,10 @@ kind: "package-reference"
 
 客户端从进程级目录渲染可选条目：先按表顺序列出配置预设，再在 Auto integration 存活时列出 Auto。客户端把这份快照与 Session 当前值合并；不匹配的 `custom` 值可以标记当前控件，但绝不会成为可选目录行。Auto 的身份与旋钮组合（Full access 沙箱加 `ask` 审批策略）固定在本服务内部；已记录的 Auto 选择也匹配委派子会话固定的 `never` 策略。shipped 客户端的 locale 字典拥有 Auto 的 label 与 description，而配置预设保留 Host 提供的展示信息。调用方不能通过通用 contribution API 发布其他预设；他们可以从 `custom` 切换出去，但不能通过此服务选中或持久化一个具名 custom 预设。
 
+### 沙箱策略按只读运行的工作区
+
+DeepSeekGUI 的沙箱策略在执行时把仅聊天工作区（用户目录、磁盘根目录、系统或应用位置）和 DeepSeekGUI 自己的代码按只读运行。本服务把同一事实记进会话，使当前值与之一致：在那里创建或恢复的会话固定为只读（优先用配置里沙箱为只读的预设，没有时只记沙箱旋钮），切到沙箱更宽的任何预设都会被拒绝，消息带 `chat-only` 或 `DeepSeekGUI code` 关键字。管理员桌面上另外拒绝完全访问（`administrator`）。普通工作区不受影响。
+
 ### 会话默认值
 
 `permission` 设置命名空间为未来会话持有 `defaultPreset`，且只接受配置预设。创建会话时读取它，将其应用于沙箱模式与审批策略，并把应用的预设记录为一次 `permission/preset` 选择。之后的设置变更绝不会改变现有会话。恢复的 seed（包括由 `session/end-seed` 明确标记的空 seed）会保留其有效权限，并只接收缺失的持久事实，而不会接收最新用户默认值；持久化的 `auto` 身份在发布前必须存在 live Auto 注册并通过准入。
@@ -79,7 +83,6 @@ kind: "package-reference"
 |---|---|
 | [`src/index.ts`](src/index.ts) | `PermissionPresetService`：配置表、固定 Auto 注册、写入路径、设置命名空间、会话固定、子功能 |
 | [`src/types.ts`](src/types.ts) | 进程级目录、目录变化事件与 `permissions` 当前选择类型 |
-| [`src/invariant.ts`](src/invariant.ts) | 不变式伴生插件：校验配置预设名称；Auto 恢复在发布前另行检查 |
 
 ### 写入路径
 
@@ -109,7 +112,7 @@ kind: "package-reference"
 当包级约定不够用时阅读以下页面。它们从预设词汇逐步进入执行旋钮与设计依据。
 
 - [权限预设子系统参考](../../../docs/subsystems/permission-presets.zh.md)——预设表、进程级目录、当前选择与 `ctx.permissionPresets` Cordis API。
-- [沙箱切换设计 Agent Note](../../../.agents/notes/implemented/feature/2026-07-06-sandbox.zh.md)——沙箱模式与审批策略如何组合与切换。
+- [历史沙箱切换设计 Agent Note](../../../.agents/notes/archived/feature/2026-07-06-sandbox.md)——沙箱模式与审批策略如何组合与切换。
 - [审批子系统参考](../../../docs/subsystems/approval.zh.md)——此服务捆绑的审批策略旋钮。
 - [交互组映射](../README.zh.md)——相邻的命令、审批与问答包。
 

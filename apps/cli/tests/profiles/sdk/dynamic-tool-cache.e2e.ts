@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { TokenUsage } from '@deepseek-ai/dsh-llm'
+import { lastAssistantStreamChunk, type RetryPolicyConfig, type TokenUsage } from '@deepseek-ai/dsh-llm'
 import { DeepSeekHarness } from '@deepseek-ai/dsh-sdk-client'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import { describe, expect, it, onTestFinished } from 'vitest'
@@ -22,6 +22,8 @@ interface ObservedRequest {
   step: number
   body: {
     system?: string
+    max_tokens: number
+    thinking: { type: string }
     messages: { role: string; content: { type: string; text?: string; tool?: { name: string } }[] }[]
     tools?: { name: string; defer_loading?: true }[]
   }
@@ -40,8 +42,37 @@ function totalInput(usage: TokenUsage): number {
   return usage.inputTokens + (usage.cacheReadTokens ?? 0) + (usage.cacheWriteTokens ?? 0)
 }
 
+/** Tool calls the fixture recorded, in execution order. */
+async function recordedCalls(path: string): Promise<string[]> {
+  return (await readFile(path, 'utf8')).trim().split('\n')
+}
+
+/**
+ * Assert the model called `earlier` and then `later`. The model owns its plan beyond the required
+ * calls, so extra add/remove cycles it chooses to make are legitimate and are not counted here.
+ */
+function expectCalledBefore(calls: string[], earlier: string, later: string): void {
+  const earlierIndex = calls.indexOf(earlier)
+  expect(earlierIndex, `${earlier} was never called`).toBeGreaterThanOrEqual(0)
+  const laterIndex = calls.indexOf(later, earlierIndex + 1)
+  expect(laterIndex, `${later} was never called after ${earlier}`).toBeGreaterThan(earlierIndex)
+}
+
+/**
+ * Net tool-registry change between two consecutive requests, matching how the agent loop derives
+ * a `developer/message` from the difference between the current and previous request headers.
+ */
+function registryChanges(previous: ObservedRequest, request: ObservedRequest): { type: string; toolName: string }[] {
+  const before = new Set(previous.body.tools?.map(tool => tool.name))
+  const after = new Set(request.body.tools?.map(tool => tool.name))
+  return [
+    ...[...after].filter(name => !before.has(name)).map(toolName => ({ type: 'tool-addition', toolName })),
+    ...[...before].filter(name => !after.has(name)).map(toolName => ({ type: 'tool-removal', toolName })),
+  ]
+}
+
 describe.skipIf(!process.env.DEEPSEEK_API_KEY)('SDK native tool updates with real DeepSeek', () => {
-  it.each([false, true])('keeps the preceding conversation cached after a tool addition (prompt update: %s)', { retry: 0 }, async (updatePrompt) => {
+  it.each([false, true])('keeps the preceding conversation cached after a tool addition (prompt update: %s)', async (updatePrompt) => {
     const root = await mkdtemp(join(tmpdir(), 'dsh-sdk-tool-cache-'))
     onTestFinished(async () => { await rm(root, { recursive: true, force: true }) })
     const sampleLabel = `CACHE_SAMPLE_${randomUUID()}`
@@ -51,7 +82,7 @@ describe.skipIf(!process.env.DEEPSEEK_API_KEY)('SDK native tool updates with rea
     await writeFile(patch, JSON.stringify([
       { id: 'llm-deepseek', config: {
         apiKeyEnv: 'DEEPSEEK_API_KEY', thinking: 'disabled', maxTokens: 1024,
-        retryPolicy: { maxRetries: 0 },
+        retryPolicy: { mode: 'normal', maxRetries: 0 } satisfies RetryPolicyConfig,
         models: [{ id: 'deepseek-flash', systemPromptUpdate: 'in-history', toolUpdate: 'addition-only' }],
       } },
       { id: 'tools', config: { mode: 'native' } },
@@ -72,20 +103,26 @@ describe.skipIf(!process.env.DEEPSEEK_API_KEY)('SDK native tool updates with rea
     const run = async (prompt: string) => {
       const result = await session.run(prompt)
       events.push(...result.events)
+      const failures = result.events.filter(event => event.type === 'assistant/attempt').map(event => ({
+        turn: event.data.turn,
+        step: event.data.step,
+        reason: lastAssistantStreamChunk(event.data.stream, 'finish')?.reason,
+      }))
+      expect(failures, `Provider request failures: ${JSON.stringify(failures)}`).toEqual([])
       return result.finalResponse
     }
-    await run('Do not call tools. Reply READY.')
+    expect(await run('Do not call tools. Reply READY.')).toContain('READY')
     // Unique user history makes hits on shared profile instructions insufficient.
     const records = Array.from({ length: 96 }, (_, index) => `record-${index}: ${randomUUID()}`).join('\n')
-    await run(`Keep these reference records. Do not call tools. Reply READY.\n${records}`)
-    await run('Keep the reference records. Do not call tools. Reply READY.')
+    expect(await run(`Keep these reference records. Do not call tools. Reply READY.\n${records}`)).toContain('READY')
+    expect(await run('Keep the reference records. Do not call tools. Reply READY.')).toContain('READY')
     expect(await run(`Use cache_tool_control with action add. After it returns, call ${sampleTool} exactly once and report the generated sample label. This is synthetic example data for this run. Call these separately in order.`)).toContain(sampleLabel)
-    expect(await readFile(callsPath, 'utf8')).toBe('add\nsample\n')
-    expect(await run('Use cache_tool_control with action remove. After it returns, reply REMOVED and do not call the sample tool.')).toContain('REMOVED')
-    expect(await readFile(callsPath, 'utf8')).toBe('add\nsample\nremove\n')
+    expectCalledBefore(await recordedCalls(callsPath), 'add', 'sample')
+    expect(await run('Use cache_tool_control with action remove. Whether it removes the sample tool or reports that it is not registered, reply REMOVED and do not call the sample tool.')).toContain('REMOVED')
+    const calls = await recordedCalls(callsPath)
+    expectCalledBefore(calls, 'sample', 'remove')
 
     const requests = (await readFile(evidencePath, 'utf8')).trim().split('\n').map(line => JSON.parse(line) as ObservedRequest)
-    expect(events.filter(event => event.type === 'assistant/attempt')).toHaveLength(0)
     expect(requests).toHaveLength(events.filter(event => event.type === 'assistant/message').length)
     const [initial, history, warm] = requests
     const addedIndex = requests.findIndex(request => request.stage === 'added')
@@ -93,6 +130,7 @@ describe.skipIf(!process.env.DEEPSEEK_API_KEY)('SDK native tool updates with rea
     const added = requests[addedIndex]
     const removed = requests.find(request => request.stage === 'removed')
     if (!initial || !history || !warm || !before || !added || !removed) throw new Error('Missing cache transition requests')
+    expect(initial.body).toMatchObject({ max_tokens: 1024, thinking: { type: 'disabled' } })
     const historyInput = totalInput(usageFor(history, events))
     const precedingInput = totalInput(usageFor(before, events))
     const cached = usageFor(added, events).cacheReadTokens ?? 0
@@ -113,9 +151,15 @@ describe.skipIf(!process.env.DEEPSEEK_API_KEY)('SDK native tool updates with rea
     expect(added.body.messages.flatMap(message => message.content)).toContainEqual({ type: 'tool_addition', tool: { type: 'tool_reference', name: sampleTool } })
     expect(removed.body.tools?.map(tool => tool.name)).toEqual(['cache_tool_control'])
     expect(removed.body.messages.flatMap(message => message.content).some(block => block.type === 'tool_addition')).toBe(false)
-    expect(events.filter(event => event.type === 'developer/message').map(event => event.data.message.content)).toEqual([
-      [{ type: 'tool-addition', toolName: sampleTool }],
-      [{ type: 'tool-removal', toolName: sampleTool }],
-    ])
+    // Transcript registry history is derived from the tool lists the provider saw, not from call
+    // counts: a model-chosen extra add/remove cycle changes both sides or neither.
+    const expectedRegistryHistory = requests.slice(1).flatMap((request, index) => {
+      const previous = requests[index]
+      if (previous === undefined) throw new Error('Missing preceding request')
+      const content = registryChanges(previous, request)
+      return content.length > 0 ? [content] : []
+    })
+    expect(events.filter(event => event.type === 'developer/message').map(event => event.data.message.content))
+      .toEqual(expectedRegistryHistory)
   })
 })

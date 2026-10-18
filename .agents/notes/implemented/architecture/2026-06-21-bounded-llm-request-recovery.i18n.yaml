@@ -6,8 +6,8 @@
   en: fb8e336ecd4bf571
   zh: 23e40e4cb224163f
 /agent-note-bounded-recovery-for-transient-llm-request-failures/problem:
-  en: 83a361538a092dae
-  zh: e8f33cb95d0d3e09
+  en: ac1641f64d0e0a25
+  zh: 2ddb6a3fd290ea31
 /agent-note-bounded-recovery-for-transient-llm-request-failures/decision:
   en: a15c7c13f167e5ac
   zh: 63bcc2ef60c2f344
@@ -21,8 +21,8 @@
   en: 57dbdd385f48bb3e
   zh: 5e15463fae4be582
 /agent-note-bounded-recovery-for-transient-llm-request-failures/decision/bound-stalled-streams-where-they-can-be-stopped:
-  en: f7369086e87192b9
-  zh: e2839ed8cc5c23b8
+  en: 6a55107caa329eea
+  zh: 13a76e482739141e
 /agent-note-bounded-recovery-for-transient-llm-request-failures/decision/keep-attempts-separate-in-the-existing-log:
   en: 8f57db4bfd6e1c22
   zh: 67ac62217bb68570
@@ -33,11 +33,11 @@
   en: a6d0306740d470ee
   zh: 700bd4b0aa58f3e8
 /agent-note-bounded-recovery-for-transient-llm-request-failures/verification:
-  en: db343f335a9d7cad
-  zh: 49b8300de55dcfeb
+  en: 7412edfd162c4a28
+  zh: 64108a11e6194e35
 /agent-note-bounded-recovery-for-transient-llm-request-failures/consequences:
   en: 08659e8606455ada
   zh: 862080f8df5f28ec
 /agent-note-bounded-recovery-for-transient-llm-request-failures/related:
-  en: e85a6ad7387c881b
-  zh: bb8fb4173ffe613d
+  en: f2c8539b6836eba1
+  zh: 7c292611d09665a7

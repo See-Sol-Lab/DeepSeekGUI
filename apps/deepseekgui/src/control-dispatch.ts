@@ -319,6 +319,10 @@ export function createControlDispatcher(deps: ControlDispatchDeps): (command: De
       case 'update-toggle-auto-download':
       case 'migrate-managed-home':
       case 'migration-cleanup':
+      case 'relocate-install':
+      case 'relocation-retry':
+      case 'relocation-dismiss':
+      case 'relocation-cancel':
       case 'session-delete':
       case 'session-export-markdown':
       case 'developer-mode-set':

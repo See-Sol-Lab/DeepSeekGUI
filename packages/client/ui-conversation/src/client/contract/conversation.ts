@@ -8,6 +8,16 @@ import type {
 export interface ConversationMatchResult {
   readonly id: string
   readonly role: 'start' | 'update'
+  /**
+   * Claim this event on the Definition's target: no other Definition of the
+   * same target receives it, and that target's unmatched-event fallback does
+   * not run. Definitions of other targets and Definitions without a target
+   * still receive it. Two claims on one target, or a claim from a Definition
+   * without a target, throw during dispatch. A claim returned by the fallback
+   * itself has no effect, because the fallback runs only when no Definition of
+   * its target matched.
+   */
+  readonly exclusive?: true
 }
 
 /** Merge-extensible business values published against one Turn. */
@@ -192,6 +202,13 @@ export type ConversationPublication = 'none' | 'animation-frame' | 'immediate'
 /** Engine-owned Location data publication phase. */
 export type ConversationLocationDataScope = 'step' | 'turn'
 
+/**
+ * Extract a stable business identity using only the current event.
+ * @param event - durable or transient Client event.
+ * @returns identity and lifecycle role, or null when unrelated.
+ */
+export type ConversationMatchHandler = (event: SessionEventLike) => ConversationMatchResult | null
+
 /** One independently registered business Event-to-Node state machine. */
 export interface ConversationNodeDefinition<State = unknown> {
   readonly kind: string
@@ -254,6 +271,12 @@ export interface ConversationNodeDefinition<State = unknown> {
    */
   buildViewNode?(context: ConversationNodeContext<State>): ConversationViewNode | null
 }
+
+/** Registration accepts a function or an immutable table of own event-type handlers. */
+export type ConversationNodeDefinitionInput<State = unknown> =
+  Omit<ConversationNodeDefinition<State>, 'match'> & {
+    readonly match: ConversationMatchHandler | Readonly<Record<string, ConversationMatchHandler>>
+  }
 
 /** Reference-stable Turn/Step facts published beside view Nodes. */
 export interface ConversationTimelineSnapshot {

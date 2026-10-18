@@ -137,7 +137,7 @@ kind: "package-reference"
 
 这些限制说明 SDK 行为在何处起主导作用、导出保证止于何处。它们是当前包约束。
 
-- **上游实验性源码树**——`@opentelemetry/sdk-logs` 从上游实验性源码树发布；SDK API 的变动只会落在本包，也仅落在本包，而 seam 约定不动。
+- **上游实验性源码树**——`@opentelemetry/sdk-logs` 从上游实验性源码树发布；SDK API 的变动落在[共享 OTel 插件](../../telemetry/otel/README.zh.md)，而 seam 约定不动。
 - **真实 collector 行为属于 SDK 导出器**——身份验证、TLS、限流及其他真实 OTLP 部署行为遵循上游 SDK，不由本包自有兼容层处理。
 - **尽力交接**——新冷快照以及重启后的新反馈提交可能重复前缀；接收方按 Session id、格式版本和事件 seq 去重。没有持久化 outbox、投递水位、自动重试承诺或采集端接受保证。OTel 与需显式启用的 DeepSeek API 路径可能重叠。撤回导出删除事件，不是远端擦除。
 
@@ -152,5 +152,3 @@ kind: "package-reference"
 无。
 
 </details>
-
-**运行时不变式：** 不发布伴生入口。模式选择只改变 capture handoff、SDK setup 与本地 diagnostics，不改变可由独立 companion 对照的会话或服务状态。无法根据本地队列状态推断 collector 是否收到记录。

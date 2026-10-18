@@ -14,7 +14,7 @@ Client 构建输入由发布 profile 选择，而 Host value import 由导入它
 
 ### 包选择
 
-[`verify-package-dependencies`](../../../../scripts/verify-package-dependencies.ts) 统一负责依赖区段策略。它始终覆盖 `packages/client/` 下的包，以及声明 `dsh.client` 的每个非实验包。在该目录内，`dsh.client` 标记需要扫描 Host 入口的 Client/Host 包；没有该声明的包是仅供 Client 编译的静态输入。在目录外，`dsh.client` 选择相同的 Client/Host 扫描。仅有 `"./client"` export 只是 API，不参与 npm 依赖策略选包。
+[`verify-package-dependencies`](../../../../scripts/verify-package-dependencies.ts) 统一负责依赖区段策略。它始终覆盖 `packages/client/` 下的包，以及声明 `dsh.client` 的每个包，实验包也包括在内。在该目录内，`dsh.client` 标记需要扫描 Host 入口的 Client/Host 包；没有该声明的包是仅供 Client 编译的静态输入。在目录外，`dsh.client` 选择相同的 Client/Host 扫描。仅有 `"./client"` export 只是 API，不参与 npm 依赖策略选包。[实验包遵守同一套依赖声明规则](2026-10-14-experimental-dependency-policy.zh.md)记录了选包为何包括实验包。
 
 [`package-dependency-policy.ts`](../../../../scripts/package-dependency-policy.ts) 提供显式 Client 门面 include 与 exclude 列表。include 用于没有 `dsh.client` 的例外包，exclude 用于移除 `packages/client/` 之外自动发现的双面包。验证器拒绝未知、失效、冗余、重复、相互重叠和无法生效的配置项。include 列表为空；exclude 列表包含 `@deepseek-ai/dsh-api-session-controller` 和 `@deepseek-ai/dsh-api-workspace-controller`。把 Session Controller 加回会多迁移九条 Host 边，而五次候选复测的 resolver 中位数仅改善 0.15 秒。
 
@@ -28,7 +28,7 @@ Host 入口闭包中的运行期 value import 所到达的 workspace 包，只�
 
 constructor 身份或模块状态必须共享的导出列入 `peerRequiredHostExports`；一旦使用这类导出，整条包依赖边就保留在范围一致的 `peerDependencies` 与 `devDependencies` 中。每个导出表的 key 都是精确 module specifier，每个 value 都是经审查的导出集合。验证器从 Host 入口沿运行期本地 import 扫描，记录具名与默认 import 和 re-export，并拒绝既没有包级分类、也没有导出级分类的导出；除非完整的精确入口已按包分类，否则 namespace、dynamic 和 side-effect import 仍无法限定范围。
 
-Client bundle 使用的 workspace import、纯类型 import、模块扩充、`dsh.client.inject` 和仅有元数据的现存 peer 只属于 `devDependencies`。Host 运行时 import（包括额外 Node 入口）遵循 Host 分类。[浏览器第三方构建输入](2026-09-08-browser-third-party-build-inputs.zh.md)规定普通第三方声明，部分取代本决策对它们原区段的保留。[发布范围](2026-09-22-workspace-release-ranges.zh.md)要求 DSH 引用使用 `workspace:*`，vendor/native 引用使用 `workspace:~`。
+Client bundle 使用的 workspace import、纯类型 import、模块扩充、`dsh.client.inject` 和仅有元数据的现存 peer 只属于 `devDependencies`。Host 运行时 import（包括额外 Node 入口）遵循 Host 分类。仅供浏览器使用的第三方构建输入属于 `devDependencies`；Host 运行时 value import 优先归为 `dependencies`。已打包的实现无论位于哪个 npm 区段，都属于运行时许可证披露内容。静态浏览器库仍是 Web shell 的构建输入，不承诺作为独立安装的库提供支持。[发布系列规则](2026-08-10-npm-release-sequences.zh.md)要求 DSH 引用使用 `workspace:*`，vendor/native 引用使用 `workspace:~`。
 
 部分开发期关系只存在于 `dsh.client.inject` 或 TypeScript project reference 中。策略的 `configurationOnlyDevDependencies` 表只列出这些已评审的依赖边，并将它们保留在 `devDependencies` 中。
 

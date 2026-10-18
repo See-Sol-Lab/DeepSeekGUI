@@ -392,6 +392,27 @@ describe('Cordis provider composition', () => {
     })
   })
 
+  it('serves the account listing through the Loader composition and refuses models this build cannot serve', async () => {
+    const { ctx, http } = await boot(undefined, { data: [
+      {
+        id: 'deepseek-flash', name: 'DeepSeek-V4.1-Flash', context_window: 1_048_576, max_output_tokens: 100_000,
+        input_modalities: ['text', 'image'], output_modalities: ['text'],
+        api_capabilities: { anthropic_messages: { system_prompt_update: 'in-history' } },
+      },
+      {
+        id: 'deepseek-v5', name: 'DeepSeek-V5', api_capabilities: { anthropic_messages: {} },
+        client_requirements: { 'deepseek-harness': { min_version: '99.0.0' } },
+      },
+    ] })
+    ctx.provide('deepseekAccount', { resolveToken: async (_url: string): Promise<string | undefined> => 'fixture-token',
+      rejectToken: async (_token: string): Promise<void> => {} } as DeepSeekAccount)
+    expect((await ctx.llm.listModels('deepseek-account')).map(model => [model.id, model.name])).toEqual([['deepseek-flash', 'DeepSeek-V4.1-Flash']])
+    await expect(ctx.llm.prepareCall({ provider: 'deepseek-account', model: 'deepseek-v5' }))
+      .rejects.toMatchObject({ code: 'CLIENT_UPGRADE_REQUIRED' })
+    await assemble(ctx.llm.stream(options({ provider: 'deepseek-account', model: 'deepseek-flash' })), 'deepseek-flash')
+    expect(http.requests.map(request => [request.path, request.body.max_tokens])).toEqual([['/anthropic/v1/messages', 100_000]])
+  })
+
   it('does not remove account credentials for HTTP 403', async () => {
     const { ctx } = await boot((response) => {
       response.writeHead(403)
@@ -520,8 +541,9 @@ describe('Cordis provider composition', () => {
     const saved = JSON.stringify([assistant, result])
     const response = await assemble(ctx.llm.stream(options({ messages: [user(), assistant, result] })))
     expect(response.assembler.finish.kind).toBe('stop')
+    expect((await assemble(ctx.llm.stream(options({ messages: [user(), assistant, result] })))).assembler.finish.kind).toBe('stop')
     expect(warnings).toEqual([[`llm-deepseek: unusable Messages replay state on assistant history for route "deepseek-official/${MODEL}"; sending provider-neutral content (DeepSeek Messages replay: unsupported kind or version)`]])
-    expect(http.requests).toHaveLength(1)
+    expect(http.requests).toHaveLength(2)
     expect(http.requests[0]?.body.messages).toEqual([
       { role: 'user', content: [{ type: 'text', text: 'hello' }] },
       { role: 'assistant', content: [
@@ -605,5 +627,6 @@ it.each([
   })
   vi.stubGlobal('fetch', request)
   await assemble(ctx.llm.stream(options({ provider: expected === 'account-token' ? 'deepseek-account' : 'deepseek-official' })))
-  expect(request).toHaveBeenCalledOnce()
+  // The account provider also lists /models at the same origin (the account model list).
+  expect(request.mock.calls.filter(([input]) => !(input instanceof Request ? input.url : input.toString()).endsWith('/models'))).toHaveLength(1)
 })

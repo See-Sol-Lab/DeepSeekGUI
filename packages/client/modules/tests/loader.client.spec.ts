@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { removeOwnedStyles } from '../src/client/entry-lifecycle.ts'
+import { readRelease } from '../src/client/manifest.ts'
 import { Context } from '@deepseek-ai/cordis'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
@@ -694,6 +695,24 @@ describe('boot manifest wire', () => {
       .toThrow('client-modules: boot manifest batches must be an array')
   })
 
+  it('carries an optional Host release and rejects a malformed one', () => {
+    const wire = { rev: 'graph', entries: [], batches: [] }
+    expect(parseBootManifest(wire)).not.toHaveProperty('release')
+    expect(parseBootManifest({ ...wire, release: { version: '1.0.0' } }).release).toEqual({ version: '1.0.0' })
+    // Members outside the identity are dropped so equality compares only version and commit.
+    expect(parseBootManifest({ ...wire, release: { version: '1.0.0', commit: 'abc1234', label: 'x' } }).release)
+      .toEqual({ version: '1.0.0', commit: 'abc1234' })
+    for (const release of ['1.0.0', null, {}, { version: 1 }, { version: '1.0.0', commit: 7 }]) {
+      expect(() => parseBootManifest({ ...wire, release }))
+        .toThrow('client-modules: boot manifest release must carry a string version and an optional string commit')
+      // Release comparison reads no further than the release and reports an unreadable one as absent.
+      expect(readRelease({ release })).toBeUndefined()
+    }
+    expect(readRelease({ release: { version: '1.0.0', commit: 'abc1234', label: 'x' }, entries: 'another format' }))
+      .toEqual({ version: '1.0.0', commit: 'abc1234' })
+    expect(readRelease(null)).toBeUndefined()
+  })
+
   it('rejects malformed batch phases', () => {
     const entry = { id: 'a', url: '/a.js', rev: '1' }
     expect(() => parseBootManifest({ rev: 'graph', entries: [entry], batches: [null] }))
@@ -830,6 +849,37 @@ describe('style claiming', () => {
     expect(b.loader.loadCache.get('a')?.styles).toEqual(['a', 'sheet-1'])
     expect(document.querySelectorAll('style[data-plugin="a"]')).toHaveLength(2)
     expect(foreign.getAttribute('data-plugin')).toBe('other')
+  })
+
+  it('leaves untagged style tags inserted before materialization unclaimed', async () => {
+    const earlier = document.createElement('style')
+    document.head.appendChild(earlier)
+    const b = bench([row('a')], { a: () => ({}) })
+    await b.loader.import('a', '', {})
+    removeOwnedStyles('a')
+    expect(earlier.isConnected).toBe(true)
+    expect(earlier.hasAttribute('data-plugin')).toBe(false)
+  })
+
+  it('assigns an untagged style to the factory that inserted it before a nested require', async () => {
+    const outer = document.createElement('style')
+    const b = bench([row('b'), row('a', { external: ['b'] })], {
+      a: (require) => {
+        document.head.appendChild(outer)
+        require('b')
+        return {}
+      },
+      b: () => ({}),
+    })
+    await b.loader.import('a', '', {})
+    expect(outer.getAttribute('data-plugin')).toBe('a')
+  })
+
+  it('removes untagged styles inserted by a factory that throws', async () => {
+    const leaked = document.createElement('style')
+    const b = bench([row('a')], { a: () => { document.head.appendChild(leaked); throw new Error('factory exploded') } })
+    await expect(b.loader.import('a', '', {})).rejects.toThrow('factory exploded')
+    expect(leaked.isConnected).toBe(false)
   })
 
   it('materialization without a document skips the style inventory', async () => {

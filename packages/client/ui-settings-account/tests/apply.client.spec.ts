@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-/** Desktop account operations and ordinary-browser isolation in the shipped client composition. */
+/** Account operations in the shipped client composition, in Desktop and in a plain browser. */
 import { afterEach, beforeEach, expect, vi } from 'vitest'
 import { ok } from '@deepseek-ai/dsh-remote-mock'
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
@@ -35,8 +35,7 @@ function bonus(orderId: string, message = 'Awarded 5.00'): AccountBonusBatch {
   return {
     accountId: 'account-user' as AccountUserId,
     bonuses: [{
-      orderId: orderId as AccountBonusOrderId, campaign: 'dsh_login_bonus', amount: '5.00', currency: 'CNY',
-      grantedAt: '2026-09-21T12:00:00Z', expiresAt: '2099-01-01T00:00:00Z', message,
+      orderId: orderId as AccountBonusOrderId, expiresAt: '2099-01-01T00:00:00Z', message,
     }],
   }
 }
@@ -57,21 +56,24 @@ function injectedOf(entry: { inject?: (() => object) | undefined }): object {
   const injected: object = entry.inject!()
   return injected
 }
-beforeEach(() => { vi.stubEnv('DSH_CLIENT_VERSION', '0.0.0-test') })
+beforeEach(() => {
+  vi.stubEnv('DSH_CLIENT_VERSION', '0.0.0-test')
+  vi.stubGlobal('screen', { width: 1512, height: 982 })
+  vi.stubGlobal('devicePixelRatio', 2)
+})
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.restoreAllMocks() })
 
-it('keeps account UI and account RPC inactive in a plain browser, including after reload', async ({ start, mock }) => {
+it('registers account sign-in in a plain browser without the Desktop-only surfaces, including after reload', async ({ start }) => {
   const c = await start()
   for (const reload of [false, true]) {
     if (reload) await c.reload(SELF)
-    await c.flush()
-    expect(c.ctx.slots.entries('settings.launcher')).toHaveLength(0)
-    expect(c.ctx.slots.entries('settings.models.sign-in')).toHaveLength(0)
-    expect(c.ctx.slots.entries('settings.section').some(entry => entry.options.id === 'account')).toBe(false)
-    expect(quotaNoticeEntry(c)).toBeUndefined()
+    await c.mock.streams.opened('account/watch', reload ? 2 : 1)
+    expect(c.ctx.slots.entries('settings.launcher')).toHaveLength(1)
+    expect(c.ctx.slots.entries('settings.models.sign-in')).toHaveLength(1)
+    expect(quotaNoticeEntry(c)).toBeDefined()
     expect(platformHostEntry(c)).toBeUndefined()
-    expect(mock.log.calls().filter(call => call.endpoint.startsWith('account/'))).toEqual([])
-    expect(mock.log.streams().filter(stream => stream.endpoint.startsWith('account/'))).toEqual([])
+    expect(c.ctx.slots.entries('shell.overlay').some(entry => entry.options.id === 'desktop-onboarding')).toBe(false)
+    expect(operations(c).hooks.account.getSnapshot().desktopOnboardingVisible).toBe(false)
   }
 }, 60_000)
 
@@ -126,7 +128,6 @@ it('shares account actions across seats, publishes dialog ownership, and opens c
   const entry = c.ctx.slots.entries('settings.section').find(entry => entry.options.id === 'account')!
   expect(entry.inject!()).toBe(actions)
   expect(resolveSlotLabel(entry.options.label)).toBe('Account')
-  vi.spyOn(c.ctx.locale, 'getSnapshot').mockReturnValue({ ...c.ctx.locale.getSnapshot(), active: 'zh' })
   actions.contactUs()
   const support = new URL(String(open.mock.calls.at(-1)![0]))
   expect(support.searchParams.get('prefill_uid')).toBe('account-user')
@@ -134,10 +135,13 @@ it('shares account actions across seats, publishes dialog ownership, and opens c
   expect(support.searchParams.get('hide_harness_version')).toBe('1')
   expect(support.searchParams.get('prefill_harness_version')).toBe('0.0.0-test')
   expect(support.searchParams.get('hide_device_info')).toBe('1')
-  expect(support.searchParams.get('prefill_device_info')).toBe(navigator.userAgent)
+  expect(support.searchParams.get('prefill_device_info')).toBe(`${navigator.userAgent}; screen_resolution=3024x1964`)
   expect(support.searchParams.has('prefill_device_model')).toBe(false)
   expect(support.searchParams.has('hide_device_model')).toBe(false)
-  expect(support.searchParams.get('prefill_app_locale')).toBe('zh-CN')
+  for (const field of ['os_version', 'device_brand', 'app_locale', 'screen_resolution']) {
+    expect(support.searchParams.has(`prefill_${field}`)).toBe(false)
+    expect(support.searchParams.has(`hide_${field}`)).toBe(false)
+  }
   expect(support.searchParams.has('prefill_app_version')).toBe(false)
   c.mock.streams.push('account/watch', view)
   await vi.waitFor(() => { expect(actions.hooks.account.getSnapshot().view).toEqual(view) })
@@ -159,17 +163,19 @@ it('prefills the native device description from the Desktop bridge on every clic
   await vi.waitFor(() => { expect(open).toHaveBeenCalledOnce() })
   const first = new URL(String(open.mock.calls.at(-1)![0]))
   expect(first.searchParams.get('prefill_device_info'))
-    .toBe('platform=darwin; os=15.0; app_arch=arm64; cpu=Apple M3; memory_gib=16.0')
+    .toBe('platform=darwin; os=15.0; app_arch=arm64; cpu=Apple M3; memory_gib=16.0; screen_resolution=3024x1964')
   expect(first.searchParams.get('hide_device_info')).toBe('1')
   deviceInfo.mockResolvedValue('platform=win32; os=10.0; app_arch=x64; memory_gib=32.0')
+  vi.stubGlobal('screen', { width: 1920, height: 1080 })
+  vi.stubGlobal('devicePixelRatio', 1)
   actions.contactUs()
   await vi.waitFor(() => { expect(open).toHaveBeenCalledTimes(2) })
   expect(new URL(String(open.mock.calls.at(-1)![0])).searchParams.get('prefill_device_info'))
-    .toBe('platform=win32; os=10.0; app_arch=x64; memory_gib=32.0')
+    .toBe('platform=win32; os=10.0; app_arch=x64; memory_gib=32.0; screen_resolution=1920x1080')
   expect(deviceInfo).toHaveBeenCalledTimes(2)
 }, 60_000)
 
-it('opens the questionnaire with an empty device field when the native read fails', async ({ start }) => {
+it('opens the questionnaire with screen resolution when the native read fails', async ({ start }) => {
   const open = vi.spyOn(window, 'open').mockReturnValue(null)
   const deviceInfo = vi.fn(async (): Promise<string> => { throw new Error('platform ipc unavailable') })
   vi.stubGlobal('dshDesktop', { deviceInfo })
@@ -177,9 +183,9 @@ it('opens the questionnaire with an empty device field when the native read fail
   operations(c).contactUs()
   await vi.waitFor(() => { expect(open).toHaveBeenCalledOnce() })
   const url = new URL(String(open.mock.calls.at(-1)![0]))
-  expect(url.searchParams.has('prefill_device_info')).toBe(false)
+  expect(url.searchParams.get('prefill_device_info')).toBe('screen_resolution=3024x1964')
   expect(url.searchParams.get('hide_device_info')).toBe('1')
-  expect(url.searchParams.get('prefill_app_locale')).toBe('en')
+  expect(url.searchParams.has('prefill_app_locale')).toBe(false)
   expect(deviceInfo).toHaveBeenCalledOnce()
 }, 60_000)
 
@@ -198,6 +204,82 @@ it('reports the account sampled by the click when a native read outlasts a sign-
   device.resolve('platform=darwin; os=15.0; app_arch=arm64; memory_gib=16.0')
   await vi.waitFor(() => { expect(open).toHaveBeenCalledOnce() })
   expect(new URL(String(open.mock.calls.at(-1)![0])).searchParams.get('prefill_uid')).toBe('account-user')
+}, 60_000)
+
+it('publishes one avatar load and retries it through the shared Settings refresh action', async ({ start }) => {
+  const images: HTMLImageElement[] = []
+  vi.stubGlobal('Image', function () {
+    const image = document.createElement('img')
+    images.push(image)
+    return image
+  })
+  const c = await start()
+  const actions = operations(c)
+  const picture: AccountDetails['profile'] = {
+    status: 'ready', value: { id: 'account-user' as AccountUserId, name: 'User', contact: null, avatarUrl: 'https://example.test/avatar.png' },
+  }
+  c.mock.remote.account.getProfile.mockResolvedValue(ok(picture))
+  c.mock.streams.push('account/watch', stored)
+  await vi.waitFor(() => { expect(images).toHaveLength(1) })
+  images[0]!.dispatchEvent(new Event('error'))
+  expect(actions.hooks.account.getSnapshot().avatar?.status).toBe('failed')
+  await actions.refreshAccount()
+  await actions.refreshAccount()
+  expect(images).toHaveLength(2)
+  images[1]!.dispatchEvent(new Event('error'))
+  await actions.refreshAccount()
+  expect(images).toHaveLength(3)
+  images[2]!.dispatchEvent(new Event('load'))
+  expect(actions.hooks.account.getSnapshot().avatar).toEqual({ url: picture.value.avatarUrl, status: 'ready' })
+  await actions.refreshAccount()
+  expect(images).toHaveLength(3)
+  const ready = actions.hooks.account.getSnapshot().avatar!
+  actions.avatarFailed(ready)
+  expect(actions.hooks.account.getSnapshot().avatar?.status).toBe('failed')
+  await actions.refreshAccount()
+  expect(images).toHaveLength(4)
+  images[3]!.dispatchEvent(new Event('load'))
+  const successor = actions.hooks.account.getSnapshot().avatar!
+  actions.avatarFailed(ready)
+  expect(actions.hooks.account.getSnapshot().avatar).toBe(successor)
+  c.mock.streams.push('account/watch', view)
+  await vi.waitFor(() => { expect(actions.hooks.account.getSnapshot().view).toEqual(view) })
+  expect(actions.hooks.account.getSnapshot().avatar).toBeUndefined()
+  expect(images[3]!.getAttribute('src')).toBeNull()
+}, 60_000)
+
+it('keeps successful account refreshes silent and reports only failed reads', async ({ start }) => {
+  vi.stubGlobal('dshDesktop', {})
+  const output = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+  const info = vi.spyOn(console, 'info').mockImplementation(() => undefined)
+  const log = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+  const c = await start()
+  const actions = operations(c)
+  await actions.refreshAccount()
+  c.mock.remote.account.getProfile.mockResolvedValue(ok(profile))
+  c.mock.remote.account.getBalance.mockResolvedValue(ok({ status: 'ready', value: [], bonusWallets: [] }))
+  c.mock.streams.push('account/watch', stored)
+  await vi.waitFor(() => { expect(actions.hooks.account.getSnapshot().details?.profile).toEqual(profile) })
+  await actions.refreshAccount()
+  for (const spy of [output, info, log]) {
+    expect(spy.mock.calls.filter(call => String(call[0]).startsWith('[deepseek-account]'))).toEqual([])
+  }
+  c.mock.remote.account.getProfile.mockResolvedValueOnce(ok({ status: 'failed' }))
+  c.mock.remote.account.getBalance.mockRejectedValueOnce(new Error('private-transport-detail'))
+  await actions.refreshAccount()
+  expect(output).toHaveBeenCalledWith('[deepseek-account] account read failed', expect.objectContaining({
+    field: 'profile',
+  }))
+  expect(output).toHaveBeenCalledWith('[deepseek-account] account read failed', expect.objectContaining({
+    field: 'balance',
+  }))
+  expect(JSON.stringify(output.mock.calls)).not.toContain('private-transport-detail')
+  c.mock.remote.account.getBalance.mockResolvedValueOnce({ ok: false, error: new RemoteError('gateway/internal', 'private-rpc-detail', {}) })
+  await actions.refreshAccount()
+  expect(output).toHaveBeenCalledWith('[deepseek-account] account read failed', expect.objectContaining({
+    field: 'balance',
+  }))
+  expect(JSON.stringify(output.mock.calls)).not.toContain('private-rpc-detail')
 }, 60_000)
 
 it('coalesces refreshes, publishes independent failures, and rejects stale responses after sign-out or unload', async ({ start }) => {
@@ -233,15 +315,17 @@ it('coalesces refreshes, publishes independent failures, and rejects stale respo
   expect(actions.hooks.account.getSnapshot().details?.profile).toEqual({ status: 'failed' })
 }, 60_000)
 
-it('uses the Desktop login carrier and exposes operation errors', async ({ start, mock }) => {
-  vi.spyOn(window, 'open').mockReturnValue(null)
-  vi.stubGlobal('dshDesktop', {})
+for (const desktop of [false, true]) it(`uses the browser or Desktop login carrier (Desktop: ${desktop}) and exposes operation errors`, async ({ start, mock }) => {
+  const open = vi.spyOn(window, 'open').mockReturnValue(null)
+  if (desktop) vi.stubGlobal('dshDesktop', {})
   const c = await start()
   const actions = operations(c)
   mock.remote.account.startSignIn.mockResolvedValue(ok(view))
   await actions.start()
   expect(mock.remote.account.startSignIn).toHaveBeenCalledWith(expect.objectContaining({ locale: 'en', version: '0.0.0-test' }),
-    window.location.origin, 'desktop')
+    window.location.origin, desktop ? 'desktop' : 'web')
+  // Only a plain browser preopens the authorization tab during the click.
+  expect(open).toHaveBeenCalledTimes(desktop ? 0 : 1)
   const failure = { ok: false as const, error: new RemoteError('gateway/internal', 'offline', {}) }
   mock.remote.account.startSignIn.mockResolvedValueOnce(failure)
   await expect(actions.start()).rejects.toThrow('account start failed')
@@ -254,6 +338,21 @@ it('uses the Desktop login carrier and exposes operation errors', async ({ start
   await actions.signOut()
   // The launcher renders nothing, so the refused Remote call reaches the caller unchanged.
   await expect(actions.signOut()).rejects.toBe(failure.error)
+}, 60_000)
+
+it('navigates the preopened browser tab to the themed authorization page', async ({ start, mock }) => {
+  const replace = vi.fn()
+  const popup: Pick<Window, 'closed' | 'close' | 'opener'> & { location: Pick<Location, 'replace'> } = { closed: false, close: vi.fn(), opener: window, location: { replace } }
+  // jsdom opens no real tab; the UI only touches these members of the preopened window.
+  vi.spyOn(window, 'open').mockReturnValue(popup as Window)
+  const c = await start()
+  const actions = operations(c)
+  const attempt = { id: 'attempt' as SignInAttemptId, phase: 'waiting-browser' as const, authorizeUrl: 'https://platform.deepseek.com/dsh/authorize' }
+  mock.remote.account.startSignIn.mockResolvedValue(ok({ ...view, attempt: { id: attempt.id, phase: 'initializing' } }))
+  await actions.start()
+  c.mock.streams.push('account/watch', { ...view, attempt })
+  const theme = (c.ctx.get('theme') as ThemeRuntime).getTheme().active.colorScheme
+  await vi.waitFor(() => { expect(replace).toHaveBeenCalledExactlyOnceWith(`${attempt.authorizeUrl}?theme=${theme}`) })
 }, 60_000)
 
 it('uses the Desktop stream origin and exposes the native platform bridge', async ({ start, mock }) => {
@@ -426,7 +525,7 @@ it('reads the unnotified bonus in the active locale and acknowledges only after 
   c.mock.remote.account.ackBonusNotified.mockResolvedValue(ok(true))
   c.mock.streams.push('account/watch', stored)
   await vi.waitFor(() => {
-    expect(actions.hooks.account.getSnapshot().notice).toMatchObject({ orderId, message: 'Awarded 5.00' })
+    expect(actions.hooks.account.getSnapshot().notices?.[0]).toMatchObject({ orderId, message: 'Awarded 5.00' })
   })
   expect(c.mock.remote.account.getUnnotifiedBonuses).toHaveBeenCalledWith(expect.objectContaining({ locale: 'en' }))
   // A successful read is not a display, so nothing may be acknowledged yet.
@@ -436,7 +535,7 @@ it('reads the unnotified bonus in the active locale and acknowledges only after 
     expect(c.mock.remote.account.ackBonusNotified).toHaveBeenCalledWith('account-user', orderId, expect.objectContaining({ locale: 'en' }))
   })
   actions.bonusNoticeDismissed(orderId as AccountBonusOrderId)
-  expect(actions.hooks.account.getSnapshot().notice).toBeUndefined()
+  expect(actions.hooks.account.getSnapshot().notices?.[0]).toBeUndefined()
 }, 60_000)
 
 it('keeps the notice and its acknowledgement retry across repeated signed-in frames', async ({ start }) => {
@@ -448,7 +547,7 @@ it('keeps the notice and its acknowledgement retry across repeated signed-in fra
   c.mock.remote.account.getUnnotifiedBonuses.mockResolvedValue(ok(bonus(orderId)))
   c.mock.remote.account.ackBonusNotified.mockResolvedValue({ ok: false, error: new RemoteError('gateway/internal', 'offline', {}) })
   c.mock.streams.push('account/watch', stored)
-  await vi.waitFor(() => { expect(actions.hooks.account.getSnapshot().notice).toMatchObject({ orderId }) })
+  await vi.waitFor(() => { expect(actions.hooks.account.getSnapshot().notices?.[0]).toMatchObject({ orderId }) })
   actions.bonusNoticeShown(orderId as AccountBonusOrderId)
   await vi.waitFor(() => { expect(c.mock.remote.account.ackBonusNotified.mock.calls.length).toBeGreaterThan(0) })
   // One sign-in commits the credential and then updates the attempt; a reconnected
@@ -458,7 +557,7 @@ it('keeps the notice and its acknowledgement retry across repeated signed-in fra
   await vi.waitFor(() => { expect(actions.hooks.account.getSnapshot().view).toEqual(stored) })
   // The displayed card stays, no second read replaces it, and the failed
   // acknowledgement keeps backing off instead of stopping until sign-out.
-  expect(actions.hooks.account.getSnapshot().notice).toMatchObject({ orderId })
+  expect(actions.hooks.account.getSnapshot().notices?.[0]).toMatchObject({ orderId })
   expect(c.mock.remote.account.getUnnotifiedBonuses).toHaveBeenCalledOnce()
   await vi.waitFor(() => { expect(c.mock.remote.account.ackBonusNotified.mock.calls.length).toBeGreaterThan(1) }, { timeout: 30_000 })
 }, 60_000)
@@ -473,12 +572,12 @@ it('keeps the notice absent when the bonus read is refused, then shows the next 
   })
   c.mock.streams.push('account/watch', stored)
   await vi.waitFor(() => { expect(c.mock.remote.account.getUnnotifiedBonuses).toHaveBeenCalledOnce() })
-  expect(actions.hooks.account.getSnapshot().notice).toBeUndefined()
+  expect(actions.hooks.account.getSnapshot().notices?.[0]).toBeUndefined()
   expect(c.mock.remote.account.ackBonusNotified).not.toHaveBeenCalled()
   c.mock.remote.account.getUnnotifiedBonuses.mockResolvedValue(ok(bonus(orderId)))
   await actions.refreshAccount()
   await vi.waitFor(() => {
-    expect(actions.hooks.account.getSnapshot().notice).toMatchObject({ orderId, message: 'Awarded 5.00' })
+    expect(actions.hooks.account.getSnapshot().notices?.[0]).toMatchObject({ orderId, message: 'Awarded 5.00' })
   })
 }, 60_000)
 
@@ -489,11 +588,11 @@ it('drops the previous account notice and stops reading after sign-out', async (
   c.mock.remote.account.getUnnotifiedBonuses.mockResolvedValue(ok(bonus('4c1b0000-0000-4000-8000-000000000001')))
   c.mock.streams.push('account/watch', stored)
   await vi.waitFor(() => {
-    expect(actions.hooks.account.getSnapshot().notice?.message).toBe('Awarded 5.00')
+    expect(actions.hooks.account.getSnapshot().notices?.[0]?.message).toBe('Awarded 5.00')
   })
   c.mock.streams.push('account/watch', view)
   await vi.waitFor(() => { expect(actions.hooks.account.getSnapshot().view).toEqual(view) })
-  expect(actions.hooks.account.getSnapshot().notice).toBeUndefined()
+  expect(actions.hooks.account.getSnapshot().notices?.[0]).toBeUndefined()
   // Signing out ends the lifecycle, so no further read follows.
   const reads = c.mock.remote.account.getUnnotifiedBonuses.mock.calls.length
   await new Promise((resolve) => { setTimeout(resolve, 20) })
@@ -626,6 +725,12 @@ for (const native of [false, true]) it(`exposes desktop progress actions and dis
   const c = await start()
   const entry = c.ctx.slots.entries('shell.overlay').find(entry => entry.options.id === 'desktop-onboarding')!
   const injected = (entry.inject!() as object) as DesktopOnboardingInjected
+  expect(injected.hooks.account.getSnapshot().desktopOnboardingVisible).toBe(true)
+  injected.setVisible(false)
+  expect(injected.hooks.account.getSnapshot().desktopOnboardingVisible).toBe(false)
+  const revealed = injected.hooks.account.getSnapshot()
+  injected.setVisible(false)
+  expect(injected.hooks.account.getSnapshot()).toBe(revealed)
   // Onboarding requests the shared native page through the one host; it holds no
   // bridge of its own.
   if (native) expect(injected.openPlatformPage).toBeDefined()
