@@ -6,7 +6,10 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 const [install, home] = process.argv.slice(2)
-const boot = await import(pathToFileURL(join(install, 'resources', 'app.asar', 'dsh', 'node_modules', '@deepseek-ai', 'dsh-app-boot', 'lib', 'index.js')).href)
+const load = pkg => import(pathToFileURL(join(install, 'resources', 'app.asar', 'dsh', 'node_modules', '@deepseek-ai', pkg, 'lib', 'index.js')).href)
+const boot = await load('dsh-app-boot')
+// 官方 0.2.2 起模板搬到 dsh-official-bundles，app-boot 不再导出；更新源给哪版就要能跑哪版。
+const templates = boot.PROFILE_TEMPLATES ?? (await load('dsh-official-bundles')).PROFILE_TEMPLATES
 const dir = join(home, 'profiles', 'desktop')
-boot.initProfile(dir, boot.PROFILE_TEMPLATES.web.bundles)
+boot.initProfile(dir, templates.web.bundles)
 console.log(dir)
