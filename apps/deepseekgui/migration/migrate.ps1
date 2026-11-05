@@ -3,14 +3,15 @@
 #
 # 顺序（2026-10-24 在隔离目录实测定下）：
 #   1 等 DeepSeekGUI 完全退出   2 找到 GUI 的数据目录
-#   3 官方桌面端：没装就从官方更新源下载，核对大小、SHA-512、代码签名（杭州深度求索）后静默安装
+#   3 官方桌面端：没装或比官方更新源旧，就下载，核对大小、SHA-512、代码签名（杭州深度求索）后静默安装
 #   4 合并数据（merge-data.mjs）：会话、凭据、工作区列表、全局记忆等根层共享数据补进官方的 DSH 目录（不带 profiles）；
 #     官方已有的一律不改，只补它没有的；要改的几个文件先备份到 deepseekgui\migration-backup
-#   5 用官方运行时自己的 initProfile 初始化 desktop profile，再用官方 dsh 命令装生活质量包
+#   5 用官方运行时自己的 initProfile 初始化 desktop profile，再用官方 dsh 命令装生活质量包；没装或比 $QolVersion 旧就装
 #   6 打开官方桌面端
-# 任何一步失败就停下，说明是哪一步；DeepSeekGUI 本身和它的数据一律不改、不删，照常能用。
+# 任何一步失败就停下，说明是哪一步；只有「已装的官方桌面端没能更新」不挡后面的步骤。DeepSeekGUI 本身和它的数据一律不改、不删，照常能用。
 #
-# 仅测试用的环境变量：DSHQOL_MIGRATE_TEST_OFFICIAL_DIR（已解压的官方端目录，跳过下载安装）、
+# 仅测试用的环境变量：DSHQOL_MIGRATE_TEST_OFFICIAL_DIR（已解压的官方端目录，当作已安装）、
+# DSHQOL_MIGRATE_TEST_NO_SETUP（下载并核对安装包，但不运行）、
 # DSHQOL_MIGRATE_TEST_GUI_USERDATA（GUI 的 userData）、DSHQOL_MIGRATE_TEST_AUTOSTART（自动开始，结束时把日志写到这个路径并关窗）。
 # 目标目录认官方自己的 DSH_HOME，缺省 ~/.dsh。
 
@@ -23,7 +24,8 @@ $sync = [hashtable]::Synchronized(@{ Log = [System.Collections.Queue]::Synchroni
 $work = {
   param($sync, $here)
   $ErrorActionPreference = 'Stop'
-  $QolUrl = 'https://github.com/See-Sol-Lab/DSH-QoL/releases/download/v1.0.0/see-sol-lab-dsh-qol-1.0.0.tgz'
+  $QolVersion = '1.1.0'
+  $QolUrl = "https://github.com/See-Sol-Lab/DSH-QoL/releases/download/v$QolVersion/see-sol-lab-dsh-qol-$QolVersion.tgz"
   $Feed = 'https://download.deepseek.com/dsh-desk/feeds/win-x64/nightly.yml'
   $Signer = 'Hangzhou DeepSeek Artificial Intelligence Co., Ltd.'
   function Say([string]$t) { $sync.Log.Enqueue($t) }
@@ -62,6 +64,63 @@ $work = {
     if (-not $m.Success) { Fail "官方更新清单里缺少 $key" }
     return $m.Groups[1].Value.Trim("'", '"')
   }
+  # 0.2.2-rc.1 这样的版本号变成可比较的字符串：同主版本时 rc 小的在前，没有 rc 的正式版最大
+  function VersionKey([string]$v) {
+    $m = [regex]::Match([string]$v, '^(\d+)\.(\d+)\.(\d+)(?:-rc\.(\d+))?')
+    if (-not $m.Success) { return $null }
+    $rc = if ($m.Groups[4].Success) { [int]$m.Groups[4].Value } else { 99999 }
+    return '{0:D5}.{1:D5}.{2:D5}.{3:D5}' -f [int]$m.Groups[1].Value, [int]$m.Groups[2].Value, [int]$m.Groups[3].Value, $rc
+  }
+  # 从官方更新源装最新版。$installed 是已装的版本（没装为空），已是最新就不下载
+  function GetOfficial([string]$installed) {
+    Say '从官方更新源读取最新版本……'
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    $yml = (New-Object Net.WebClient).DownloadString($Feed)
+    $version = FeedValue $yml 'version'
+    if ($installed) {
+      $now = VersionKey $installed; $latest = VersionKey $version
+      if (-not $now -or -not $latest -or $now -ge $latest) { Say "官方最新是 $version，不用更新。"; return }
+    }
+    $url = FeedValue $yml 'path'
+    $sha = FeedValue $yml 'sha512'
+    $size = [int64](FeedValue $yml '\s*size')
+    if ($url -notmatch '^https://download\.deepseek\.com/') { Fail "官方更新清单里的下载地址不在 download.deepseek.com：$url" }
+    Say "官方桌面端 $version，$([math]::Round($size / 1MB)) MB，开始下载……"
+    $setup = Join-Path ([IO.Path]::GetTempPath()) "deepseek-harness-$version-win-x64.exe"
+    $out = [IO.File]::Create($setup); $buf = New-Object byte[] 1048576; $got = [int64]0; $shown = 0; $retries = 0
+    try {
+      # 几百 MB 的下载常被中途断开（实测 289 MB 断过两次）：断了就从断点续传
+      while ($got -lt $size) {
+        $resp = $null
+        try {
+          $req = [Net.HttpWebRequest]::Create($url); $req.Timeout = 30000; $req.ReadWriteTimeout = 30000
+          if ($got) { $req.AddRange($got) }
+          $resp = $req.GetResponse(); $in = $resp.GetResponseStream()
+          if ($got -and [int]$resp.StatusCode -ne 206) { $out.SetLength(0); $got = [int64]0 }
+          while (($n = $in.Read($buf, 0, $buf.Length)) -gt 0) { $out.Write($buf, 0, $n); $got += $n; $sync.Progress = 33 + [int](17 * $got / [math]::Max($size, 1)); $tenth = [int][math]::Floor(10 * $got / [math]::Max($size, 1)); if ($tenth -gt $shown) { $shown = $tenth; Say "  已下载 $([math]::Round($got / 1MB)) / $([math]::Round($size / 1MB)) MB" } }
+          if ($got -lt $size) { throw '连接提前结束' }
+        } catch {
+          if (++$retries -gt 10) { throw }
+          Say "  连接断了，$([math]::Round($got / 1MB)) MB 处接着下（第 $retries 次重试）"
+          Start-Sleep -Seconds 3
+        } finally { if ($resp) { $resp.Close() } }
+      }
+    } finally { $out.Close() }
+    if ($got -ne $size) { Fail "下载大小不对（应为 $size，实际 $got）" }
+    $sha512 = [Security.Cryptography.SHA512]::Create(); $fs = [IO.File]::OpenRead($setup)
+    try { $actual = [Convert]::ToBase64String($sha512.ComputeHash($fs)) } finally { $fs.Close() }
+    if ($actual -ne $sha) { Fail '下载的安装包 SHA-512 和官方清单不一致，已停止，没有安装' }
+    $sig = Get-AuthenticodeSignature $setup
+    if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notlike "*$Signer*") { Fail "安装包签名不是杭州深度求索的有效签名（$($sig.Status)），已停止，没有安装" }
+    Say '大小、SHA-512、代码签名都已核对。正在安装官方桌面端……'
+    if ($env:DSHQOL_MIGRATE_TEST_NO_SETUP) { Say '（测试）不运行安装程序。'; Remove-Item $setup -ErrorAction SilentlyContinue; return }
+    # 工作目录不能是安装目录：安装程序要整个换掉它
+    $p = Start-Process -FilePath $setup -ArgumentList '/S' -WorkingDirectory $HOME -Wait -PassThru
+    if ($p.ExitCode -eq 2) { Fail '官方安装程序拒绝了（返回 2）：安装目录里有文件，但系统里没有它的安装记录。请先卸载或删掉旧的安装目录' }
+    if ($p.ExitCode -ne 0) { Fail "官方安装程序返回 $($p.ExitCode)" }
+    Remove-Item $setup -ErrorAction SilentlyContinue
+    Say "官方桌面端 $version 已安装。"
+  }
 
   try {
     $sync.State = 'running'
@@ -92,41 +151,18 @@ $work = {
     Step 3 '准备官方桌面端'
     $official = if ($env:DSHQOL_MIGRATE_TEST_OFFICIAL_DIR) { $env:DSHQOL_MIGRATE_TEST_OFFICIAL_DIR } else { OfficialInstall }
     if ($official) {
-      Say "已经装有官方桌面端：$official"
+      $installed = (Get-Item (Join-Path $official 'DeepSeek Harness.exe')).VersionInfo.FileVersion
+      Say "已经装有官方桌面端 $installed：$official"
+      WaitExit 'DeepSeek Harness' '官方桌面端'
+      try { GetOfficial $installed } catch { Say "官方桌面端没能更新：$($_.Exception.Message)"; Say '先用现有版本继续，它之后会自己更新。' }
     } else {
-      Say '从官方更新源读取最新版本……'
-      [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-      $yml = (New-Object Net.WebClient).DownloadString($Feed)
-      $version = FeedValue $yml 'version'
-      $url = FeedValue $yml 'path'
-      $sha = FeedValue $yml 'sha512'
-      $size = [int64](FeedValue $yml '\s*size')
-      if ($url -notmatch '^https://download\.deepseek\.com/') { Fail "官方更新清单里的下载地址不在 download.deepseek.com：$url" }
-      Say "官方桌面端 $version，$([math]::Round($size / 1MB)) MB，开始下载……"
-      $setup = Join-Path ([IO.Path]::GetTempPath()) "deepseek-harness-$version-win-x64.exe"
-      $req = [Net.HttpWebRequest]::Create($url); $resp = $req.GetResponse(); $in = $resp.GetResponseStream()
-      $out = [IO.File]::Create($setup); $buf = New-Object byte[] 1048576; $got = [int64]0; $shown = 0
-      try {
-        while (($n = $in.Read($buf, 0, $buf.Length)) -gt 0) { $out.Write($buf, 0, $n); $got += $n; $sync.Progress = 33 + [int](17 * $got / [math]::Max($size, 1)); $tenth = [int][math]::Floor(10 * $got / [math]::Max($size, 1)); if ($tenth -gt $shown) { $shown = $tenth; Say "  已下载 $([math]::Round($got / 1MB)) / $([math]::Round($size / 1MB)) MB" } }
-      } finally { $out.Close(); $in.Close(); $resp.Close() }
-      if ($got -ne $size) { Fail "下载大小不对（应为 $size，实际 $got）" }
-      $sha512 = [Security.Cryptography.SHA512]::Create(); $fs = [IO.File]::OpenRead($setup)
-      try { $actual = [Convert]::ToBase64String($sha512.ComputeHash($fs)) } finally { $fs.Close() }
-      if ($actual -ne $sha) { Fail '下载的安装包 SHA-512 和官方清单不一致，已停止，没有安装' }
-      $sig = Get-AuthenticodeSignature $setup
-      if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notlike "*$Signer*") { Fail "安装包签名不是杭州深度求索的有效签名（$($sig.Status)），已停止，没有安装" }
-      Say '大小、SHA-512、代码签名都已核对。正在安装官方桌面端……'
-      $p = Start-Process -FilePath $setup -ArgumentList '/S' -Wait -PassThru
-      if ($p.ExitCode -ne 0) { Fail "官方安装程序返回 $($p.ExitCode)" }
-      Remove-Item $setup -ErrorAction SilentlyContinue
+      GetOfficial ''
       $official = OfficialInstall
       if (-not $official) { Fail '官方桌面端装完了，但找不到它的安装位置' }
-      Say "官方桌面端已安装：$official"
     }
     $sync.Official = $official
     $exe = Join-Path $official 'DeepSeek Harness.exe'
     $dsh = Join-Path $official 'resources\runtime\cli\bin\dsh.cmd'
-    WaitExit 'DeepSeek Harness' '官方桌面端'
 
     Step 4 '合并会话、凭据和记忆'
     $same = (Test-Path $guiHome) -and (Test-Path $target) -and ((Resolve-Path $guiHome).Path.TrimEnd('\') -ieq (Resolve-Path $target).Path.TrimEnd('\'))
@@ -162,22 +198,31 @@ $work = {
     $manifest = Join-Path $profileDir 'package.json'
     $null = RunNode @((Join-Path $here 'init-desktop-profile.mjs'), $official, $target)
     if (-not (Test-Path $manifest)) { Fail '没能初始化官方桌面端的插件目录' }
-    if ((Get-Content -Raw -Encoding UTF8 $manifest) -match '"@see-sol-lab/dsh-qol"') {
-      Say '生活质量包已经装过了。'
+    $qolPackage = Join-Path $profileDir 'node_modules\@see-sol-lab\dsh-qol\package.json'
+    $qolNow = if (Test-Path $qolPackage) { (Get-Content -Raw -Encoding UTF8 $qolPackage | ConvertFrom-Json).version }
+    if ($qolNow -and (VersionKey $qolNow) -ge (VersionKey $QolVersion)) {
+      Say "生活质量包已经是 $qolNow。"
     } else {
-      Say '正在从 GitHub 下载并安装生活质量包……'
+      Say $(if ($qolNow) { "正在从 GitHub 把生活质量包从 $qolNow 更新到 $QolVersion……" } else { '正在从 GitHub 下载并安装生活质量包……' })
       $env:DSH_HOME = $target
+      # dsh 用 pnpm 下载，pnpm 不读系统代理，只认环境变量
+      if (-not $env:HTTPS_PROXY) {
+        $proxy = [Net.WebRequest]::GetSystemWebProxy().GetProxy([Uri]$QolUrl).AbsoluteUri
+        if ($proxy -ne $QolUrl) { $env:HTTPS_PROXY = $proxy; Say "  使用系统代理：$proxy" }
+      }
       $log = & $dsh plugin --profile desktop add $QolUrl 2>&1
       $code = $LASTEXITCODE
-      if ($code -ne 0 -or -not ((Get-Content -Raw -Encoding UTF8 $manifest) -match '"@see-sol-lab/dsh-qol"')) {
+      $qolNow = if (Test-Path $qolPackage) { (Get-Content -Raw -Encoding UTF8 $qolPackage | ConvertFrom-Json).version }
+      if ($code -ne 0 -or $qolNow -ne $QolVersion) {
         foreach ($l in ($log | Select-Object -Last 6)) { Say "  $l" }
         Fail '生活质量包没有装上（多半是网络连不上 GitHub）。官方桌面端已经能用；网络好了以后再运行一次本程序即可补装'
       }
-      Say '生活质量包已安装。'
+      Say "生活质量包 $qolNow 已安装。"
     }
 
     Step 6 '打开官方桌面端'
-    Start-Process -FilePath $exe
+    # 工作目录不留在临时目录或安装目录：官方自动更新要整个换掉安装目录
+    if (-not $env:DSHQOL_MIGRATE_TEST_OFFICIAL_DIR) { Start-Process -FilePath $exe -WorkingDirectory $HOME }
     $sync.Progress = 100
     Say ''
     Say '迁移完成。以后官方桌面端会自己更新，不再需要 DeepSeekGUI。'
@@ -201,7 +246,7 @@ $form.FormBorderStyle = 'FixedDialog'; $form.MaximizeBox = $false
 
 $intro = New-Object Windows.Forms.Label
 $intro.Location = New-Object Drawing.Point(16, 14); $intro.Size = New-Object Drawing.Size(600, 200)
-$intro.Text = "DeepSeekGUI 从这个版本起不再跟随官方更新，改为「官方 DeepSeek Harness 桌面端 + DSH 生活质量包」。`r`n`r`n为什么：官方推出自己的桌面端以后，它的更新方向、开发理念与 DeepSeekGUI 有不小的分歧；官方的破坏性更新又很频繁，DeepSeekGUI 由一个人维护，每次整体合并再把自己的改动接回去，已经越来越难跟上。所以今后由官方桌面端自己自动更新，DeepSeekGUI 里官方还没有的功能做成「DSH 生活质量包」插件继续维护，皮肤、工作台、记忆、技能库、用量等都在里面，用起来和 DeepSeekGUI 相近。`r`n`r`n这个助手会：从官方下载并安装桌面端（核对校验值和代码签名）；把你在 DeepSeekGUI 里的会话、API 密钥和全局记忆合并到官方桌面端（官方那边已有的不会被覆盖）；装上生活质量包；最后打开官方桌面端。下载要一会儿，请耐心等待。`r`n`r`nDeepSeekGUI 本身和它的数据不会被改动或删除。"
+$intro.Text = "DeepSeekGUI 从这个版本起不再跟随官方更新，改为「官方 DeepSeek Harness 桌面端 + DSH 生活质量包」。`r`n`r`n为什么：官方推出自己的桌面端以后，它的更新方向、开发理念与 DeepSeekGUI 有不小的分歧；官方的破坏性更新又很频繁，DeepSeekGUI 由一个人维护，每次整体合并再把自己的改动接回去，已经越来越难跟上。所以今后由官方桌面端自己自动更新，DeepSeekGUI 里官方还没有的功能做成「DSH 生活质量包」插件继续维护，皮肤、工作台、记忆、技能库、用量等都在里面，用起来和 DeepSeekGUI 相近。`r`n`r`n这个助手会：从官方下载并安装最新的桌面端（核对校验值和代码签名）；把你在 DeepSeekGUI 里的会话、API 密钥和全局记忆合并到官方桌面端（官方那边已有的不会被覆盖）；装上或更新生活质量包；最后打开官方桌面端。之前迁移没成功或已迁移过的，可以放心再运行一次。下载要一会儿，请耐心等待。`r`n`r`nDeepSeekGUI 本身和它的数据不会被改动或删除。"
 $form.Controls.Add($intro)
 
 $bar = New-Object Windows.Forms.ProgressBar
